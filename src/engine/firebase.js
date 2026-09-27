@@ -1,5 +1,5 @@
-import { initializeApp } from 'firebase/app';
-import { getDatabase, ref, set, onValue, update, remove, get } from 'firebase/database';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js';
+import { getDatabase, ref, set, onValue, update, remove, get } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-database.js';
 import { state } from '../store/state.js';
 
 let db = null;
@@ -35,7 +35,7 @@ export function initRealtimeEngine() {
   }
   
   state.isDemo = true;
-  if (!broadcastChannel) {
+  if (!broadcastChannel && typeof BroadcastChannel !== 'undefined') {
     broadcastChannel = new BroadcastChannel('class_quiz_channel');
   }
   return false;

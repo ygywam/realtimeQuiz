@@ -1,4 +1,3 @@
-import QRCode from 'qrcode';
 import { state, getOrCreateStudentId, generateRoomId } from './store/state.js';
 import { 
   initRealtimeEngine, 
@@ -137,7 +136,6 @@ function initHostFlow(isTeacherControl) {
 }
 
 function renderHostLobbyView(isTeacherControl) {
-  // 실제 현재 접속 URL 기반으로 QR코드 링크 생성 (스마트폰 접속 보장)
   const baseUrl = window.location.origin + window.location.pathname;
   const studentJoinUrl = `${baseUrl}?room=${state.roomId}&role=student`;
 
@@ -158,10 +156,8 @@ function renderHostLobbyView(isTeacherControl) {
         <div class="qr-box">
           <h2>스마트폰으로 참여하세요</h2>
           <div class="pin-number">${state.roomId}</div>
-          <div class="qr-canvas-container">
-            <canvas id="qr-canvas"></canvas>
-          </div>
-          <p style="color: var(--text-muted); font-size: 0.95rem; word-break: break-all;">
+          <div class="qr-canvas-container" id="qr-canvas-container" style="background:#fff; padding:10px; border-radius:12px;"></div>
+          <p style="color: var(--text-muted); font-size: 0.95rem; word-break: break-all; margin-top: 10px;">
             접속 주소: <br><strong>${studentJoinUrl}</strong>
           </p>
         </div>
@@ -177,12 +173,14 @@ function renderHostLobbyView(isTeacherControl) {
     </div>
   `;
 
-  const canvas = document.getElementById('qr-canvas');
-  if (canvas) {
-    QRCode.toCanvas(canvas, studentJoinUrl, {
-      width: 220,
-      margin: 1,
-      color: { dark: '#0f172a', light: '#ffffff' }
+  // 호환성 100% QRCode 생성
+  const qrContainer = document.getElementById('qr-canvas-container');
+  if (qrContainer && window.QRCode) {
+    qrContainer.innerHTML = '';
+    new window.QRCode(qrContainer, {
+      text: studentJoinUrl,
+      width: 200,
+      height: 200
     });
   }
 
@@ -270,7 +268,6 @@ function renderStudentJoinView(studentId) {
     </div>
   `;
 
-  // 아바타 클릭 선택
   const avatarGrid = document.getElementById('avatar-grid');
   avatarGrid.querySelectorAll('.avatar-option').forEach(item => {
     item.addEventListener('click', (e) => {
