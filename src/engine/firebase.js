@@ -77,11 +77,12 @@ export function subscribeRoom(roomId, callback) {
   }
 }
 
-export async function joinParticipant(roomId, studentId, nickname) {
+export async function joinParticipant(roomId, studentId, nickname, avatar = '🐶') {
   if (db) {
     const pRef = ref(db, `rooms/${roomId}/participants/${studentId}`);
     await set(pRef, {
       nickname,
+      avatar,
       joinedAt: Date.now(),
       score: 0
     });
@@ -92,6 +93,7 @@ export async function joinParticipant(roomId, studentId, nickname) {
       if (!room.participants) room.participants = {};
       room.participants[studentId] = {
         nickname,
+        avatar,
         joinedAt: Date.now(),
         score: 0
       };

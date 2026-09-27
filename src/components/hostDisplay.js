@@ -151,7 +151,8 @@ function renderLeaderboardView(container, roomData, isTeacherControl) {
         ${top5.map((p, rank) => `
           <div class="leaderboard-row ${rank === 0 ? 'rank-1' : ''}">
             <div style="display: flex; align-items: center; gap: 16px;">
-              <div class="rank-badge">${rank + 1}</div>
+              <div class="rank-badge">${rank === 0 ? '🥇' : rank === 1 ? '🥈' : rank === 2 ? '🥉' : rank + 1}</div>
+              <span style="font-size: 1.8rem; margin-right: 4px;">${p.avatar || '🐶'}</span>
               <span>${escapeHtml(p.nickname)}</span>
             </div>
             <span style="color: #38bdf8;">${p.score || 0}점</span>

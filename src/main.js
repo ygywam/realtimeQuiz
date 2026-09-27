@@ -15,6 +15,7 @@ import { renderHostDisplayView } from './components/hostDisplay.js';
 import { renderStudentPadView } from './components/studentPad.js';
 
 const app = document.getElementById('app');
+const AVATARS = ['🐶', '🐱', '🦊', '🐯', '🦁', '🐸', '🤖', '🚀', '🎃', '🦄', '🐥', '🐼'];
 
 function initRouter() {
   const params = new URLSearchParams(window.location.search);
@@ -47,7 +48,7 @@ function renderHomeView() {
 
       <div style="margin-bottom: 25px;">
         <span class="room-badge" style="font-size: 0.95rem; cursor: pointer;" id="btn-open-fb">
-          ${isFbConnected ? '🟢 Firebase 연결됨' : '🟡 데모/로컬 모드 (설정 변경)'}
+          ${isFbConnected ? '🟢 Firebase 실시간 DB 연결됨' : '🟡 데모/로컬 모드 (설정 변경)'}
         </span>
       </div>
 
@@ -136,8 +137,9 @@ function initHostFlow(isTeacherControl) {
 }
 
 function renderHostLobbyView(isTeacherControl) {
-  const origin = window.location.origin + window.location.pathname;
-  const studentJoinUrl = `${origin}?room=${state.roomId}&role=student`;
+  // 실제 현재 접속 URL 기반으로 QR코드 링크 생성 (스마트폰 접속 보장)
+  const baseUrl = window.location.origin + window.location.pathname;
+  const studentJoinUrl = `${baseUrl}?room=${state.roomId}&role=student`;
 
   app.innerHTML = `
     <div class="lobby-layout">
@@ -217,7 +219,8 @@ function updateParticipantList(participants) {
 
   container.innerHTML = list.map(p => `
     <div class="student-tag">
-      ${escapeHtml(p.nickname)}
+      <span>${p.avatar || '🐶'}</span>
+      <span>${escapeHtml(p.nickname)}</span>
     </div>
   `).join('');
 }
@@ -232,7 +235,7 @@ function initStudentFlow() {
     const myParticipant = roomData.participants && roomData.participants[studentId];
     if (myParticipant) {
       state.nickname = myParticipant.nickname;
-      renderStudentPadView(app, roomData, state.roomId, studentId, state.nickname);
+      renderStudentPadView(app, roomData, state.roomId, studentId, state.nickname, myParticipant.avatar);
     } else {
       renderStudentJoinView(studentId);
     }
@@ -240,21 +243,42 @@ function initStudentFlow() {
 }
 
 function renderStudentJoinView(studentId) {
+  let selectedAvatar = '🐶';
+
   app.innerHTML = `
     <div class="mobile-view">
-      <div style="text-align: center; margin-bottom: 24px;">
+      <div style="text-align: center; margin-bottom: 20px;">
         <span class="room-badge">PIN : ${state.roomId}</span>
       </div>
       <div class="mobile-card" id="student-join-card">
-        <h2 style="font-size: 1.8rem; margin-bottom: 8px;">환영합니다! 👋</h2>
-        <p style="color: var(--text-muted);">퀴즈에 참여할 닉네임을 입력해 주세요.</p>
+        <h2 style="font-size: 1.6rem; margin-bottom: 6px;">환영합니다! 👋</h2>
+        <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 16px;">닉네임과 캐릭터 아바타를 선택해 주세요.</p>
+
+        <div style="font-size: 0.9rem; font-weight: bold; text-align: left; margin-bottom: 6px; color: var(--text-muted);">아바타 선택:</div>
+        <div id="avatar-grid" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 20px;">
+          ${AVATARS.map((av, idx) => `
+            <div class="avatar-option ${idx === 0 ? 'selected' : ''}" data-avatar="${av}" style="font-size: 1.8rem; padding: 8px; border-radius: 12px; cursor: pointer; background: #0f172a; border: 2px solid ${idx === 0 ? 'var(--primary)' : 'transparent'}; text-align: center;">
+              ${av}
+            </div>
+          `).join('')}
+        </div>
         
-        <input type="text" id="input-nickname" class="input-nickname" placeholder="닉네임 입력 (최대 8자)" maxlength="8" autofocus>
+        <input type="text" id="input-nickname" class="input-nickname" placeholder="닉네임 입력 (최대 8자)" maxlength="8" autofocus style="margin-top: 0;">
         
-        <button class="btn btn-primary" id="btn-student-join" style="width: 100%; font-size: 1.2rem;">입장하기</button>
+        <button class="btn btn-primary" id="btn-student-join" style="width: 100%; font-size: 1.2rem; margin-top: 12px;">입장하기</button>
       </div>
     </div>
   `;
+
+  // 아바타 클릭 선택
+  const avatarGrid = document.getElementById('avatar-grid');
+  avatarGrid.querySelectorAll('.avatar-option').forEach(item => {
+    item.addEventListener('click', (e) => {
+      avatarGrid.querySelectorAll('.avatar-option').forEach(el => el.style.borderColor = 'transparent');
+      e.currentTarget.style.borderColor = 'var(--primary)';
+      selectedAvatar = e.currentTarget.dataset.avatar;
+    });
+  });
 
   const btnJoin = document.getElementById('btn-student-join');
   const inputNick = document.getElementById('input-nickname');
@@ -263,7 +287,7 @@ function renderStudentJoinView(studentId) {
     const nick = inputNick.value.trim();
     if (!nick) return alert('닉네임을 입력해 주세요!');
     state.nickname = nick;
-    await joinParticipant(state.roomId, studentId, nick);
+    await joinParticipant(state.roomId, studentId, nick, selectedAvatar);
   };
 
   btnJoin.addEventListener('click', doJoin);

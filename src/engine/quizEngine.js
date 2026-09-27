@@ -1,16 +1,15 @@
 import { updateRoomMeta, updateParticipantScores } from './firebase.js';
 
-// 카훗 스타일 스피드 점수 계산 유틸리티
-export function calculateScore(timeLimitSeconds, elapsedSeconds) {
+export function calculateScore(timeLimitSeconds, elapsedSeconds, isDoublePoints = false) {
   const basePoints = 1000;
-  if (timeLimitSeconds <= 0) return basePoints;
+  if (timeLimitSeconds <= 0) return basePoints * (isDoublePoints ? 2 : 1);
   
   const speedRatio = Math.max(0, (timeLimitSeconds - elapsedSeconds) / timeLimitSeconds);
   const speedBonus = Math.round(speedRatio * 1000);
-  return basePoints + speedBonus;
+  const total = basePoints + speedBonus;
+  return isDoublePoints ? total * 2 : total;
 }
 
-// 다음 퀴즈 문제로 이동
 export async function advanceToNextQuestion(roomId, roomData) {
   const currentIndex = roomData.meta.currentQuestionIndex || 0;
   const questions = roomData.questions || [];
@@ -22,14 +21,12 @@ export async function advanceToNextQuestion(roomId, roomData) {
       timerStartedAt: Date.now()
     });
   } else {
-    // 최종 퀴즈 종료
     await updateRoomMeta(roomId, {
       status: 'FINISHED'
     });
   }
 }
 
-// 퀴즈 문제 결과 채점 및 점수 동기화
 export async function processQuestionResults(roomId, roomData) {
   const qIndex = roomData.meta.currentQuestionIndex || 0;
   const question = roomData.questions[qIndex];
@@ -57,7 +54,7 @@ export async function processQuestionResults(roomId, roomData) {
 
       if (isCorrect) {
         const elapsedSec = (resp.submittedAt - timerStartedAt) / 1000;
-        const earned = calculateScore(question.timeLimit || 20, elapsedSec);
+        const earned = calculateScore(question.timeLimit || 20, elapsedSec, question.isDoublePoints);
         updatedScores[sid] = (updatedScores[sid] || 0) + earned;
       }
     });
@@ -65,19 +62,17 @@ export async function processQuestionResults(roomId, roomData) {
     await updateParticipantScores(roomId, updatedScores);
   }
 
-  // 상태를 결과 공개로 변경
   await updateRoomMeta(roomId, {
     status: 'SHOW_ANSWER'
   });
 }
 
-// 퀴즈 결과 CSV 다운로드
 export function exportResultsToCSV(roomData) {
   const participants = roomData.participants || {};
   const questions = roomData.questions || [];
   const responses = roomData.responses || {};
 
-  let csvContent = '\uFEFF닉네임,총점수';
+  let csvContent = '\uFEFF아바타,닉네임,총점수';
   questions.forEach((q, idx) => {
     csvContent += `,Q${idx + 1} (${q.question.substring(0, 10)}...)`;
   });
@@ -85,7 +80,7 @@ export function exportResultsToCSV(roomData) {
 
   Object.keys(participants).forEach(sid => {
     const p = participants[sid];
-    let row = `"${p.nickname}",${p.score || 0}`;
+    let row = `"${p.avatar || '🐶'}","${p.nickname}",${p.score || 0}`;
 
     questions.forEach((q, qIdx) => {
       const resp = responses[qIdx] && responses[qIdx][sid];
