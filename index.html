@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>클래스 라이브 퀴즈 (Class Live Quiz)</title>
+  <link rel="stylesheet" href="./src/assets/style.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "firebase/app": "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js",
+      "firebase/database": "https://www.gstatic.com/firebasejs/10.13.1/firebase-database.js",
+      "qrcode": "https://esm.sh/qrcode@1.5.4"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="app">
+    <!-- 동적 뷰 마운트 영역 -->
+  </div>
+
+  <!-- Firebase 설정 모달 (최초 연결용) -->
+  <div id="firebase-modal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <h3>🔥 Firebase 실시간 DB 설정</h3>
+      <p class="modal-desc">
+        교실 전자칠판과 학생 스마트폰 간 0.1초 실시간 통신을 위해 Firebase 설정값을 입력해 주세요. (1회 입력 시 브라우저에 안전하게 저장됩니다)
+      </p>
+      <div class="form-group">
+        <label>API Key</label>
+        <input type="text" id="fb-apiKey" placeholder="AIzaSy...">
+      </div>
+      <div class="form-group">
+        <label>Database URL (중요: Realtime Database URL)</label>
+        <input type="text" id="fb-dbUrl" placeholder="https://your-project-default-rtdb.firebaseio.com">
+      </div>
+      <div class="form-group">
+        <label>Project ID</label>
+        <input type="text" id="fb-projectId" placeholder="your-project-id">
+      </div>
+      <div class="modal-actions">
+        <button id="btn-save-fb" class="btn btn-primary">설정 저장 및 연결</button>
+        <button id="btn-close-fb" class="btn btn-secondary">취소</button>
+      </div>
+      <div class="demo-tip">
+        💡 <em>Firebase 프로젝트가 아직 없으신가요? 데모/오프라인 모드로 즉시 체험해 보실 수도 있습니다.</em>
+        <button id="btn-use-demo" class="btn btn-outline-sm">데모/모의 모드로 시작</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
