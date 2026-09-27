@@ -5,7 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>클래스 라이브 퀴즈 (Class Live Quiz)</title>
   <link rel="stylesheet" href="./src/assets/style.css">
-  <!-- 모바일 100% 호환 QR코드 생성 라이브러리 -->
+  
+  <!-- 카훗 / 퀴즈앤 방식의 모바일 100% 검증 호환 스크립트 -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
@@ -41,6 +44,7 @@
     </div>
   </div>
 
-  <script type="module" src="./src/main.js"></script>
+  <!-- 100% 모바일 호환 통합 번들 스크립트 -->
+  <script src="./app.js"></script>
 </body>
 </html>

@@ -1,5 +1,3 @@
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js';
-import { getDatabase, ref, set, onValue, update, remove, get } from 'https://www.gstatic.com/firebasejs/10.13.1/firebase-database.js';
 import { state } from '../store/state.js';
 
 let db = null;
@@ -23,10 +21,12 @@ export function saveFirebaseConfig(config) {
 
 export function initRealtimeEngine() {
   const config = getSavedFirebaseConfig();
-  if (config && config.apiKey && config.databaseURL) {
+  if (config && config.apiKey && config.databaseURL && window.firebase) {
     try {
-      const app = initializeApp(config);
-      db = getDatabase(app);
+      if (!window.firebase.apps.length) {
+        window.firebase.initializeApp(config);
+      }
+      db = window.firebase.database();
       state.isDemo = false;
       return true;
     } catch (err) {
@@ -43,8 +43,7 @@ export function initRealtimeEngine() {
 
 export async function createRoom(roomId, initialData) {
   if (db) {
-    const roomRef = ref(db, `rooms/${roomId}`);
-    await set(roomRef, initialData);
+    await db.ref(`rooms/${roomId}`).set(initialData);
   } else {
     localStorage.setItem(`demo_room_${roomId}`, JSON.stringify(initialData));
     broadcastChannel?.postMessage({ type: 'ROOM_UPDATED', roomId, data: initialData });
@@ -53,11 +52,13 @@ export async function createRoom(roomId, initialData) {
 
 export function subscribeRoom(roomId, callback) {
   if (db) {
-    const roomRef = ref(db, `rooms/${roomId}`);
-    return onValue(roomRef, (snapshot) => {
+    const roomRef = db.ref(`rooms/${roomId}`);
+    const handler = (snapshot) => {
       const val = snapshot.val();
       callback(val);
-    });
+    };
+    roomRef.on('value', handler);
+    return () => roomRef.off('value', handler);
   } else {
     const check = () => {
       const raw = localStorage.getItem(`demo_room_${roomId}`);
@@ -79,8 +80,7 @@ export function subscribeRoom(roomId, callback) {
 
 export async function joinParticipant(roomId, studentId, nickname, avatar = 'ðŸ¶') {
   if (db) {
-    const pRef = ref(db, `rooms/${roomId}/participants/${studentId}`);
-    await set(pRef, {
+    await db.ref(`rooms/${roomId}/participants/${studentId}`).set({
       nickname,
       avatar,
       joinedAt: Date.now(),
@@ -105,8 +105,7 @@ export async function joinParticipant(roomId, studentId, nickname, avatar = 'ðŸ
 
 export async function updateRoomMeta(roomId, partialMeta) {
   if (db) {
-    const metaRef = ref(db, `rooms/${roomId}/meta`);
-    await update(metaRef, partialMeta);
+    await db.ref(`rooms/${roomId}/meta`).update(partialMeta);
   } else {
     const raw = localStorage.getItem(`demo_room_${roomId}`);
     if (raw) {
@@ -120,8 +119,7 @@ export async function updateRoomMeta(roomId, partialMeta) {
 
 export async function updateQuestions(roomId, questions) {
   if (db) {
-    const qRef = ref(db, `rooms/${roomId}/questions`);
-    await set(qRef, questions);
+    await db.ref(`rooms/${roomId}/questions`).set(questions);
   } else {
     const raw = localStorage.getItem(`demo_room_${roomId}`);
     if (raw) {
@@ -135,8 +133,7 @@ export async function updateQuestions(roomId, questions) {
 
 export async function submitResponse(roomId, qIndex, studentId, responseData) {
   if (db) {
-    const rRef = ref(db, `rooms/${roomId}/responses/${qIndex}/${studentId}`);
-    await set(rRef, {
+    await db.ref(`rooms/${roomId}/responses/${qIndex}/${studentId}`).set({
       ...responseData,
       submittedAt: Date.now()
     });
@@ -162,7 +159,7 @@ export async function updateParticipantScores(roomId, scoresMap) {
     Object.keys(scoresMap).forEach(sid => {
       updates[`rooms/${roomId}/participants/${sid}/score`] = scoresMap[sid];
     });
-    await update(ref(db), updates);
+    await db.ref().update(updates);
   } else {
     const raw = localStorage.getItem(`demo_room_${roomId}`);
     if (raw) {
