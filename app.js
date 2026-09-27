@@ -352,8 +352,8 @@
         <p class="home-subtitle">전자칠판과 학생 스마트폰을 실시간으로 잇는 반응형 퀴즈</p>
 
         <div style="margin-bottom: 25px;">
-          <span class="room-badge" style="font-size: 0.95rem; cursor: pointer;" id="btn-open-fb">
-            ${isFbConnected ? '🟢 Firebase 실시간 DB 연결됨' : '🟡 데모/로컬 모드 (설정 변경)'}
+          <span class="room-badge" style="font-size: 0.95rem; cursor: pointer; background: ${isFbConnected ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)'}; border-color: ${isFbConnected ? '#10b981' : '#f59e0b'}; color: ${isFbConnected ? '#6ee7b7' : '#fde047'};" id="btn-open-fb">
+            ${isFbConnected ? '🟢 Firebase 실시간 DB 연결됨 (스마트폰 연동 가능)' : '🟡 로컬/데모 모드 (스마트폰 연동을 위해 파이어베이스 설정 필요 ⚙️)'}
           </span>
         </div>
 
@@ -417,7 +417,6 @@
   function initHostFlow(app, isTeacherControl) {
     subscribeRoom(state.roomId, (roomData) => {
       if (!roomData) {
-        // 존재하지 않거나 초기화되지 않은 방 안내
         app.innerHTML = `
           <div class="mobile-view">
             <div class="mobile-card">
@@ -440,13 +439,14 @@
   function renderHostLobbyView(app, isTeacherControl) {
     const baseUrl = window.location.origin + window.location.pathname;
     const studentJoinUrl = `${baseUrl}?room=${state.roomId}&role=student`;
+    const isFbConnected = !state.isDemo;
 
     app.innerHTML = `
       <div class="lobby-layout">
         <div class="lobby-header">
           <div>
             <span class="room-badge">방 PIN : ${state.roomId}</span>
-            ${!isTeacherControl ? '<span style="margin-left: 12px; color: #38bdf8; font-weight: bold;">[전자칠판 디스플레이 모드]</span>' : ''}
+            ${!isFbConnected ? `<span style="margin-left:12px; color:#f59e0b; font-size:0.9rem; font-weight:bold;">⚠️ 로컬 데모 모드 (스마트폰 접속을 위해 상단 배지에서 Firebase를 연동하세요)</span>` : ''}
           </div>
           <div style="display: flex; gap: 12px;">
             ${isTeacherControl ? '<button class="btn btn-secondary" id="btn-open-edit">📝 문제 출제 / 편집</button>' : ''}
@@ -523,15 +523,18 @@
     const studentId = getOrCreateStudentId();
     subscribeRoom(state.roomId, (roomData) => {
       if (!roomData) {
-        // 아직 교사가 방을 만들지 않았거나 PIN 번호가 틀렸을 때의 명확한 안내 화면
         app.innerHTML = `
           <div class="mobile-view">
             <div class="mobile-card">
               <div style="font-size: 3.5rem; margin-bottom: 12px;">🔎</div>
               <h2 style="font-size: 1.5rem; color: #fbbf24;">퀴즈 방을 찾을 수 없습니다</h2>
               <p style="color: var(--text-muted); margin-top: 10px; font-size: 1rem; line-height: 1.5;">
-                방 PIN 번호(<strong>${state.roomId}</strong>)를 다시 확인하시거나,<br>선생님이 교사 모드에서 [새 퀴즈 방 만들기]를 실행하셨는지 확인해 주세요.
+                입력하신 방 PIN(<strong>${state.roomId}</strong>)이 존재하지 않거나,<br>교사 PC에서 아직 <strong>Firebase 실시간 DB 설정</strong>이 연결되지 않은 상태입니다.
               </p>
+              <div style="background: #0f172a; padding: 14px; border-radius: 10px; margin-top: 16px; text-align: left; font-size: 0.88rem; color: #cbd5e1;">
+                💡 <strong>선생님께 안내해 주세요:</strong><br>
+                교사 PC 화면 상단의 [🟡 데모/로컬 모드 (설정 변경)]를 눌러 파이어베이스 API Key를 1회 연결하셔야 스마트폰과 실시간 통신이 가능합니다.
+              </div>
               <button class="btn btn-primary" onclick="window.location.search=''" style="width: 100%; margin-top: 20px;">메인 화면으로 이동</button>
             </div>
           </div>
