@@ -1,4 +1,4 @@
-import defaultQuestions from '../data/defaultQuiz.json';
+import defaultQuestions from '../data/defaultQuiz.js';
 import { updateQuestions, updateRoomMeta } from '../engine/firebase.js';
 
 export function renderTeacherAdminModal(roomId, currentQuestions, onSaveCallback) {

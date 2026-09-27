@@ -9,7 +9,7 @@ import {
   getSavedFirebaseConfig 
 } from './engine/firebase.js';
 
-import defaultQuestions from './data/defaultQuiz.json';
+import defaultQuestions from './data/defaultQuiz.js';
 import { renderTeacherAdminModal } from './components/teacherAdmin.js';
 import { renderHostDisplayView } from './components/hostDisplay.js';
 import { renderStudentPadView } from './components/studentPad.js';
