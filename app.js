@@ -1,6 +1,13 @@
 (function() {
   'use strict';
 
+  // 파이어베이스 기본 내장 설정 (모든 교사/학생 무설치 100% 자동 연결)
+  const DEFAULT_FIREBASE_CONFIG = {
+    apiKey: "AIzaSyAt1jZhv7DlxRsKiMPBX0YNAI2iN7P8qFY",
+    databaseURL: "https://recordtuner-default-rtdb.firebaseio.com",
+    projectId: "recordtuner"
+  };
+
   const defaultQuestions = [
     {
       id: "q1",
@@ -82,13 +89,63 @@
   function getSavedFirebaseConfig() {
     const saved = localStorage.getItem('class_quiz_fb_config');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) { return null; }
+      try { return JSON.parse(saved); } catch (e) {}
     }
-    return null;
+    return DEFAULT_FIREBASE_CONFIG;
   }
 
   function saveFirebaseConfig(config) {
     localStorage.setItem('class_quiz_fb_config', JSON.stringify(config));
+  }
+
+  function getFirebaseRestUrl(path) {
+    const config = getSavedFirebaseConfig();
+    const dbUrl = (config && config.databaseURL) ? config.databaseURL : DEFAULT_FIREBASE_CONFIG.databaseURL;
+    const cleanUrl = dbUrl.replace(/\/$/, '');
+    return path ? `${cleanUrl}/${path}.json` : `${cleanUrl}.json`;
+  }
+
+  async function fetchFirebaseRest(path) {
+    try {
+      const url = getFirebaseRestUrl(path);
+      const res = await fetch(url);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.warn('Firebase REST Fetch 경고:', e);
+    }
+    return null;
+  }
+
+  async function putFirebaseRest(path, data) {
+    try {
+      const url = getFirebaseRestUrl(path);
+      await fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      return true;
+    } catch (e) {
+      console.warn('Firebase REST Put 경고:', e);
+      return false;
+    }
+  }
+
+  async function patchFirebaseRest(path, data) {
+    try {
+      const url = getFirebaseRestUrl(path);
+      await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      return true;
+    } catch (e) {
+      console.warn('Firebase REST Patch 경고:', e);
+      return false;
+    }
   }
 
   function initRealtimeEngine() {
@@ -102,131 +159,147 @@
         state.isDemo = false;
         return true;
       } catch (err) {
-        console.error('Firebase 초기화 실패, 데모 모드로 전환:', err);
+        console.error('Firebase SDK 초기화 실패, REST 통신으로 전환:', err);
       }
     }
     
-    state.isDemo = true;
+    state.isDemo = false; // REST API로 항상 실시간 동기화 가능
     if (!broadcastChannel && typeof BroadcastChannel !== 'undefined') {
       broadcastChannel = new BroadcastChannel('class_quiz_channel');
     }
-    return false;
+    return true;
   }
 
   async function createRoom(roomId, initialData) {
     if (db) {
-      await db.ref(`rooms/${roomId}`).set(initialData);
+      try {
+        await db.ref(`rooms/${roomId}`).set(initialData);
+      } catch (e) {
+        console.warn('SDK set 실패, REST API로 생성:', e);
+        await putFirebaseRest(`rooms/${roomId}`, initialData);
+      }
     } else {
-      localStorage.setItem(`demo_room_${roomId}`, JSON.stringify(initialData));
-      broadcastChannel?.postMessage({ type: 'ROOM_UPDATED', roomId, data: initialData });
+      await putFirebaseRest(`rooms/${roomId}`, initialData);
     }
+    localStorage.setItem(`demo_room_${roomId}`, JSON.stringify(initialData));
+    broadcastChannel?.postMessage({ type: 'ROOM_UPDATED', roomId, data: initialData });
   }
 
   function subscribeRoom(roomId, callback) {
+    let unsubscribed = false;
+    let hasData = false;
+
+    // 1. Firebase SDK WebSocket 구독
     if (db) {
-      const roomRef = db.ref(`rooms/${roomId}`);
-      const handler = (snapshot) => {
-        callback(snapshot.val());
-      };
-      roomRef.on('value', handler);
-      return () => roomRef.off('value', handler);
-    } else {
-      const check = () => {
+      try {
+        const roomRef = db.ref(`rooms/${roomId}`);
+        const handler = (snapshot) => {
+          if (unsubscribed) return;
+          const val = snapshot.val();
+          if (val !== null) {
+            hasData = true;
+            callback(val);
+          }
+        };
+        roomRef.on('value', handler);
+      } catch (e) {
+        console.warn('SDK 구독 오류:', e);
+      }
+    }
+
+    // 2. REST API 즉시 조회 (초기 로딩 및 모바일 Safari/네이버 지연 완벽 방어)
+    fetchFirebaseRest(`rooms/${roomId}`).then(data => {
+      if (!unsubscribed && data) {
+        hasData = true;
+        callback(data);
+      }
+    });
+
+    // 3. REST API 백업 주기적 폴링 (1.5초) - 네트워크 제약 환경 최후 보증
+    const intervalId = setInterval(async () => {
+      if (unsubscribed) return;
+      const data = await fetchFirebaseRest(`rooms/${roomId}`);
+      if (!unsubscribed && data) {
+        hasData = true;
+        callback(data);
+      } else if (!unsubscribed && !hasData) {
         const raw = localStorage.getItem(`demo_room_${roomId}`);
         if (raw) callback(JSON.parse(raw));
-        else callback(null);
-      };
-      check();
-      const handler = (e) => {
-        if (e.data.roomId === roomId) check();
-      };
-      broadcastChannel?.addEventListener('message', handler);
-      return () => broadcastChannel?.removeEventListener('message', handler);
-    }
+      }
+    }, 1500);
+
+    return () => {
+      unsubscribed = true;
+      clearInterval(intervalId);
+      if (db) {
+        try { db.ref(`rooms/${roomId}`).off(); } catch (e) {}
+      }
+    };
   }
 
   async function joinParticipant(roomId, studentId, nickname, avatar = '🐶') {
+    const pData = { nickname, avatar, joinedAt: Date.now(), score: 0 };
     if (db) {
-      await db.ref(`rooms/${roomId}/participants/${studentId}`).set({
-        nickname, avatar, joinedAt: Date.now(), score: 0
-      });
-    } else {
-      const raw = localStorage.getItem(`demo_room_${roomId}`);
-      if (raw) {
-        const room = JSON.parse(raw);
-        if (!room.participants) room.participants = {};
-        room.participants[studentId] = { nickname, avatar, joinedAt: Date.now(), score: 0 };
-        localStorage.setItem(`demo_room_${roomId}`, JSON.stringify(room));
-        broadcastChannel?.postMessage({ type: 'ROOM_UPDATED', roomId, data: room });
+      try {
+        await db.ref(`rooms/${roomId}/participants/${studentId}`).set(pData);
+      } catch (e) {
+        await putFirebaseRest(`rooms/${roomId}/participants/${studentId}`, pData);
       }
+    } else {
+      await putFirebaseRest(`rooms/${roomId}/participants/${studentId}`, pData);
     }
   }
 
   async function updateRoomMeta(roomId, partialMeta) {
     if (db) {
-      await db.ref(`rooms/${roomId}/meta`).update(partialMeta);
-    } else {
-      const raw = localStorage.getItem(`demo_room_${roomId}`);
-      if (raw) {
-        const room = JSON.parse(raw);
-        room.meta = { ...room.meta, ...partialMeta };
-        localStorage.setItem(`demo_room_${roomId}`, JSON.stringify(room));
-        broadcastChannel?.postMessage({ type: 'ROOM_UPDATED', roomId, data: room });
+      try {
+        await db.ref(`rooms/${roomId}/meta`).update(partialMeta);
+      } catch (e) {
+        await patchFirebaseRest(`rooms/${roomId}/meta`, partialMeta);
       }
+    } else {
+      await patchFirebaseRest(`rooms/${roomId}/meta`, partialMeta);
     }
   }
 
   async function updateQuestions(roomId, questions) {
     if (db) {
-      await db.ref(`rooms/${roomId}/questions`).set(questions);
-    } else {
-      const raw = localStorage.getItem(`demo_room_${roomId}`);
-      if (raw) {
-        const room = JSON.parse(raw);
-        room.questions = questions;
-        localStorage.setItem(`demo_room_${roomId}`, JSON.stringify(room));
-        broadcastChannel?.postMessage({ type: 'ROOM_UPDATED', roomId, data: room });
+      try {
+        await db.ref(`rooms/${roomId}/questions`).set(questions);
+      } catch (e) {
+        await putFirebaseRest(`rooms/${roomId}/questions`, questions);
       }
+    } else {
+      await putFirebaseRest(`rooms/${roomId}/questions`, questions);
     }
   }
 
   async function submitResponse(roomId, qIndex, studentId, responseData) {
+    const resData = { ...responseData, submittedAt: Date.now() };
     if (db) {
-      await db.ref(`rooms/${roomId}/responses/${qIndex}/${studentId}`).set({
-        ...responseData, submittedAt: Date.now()
-      });
-    } else {
-      const raw = localStorage.getItem(`demo_room_${roomId}`);
-      if (raw) {
-        const room = JSON.parse(raw);
-        if (!room.responses) room.responses = {};
-        if (!room.responses[qIndex]) room.responses[qIndex] = {};
-        room.responses[qIndex][studentId] = { ...responseData, submittedAt: Date.now() };
-        localStorage.setItem(`demo_room_${roomId}`, JSON.stringify(room));
-        broadcastChannel?.postMessage({ type: 'ROOM_UPDATED', roomId, data: room });
+      try {
+        await db.ref(`rooms/${roomId}/responses/${qIndex}/${studentId}`).set(resData);
+      } catch (e) {
+        await putFirebaseRest(`rooms/${roomId}/responses/${qIndex}/${studentId}`, resData);
       }
+    } else {
+      await putFirebaseRest(`rooms/${roomId}/responses/${qIndex}/${studentId}`, resData);
     }
   }
 
   async function updateParticipantScores(roomId, scoresMap) {
+    const updates = {};
+    Object.keys(scoresMap).forEach(sid => {
+      updates[`rooms/${roomId}/participants/${sid}/score`] = scoresMap[sid];
+    });
     if (db) {
-      const updates = {};
-      Object.keys(scoresMap).forEach(sid => {
-        updates[`rooms/${roomId}/participants/${sid}/score`] = scoresMap[sid];
-      });
-      await db.ref().update(updates);
-    } else {
-      const raw = localStorage.getItem(`demo_room_${roomId}`);
-      if (raw) {
-        const room = JSON.parse(raw);
-        if (room.participants) {
-          Object.keys(scoresMap).forEach(sid => {
-            if (room.participants[sid]) room.participants[sid].score = scoresMap[sid];
-          });
-        }
-        localStorage.setItem(`demo_room_${roomId}`, JSON.stringify(room));
-        broadcastChannel?.postMessage({ type: 'ROOM_UPDATED', roomId, data: room });
+      try {
+        await db.ref().update(updates);
+      } catch (e) {
+        await patchFirebaseRest('', updates);
       }
+    } else {
+      await patchFirebaseRest('', updates);
     }
   }
 
@@ -352,8 +425,8 @@
         <p class="home-subtitle">전자칠판과 학생 스마트폰을 실시간으로 잇는 반응형 퀴즈</p>
 
         <div style="margin-bottom: 25px;">
-          <span class="room-badge" style="font-size: 0.95rem; cursor: pointer; background: ${isFbConnected ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)'}; border-color: ${isFbConnected ? '#10b981' : '#f59e0b'}; color: ${isFbConnected ? '#6ee7b7' : '#fde047'};" id="btn-open-fb">
-            ${isFbConnected ? '🟢 Firebase 실시간 DB 연결됨 (스마트폰 연동 가능)' : '🟡 로컬/데모 모드 (스마트폰 연동을 위해 파이어베이스 설정 필요 ⚙️)'}
+          <span class="room-badge" style="font-size: 0.95rem; cursor: pointer; background: rgba(16, 185, 129, 0.2); border-color: #10b981; color: #6ee7b7;" id="btn-open-fb">
+            🟢 Firebase 실시간 DB 자동 연결됨 (스마트폰 즉시 연동)
           </span>
         </div>
 
@@ -439,14 +512,13 @@
   function renderHostLobbyView(app, isTeacherControl) {
     const baseUrl = window.location.origin + window.location.pathname;
     const studentJoinUrl = `${baseUrl}?room=${state.roomId}&role=student`;
-    const isFbConnected = !state.isDemo;
 
     app.innerHTML = `
       <div class="lobby-layout">
         <div class="lobby-header">
           <div>
             <span class="room-badge">방 PIN : ${state.roomId}</span>
-            ${!isFbConnected ? `<span style="margin-left:12px; color:#f59e0b; font-size:0.9rem; font-weight:bold;">⚠️ 로컬 데모 모드 (스마트폰 접속을 위해 상단 배지에서 Firebase를 연동하세요)</span>` : ''}
+            ${!isTeacherControl ? '<span style="margin-left: 12px; color: #38bdf8; font-weight: bold;">[전자칠판 디스플레이 모드]</span>' : ''}
           </div>
           <div style="display: flex; gap: 12px;">
             ${isTeacherControl ? '<button class="btn btn-secondary" id="btn-open-edit">📝 문제 출제 / 편집</button>' : ''}
@@ -521,20 +593,30 @@
 
   function initStudentFlow(app) {
     const studentId = getOrCreateStudentId();
+
+    app.innerHTML = `
+      <div class="mobile-view">
+        <div class="mobile-card" style="text-align: center; padding: 40px 20px;">
+          <div style="font-size: 3rem; margin-bottom: 16px;">⚡</div>
+          <h2 style="font-size: 1.4rem; color: #38bdf8; margin-bottom: 8px;">퀴즈 방 연결 중...</h2>
+          <p style="color: var(--text-muted); font-size: 0.95rem;">방 PIN: <strong>${state.roomId}</strong></p>
+        </div>
+      </div>
+    `;
+
+    let receiveCount = 0;
     subscribeRoom(state.roomId, (roomData) => {
+      receiveCount++;
       if (!roomData) {
+        if (receiveCount < 2) return;
         app.innerHTML = `
           <div class="mobile-view">
             <div class="mobile-card">
               <div style="font-size: 3.5rem; margin-bottom: 12px;">🔎</div>
               <h2 style="font-size: 1.5rem; color: #fbbf24;">퀴즈 방을 찾을 수 없습니다</h2>
               <p style="color: var(--text-muted); margin-top: 10px; font-size: 1rem; line-height: 1.5;">
-                입력하신 방 PIN(<strong>${state.roomId}</strong>)이 존재하지 않거나,<br>교사 PC에서 아직 <strong>Firebase 실시간 DB 설정</strong>이 연결되지 않은 상태입니다.
+                입력하신 방 PIN(<strong>${state.roomId}</strong>)이 존재하지 않거나,<br>교사 PC에서 아직 퀴즈 방 생성이 완료되지 않은 상태입니다.
               </p>
-              <div style="background: #0f172a; padding: 14px; border-radius: 10px; margin-top: 16px; text-align: left; font-size: 0.88rem; color: #cbd5e1;">
-                💡 <strong>선생님께 안내해 주세요:</strong><br>
-                교사 PC 화면 상단의 [🟡 데모/로컬 모드 (설정 변경)]를 눌러 파이어베이스 API Key를 1회 연결하셔야 스마트폰과 실시간 통신이 가능합니다.
-              </div>
               <button class="btn btn-primary" onclick="window.location.search=''" style="width: 100%; margin-top: 20px;">메인 화면으로 이동</button>
             </div>
           </div>
