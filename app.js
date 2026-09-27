@@ -630,7 +630,9 @@
         state.nickname = myParticipant.nickname;
         renderStudentPadView(app, roomData, state.roomId, studentId, state.nickname, myParticipant.avatar);
       } else {
-        renderStudentJoinView(app, studentId);
+        if (!document.getElementById('student-join-card')) {
+          renderStudentJoinView(app, studentId);
+        }
       }
     });
   }
@@ -647,9 +649,9 @@
           <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 16px;">닉네임과 캐릭터 아바타를 선택해 주세요.</p>
 
           <div style="font-size: 0.9rem; font-weight: bold; text-align: left; margin-bottom: 6px; color: var(--text-muted);">아바타 선택:</div>
-          <div id="avatar-grid" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 20px;">
+          <div id="avatar-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px;">
             ${AVATARS.map((av, idx) => `
-              <div class="avatar-option ${idx === 0 ? 'selected' : ''}" data-avatar="${av}" style="font-size: 1.8rem; padding: 8px; border-radius: 12px; cursor: pointer; background: #0f172a; border: 2px solid ${idx === 0 ? 'var(--primary)' : 'transparent'}; text-align: center;">
+              <div class="avatar-option ${idx === 0 ? 'selected' : ''}" data-avatar="${av}" style="font-size: 1.8rem; padding: 6px 2px; border-radius: 12px; cursor: pointer; background: #0f172a; border: 2px solid ${idx === 0 ? 'var(--primary)' : 'transparent'}; text-align: center; user-select: none;">
                 ${av}
               </div>
             `).join('')}
