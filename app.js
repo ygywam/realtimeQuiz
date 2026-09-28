@@ -152,6 +152,10 @@
     const selected = validThemes.includes(themeName) ? themeName : 'tv';
     document.body.className = 'theme-' + selected;
     localStorage.setItem('class_quiz_theme', selected);
+
+    document.querySelectorAll('.select-theme-dropdown').forEach(sel => {
+      sel.value = selected;
+    });
   }
 
   const defaultQuestions = [];
@@ -573,10 +577,16 @@
         <h1 class="home-title">⚡ 클래스 라이브 퀴즈</h1>
         <p class="home-subtitle">전자칠판과 학생 스마트폰을 실시간으로 잇는 반응형 퀴즈</p>
 
-        <div style="margin-bottom: 25px;">
+        <div style="margin-bottom: 25px; display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;">
           <span class="room-badge" style="font-size: 0.95rem; cursor: pointer; background: rgba(16, 185, 129, 0.2); border-color: #10b981; color: #6ee7b7;" id="btn-open-fb">
             🟢 Firebase 실시간 DB 자동 연결됨 (스마트폰 즉시 연동)
           </span>
+          <select class="select-theme-dropdown" id="select-theme-home" style="padding: 8px 14px; border-radius: 999px; background: #1e293b; color: #fff; border: 1px solid var(--primary); font-size: 0.9rem; font-weight: bold; cursor: pointer;">
+            <option value="tv" ${getSavedTheme() === 'tv' ? 'selected' : ''}>📺 스마트 TV 테마</option>
+            <option value="chalkboard" ${getSavedTheme() === 'chalkboard' ? 'selected' : ''}>🧹 초록 칠판 테마</option>
+            <option value="marble" ${getSavedTheme() === 'marble' ? 'selected' : ''}>🏛️ 깔끔 대리석 테마</option>
+            <option value="woodlock" ${getSavedTheme() === 'woodlock' ? 'selected' : ''}>🪵 우드락 보드 테마</option>
+          </select>
         </div>
 
         <div class="mode-grid">
@@ -652,6 +662,7 @@
 
     document.getElementById('btn-create-room')?.addEventListener('click', handleCreateRoom);
     document.getElementById('btn-open-fb')?.addEventListener('click', openFirebaseModal);
+    document.getElementById('select-theme-home')?.addEventListener('change', (e) => setTheme(e.target.value));
     document.getElementById('btn-enter-display')?.addEventListener('click', () => {
       const pin = document.getElementById('input-display-pin').value.trim();
       if (pin.length === 6) window.location.search = `?room=${pin}&role=display`;
@@ -738,7 +749,7 @@
           <div style="display: flex; align-items: center;">
             <span class="room-badge">방 PIN : ${state.roomId}</span>
             <button class="btn btn-secondary" id="btn-go-home-lobby" style="margin-left: 12px; font-weight: bold; padding: 6px 14px; font-size: 0.9rem;">🏠 메인으로</button>
-            <select id="select-theme-lobby" style="margin-left: 12px; padding: 6px 12px; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid var(--border); font-size: 0.9rem; font-weight: bold; cursor: pointer;">
+            <select id="select-theme-lobby" class="select-theme-dropdown" style="margin-left: 12px; padding: 6px 12px; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid var(--border); font-size: 0.9rem; font-weight: bold; cursor: pointer;">
               <option value="tv" ${getSavedTheme() === 'tv' ? 'selected' : ''}>📺 스마트 TV</option>
               <option value="chalkboard" ${getSavedTheme() === 'chalkboard' ? 'selected' : ''}>🧹 초록 칠판</option>
               <option value="marble" ${getSavedTheme() === 'marble' ? 'selected' : ''}>🏛️ 깔끔 대리석</option>
@@ -1179,7 +1190,7 @@
             <div style="display: flex; align-items: center; gap: 12px;">
               <span class="room-badge">Q ${qIndex + 1} / ${questions.length}</span>
               <button id="btn-go-home-display" class="btn btn-secondary" style="font-weight: bold; padding: 6px 14px; font-size: 0.9rem;">🏠 메인으로</button>
-              <select id="select-theme-display" style="padding: 6px 12px; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid var(--border); font-size: 0.9rem; font-weight: bold; cursor: pointer;">
+              <select id="select-theme-display" class="select-theme-dropdown" style="padding: 6px 12px; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid var(--border); font-size: 0.9rem; font-weight: bold; cursor: pointer;">
                 <option value="tv" ${getSavedTheme() === 'tv' ? 'selected' : ''}>📺 스마트 TV</option>
                 <option value="chalkboard" ${getSavedTheme() === 'chalkboard' ? 'selected' : ''}>🧹 초록 칠판</option>
                 <option value="marble" ${getSavedTheme() === 'marble' ? 'selected' : ''}>🏛️ 깔끔 대리석</option>

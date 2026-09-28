@@ -488,13 +488,15 @@ body {
 }
 .modal-actions { display: flex; gap: 12px; margin-top: 24px; justify-content: flex-end; }
 
-/* 화면 테마 (스마트 TV, 초록 칠판, 깔끔한 대리석, 우드락 보드) */
+/* 화면 테마 (스마트 TV, 초록 칠판, 깔끔 대리석, 우드락 보드) */
 body.theme-tv {
   background-color: #090d16;
   color: #f8fafc;
 }
-body.theme-tv .quiz-display-container {
-  border: 10px solid #1e293b;
+body.theme-tv .quiz-display-container,
+body.theme-tv .lobby-layout,
+body.theme-tv .home-container {
+  border: 8px solid #1e293b;
   border-radius: 20px;
   box-shadow: 0 20px 50px rgba(0,0,0,0.8), inset 0 0 20px rgba(56, 189, 248, 0.15);
 }
@@ -503,53 +505,95 @@ body.theme-chalkboard {
   background: radial-gradient(circle at center, #1b432c 0%, #0d2618 100%);
   color: #ffffff;
 }
-body.theme-chalkboard .quiz-display-container {
+body.theme-chalkboard .quiz-display-container,
+body.theme-chalkboard .lobby-layout,
+body.theme-chalkboard .home-container {
   border: 14px solid #78350f;
-  border-radius: 12px;
-  box-shadow: 0 16px 40px rgba(0,0,0,0.7), inset 0 0 40px rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
+  background: rgba(13, 38, 24, 0.95);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.8), inset 0 0 40px rgba(0, 0, 0, 0.5);
 }
-body.theme-chalkboard .question-card {
-  background: rgba(13, 38, 24, 0.85);
-  border: 2px dashed rgba(255, 255, 255, 0.4);
+body.theme-chalkboard .question-card,
+body.theme-chalkboard .qr-box,
+body.theme-chalkboard .participants-box,
+body.theme-chalkboard .mode-card,
+body.theme-chalkboard .wordcloud-container,
+body.theme-chalkboard .postit-container,
+body.theme-chalkboard .leaderboard-row {
+  background: rgba(19, 54, 34, 0.85);
+  border: 2px dashed rgba(255, 255, 255, 0.35);
+  box-shadow: none;
 }
-body.theme-chalkboard .question-title {
-  color: #fef08a;
-  text-shadow: 0 0 8px rgba(254, 240, 138, 0.4);
+body.theme-chalkboard .question-title,
+body.theme-chalkboard .home-title {
+  color: #fef08a !important;
+  text-shadow: 0 0 10px rgba(254, 240, 138, 0.4);
+}
+body.theme-chalkboard .student-tag {
+  background: #275238;
+  border-color: #3e7a56;
+  color: #fffde7;
 }
 
 body.theme-marble {
-  background: linear-gradient(135deg, #1e293b 0%, #334155 50%, #0f172a 100%);
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
   color: #ffffff;
 }
-body.theme-marble .quiz-display-container {
-  border: 8px solid #64748b;
+body.theme-marble .quiz-display-container,
+body.theme-marble .lobby-layout,
+body.theme-marble .home-container {
+  border: 8px solid #94a3b8;
   border-radius: 20px;
-  box-shadow: 0 15px 35px rgba(0,0,0,0.6);
+  background: rgba(30, 41, 59, 0.95);
+  box-shadow: 0 20px 45px rgba(0,0,0,0.6);
 }
-body.theme-marble .question-card {
-  background: rgba(30, 41, 59, 0.9);
-  border: 2px solid #94a3b8;
+body.theme-marble .question-card,
+body.theme-marble .qr-box,
+body.theme-marble .participants-box,
+body.theme-marble .mode-card,
+body.theme-marble .wordcloud-container,
+body.theme-marble .postit-container,
+body.theme-marble .leaderboard-row {
+  background: rgba(15, 23, 42, 0.85);
+  border: 2px solid #64748b;
 }
 
 body.theme-woodlock {
   background: linear-gradient(135deg, #451a03 0%, #78350f 50%, #290f02 100%);
   color: #fffef0;
 }
-body.theme-woodlock .quiz-display-container {
+body.theme-woodlock .quiz-display-container,
+body.theme-woodlock .lobby-layout,
+body.theme-woodlock .home-container {
   border: 12px solid #b45309;
   border-radius: 16px;
-  box-shadow: 0 15px 40px rgba(0,0,0,0.8);
+  background: rgba(69, 26, 3, 0.95);
+  box-shadow: 0 20px 45px rgba(0,0,0,0.8);
 }
-body.theme-woodlock .question-card {
-  background: rgba(69, 26, 3, 0.9);
+body.theme-woodlock .question-card,
+body.theme-woodlock .qr-box,
+body.theme-woodlock .participants-box,
+body.theme-woodlock .mode-card,
+body.theme-woodlock .wordcloud-container,
+body.theme-woodlock .postit-container,
+body.theme-woodlock .leaderboard-row {
+  background: rgba(88, 34, 4, 0.85);
   border: 2px solid #f59e0b;
 }
+body.theme-woodlock .question-title,
+body.theme-woodlock .home-title {
+  color: #fde047 !important;
+}
 
-/* 하단 고정 푸터 */
+/* 하단 고정 푸터 (가운데 정렬) */
 .app-footer {
   text-align: center;
-  padding: 12px 20px;
-  font-size: 0.92rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 20px;
+  font-size: 0.95rem;
   color: #94a3b8;
   background: rgba(15, 23, 42, 0.95);
   border-top: 1px solid var(--border);
