@@ -487,3 +487,83 @@ body {
   font-size: 1rem;
 }
 .modal-actions { display: flex; gap: 12px; margin-top: 24px; justify-content: flex-end; }
+
+/* 화면 테마 (스마트 TV, 초록 칠판, 깔끔한 대리석, 우드락 보드) */
+body.theme-tv {
+  background-color: #090d16;
+  color: #f8fafc;
+}
+body.theme-tv .quiz-display-container {
+  border: 10px solid #1e293b;
+  border-radius: 20px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.8), inset 0 0 20px rgba(56, 189, 248, 0.15);
+}
+
+body.theme-chalkboard {
+  background: radial-gradient(circle at center, #1b432c 0%, #0d2618 100%);
+  color: #ffffff;
+}
+body.theme-chalkboard .quiz-display-container {
+  border: 14px solid #78350f;
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.7), inset 0 0 40px rgba(255, 255, 255, 0.05);
+}
+body.theme-chalkboard .question-card {
+  background: rgba(13, 38, 24, 0.85);
+  border: 2px dashed rgba(255, 255, 255, 0.4);
+}
+body.theme-chalkboard .question-title {
+  color: #fef08a;
+  text-shadow: 0 0 8px rgba(254, 240, 138, 0.4);
+}
+
+body.theme-marble {
+  background: linear-gradient(135deg, #1e293b 0%, #334155 50%, #0f172a 100%);
+  color: #ffffff;
+}
+body.theme-marble .quiz-display-container {
+  border: 8px solid #64748b;
+  border-radius: 20px;
+  box-shadow: 0 15px 35px rgba(0,0,0,0.6);
+}
+body.theme-marble .question-card {
+  background: rgba(30, 41, 59, 0.9);
+  border: 2px solid #94a3b8;
+}
+
+body.theme-woodlock {
+  background: linear-gradient(135deg, #451a03 0%, #78350f 50%, #290f02 100%);
+  color: #fffef0;
+}
+body.theme-woodlock .quiz-display-container {
+  border: 12px solid #b45309;
+  border-radius: 16px;
+  box-shadow: 0 15px 40px rgba(0,0,0,0.8);
+}
+body.theme-woodlock .question-card {
+  background: rgba(69, 26, 3, 0.9);
+  border: 2px solid #f59e0b;
+}
+
+/* 하단 고정 푸터 */
+.app-footer {
+  text-align: center;
+  padding: 12px 20px;
+  font-size: 0.92rem;
+  color: #94a3b8;
+  background: rgba(15, 23, 42, 0.95);
+  border-top: 1px solid var(--border);
+  margin-top: auto;
+  width: 100%;
+  box-sizing: border-box;
+  z-index: 100;
+}
+.app-footer .instagram-link {
+  color: #e1306c;
+  font-weight: 800;
+  text-decoration: none;
+  margin-left: 4px;
+}
+.app-footer .instagram-link:hover {
+  text-decoration: underline;
+}

@@ -143,6 +143,17 @@
     projectId: "recordtuner"
   };
 
+  function getSavedTheme() {
+    return localStorage.getItem('class_quiz_theme') || 'tv';
+  }
+
+  function setTheme(themeName) {
+    const validThemes = ['tv', 'chalkboard', 'marble', 'woodlock'];
+    const selected = validThemes.includes(themeName) ? themeName : 'tv';
+    document.body.className = 'theme-' + selected;
+    localStorage.setItem('class_quiz_theme', selected);
+  }
+
   const defaultQuestions = [];
 
   const AVATARS = ['🐶', '🐱', '🦊', '🐯', '🦁', '🐸', '🤖', '🚀', '🎃', '🦄', '🐥', '🐼'];
@@ -535,6 +546,8 @@
     const app = document.getElementById('app');
     if (!app) return;
 
+    setTheme(getSavedTheme());
+
     const params = new URLSearchParams(window.location.search);
     const roomId = params.get('room');
     const role = params.get('role');
@@ -725,6 +738,12 @@
           <div style="display: flex; align-items: center;">
             <span class="room-badge">방 PIN : ${state.roomId}</span>
             <button class="btn btn-secondary" id="btn-go-home-lobby" style="margin-left: 12px; font-weight: bold; padding: 6px 14px; font-size: 0.9rem;">🏠 메인으로</button>
+            <select id="select-theme-lobby" style="margin-left: 12px; padding: 6px 12px; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid var(--border); font-size: 0.9rem; font-weight: bold; cursor: pointer;">
+              <option value="tv" ${getSavedTheme() === 'tv' ? 'selected' : ''}>📺 스마트 TV</option>
+              <option value="chalkboard" ${getSavedTheme() === 'chalkboard' ? 'selected' : ''}>🧹 초록 칠판</option>
+              <option value="marble" ${getSavedTheme() === 'marble' ? 'selected' : ''}>🏛️ 깔끔 대리석</option>
+              <option value="woodlock" ${getSavedTheme() === 'woodlock' ? 'selected' : ''}>🪵 우드락 보드</option>
+            </select>
             ${!isTeacherControl ? '<span style="margin-left: 12px; color: #38bdf8; font-weight: bold;">[전자칠판 디스플레이 모드]</span>' : ''}
           </div>
           <div style="display: flex; gap: 12px;">
@@ -769,6 +788,7 @@
     updateParticipantList(state.roomData?.participants || {});
 
     document.getElementById('btn-go-home-lobby')?.addEventListener('click', () => window.location.search = '');
+    document.getElementById('select-theme-lobby')?.addEventListener('change', (e) => setTheme(e.target.value));
 
     document.getElementById('btn-open-edit')?.addEventListener('click', () => {
       if (!isRoomCreatorLocal(state.roomId)) {
@@ -962,6 +982,7 @@
                 ⚡ 점수 2배 이벤트
               </label>
               <select class="time-limit-select" data-idx="${idx}" style="padding: 6px 10px; border-radius: 6px; background: #1e293b; color: #fff; border: 1px solid var(--border);">
+                <option value="0" ${q.timeLimit == 0 ? 'selected' : ''}>⏱️ 무제한 (의견 수렴)</option>
                 <option value="10" ${q.timeLimit == 10 ? 'selected' : ''}>10초</option>
                 <option value="15" ${q.timeLimit == 15 ? 'selected' : ''}>15초</option>
                 <option value="20" ${q.timeLimit == 20 ? 'selected' : ''}>20초</option>
@@ -1047,11 +1068,11 @@
       renderEditorList();
     });
     document.getElementById('btn-add-wordcloud').addEventListener('click', () => {
-      questions.push({ id: 'q_' + Date.now(), type: 'wordcloud', question: '신규 워드클라우드 질문입니다.', timeLimit: 25, isDoublePoints: false });
+      questions.push({ id: 'q_' + Date.now(), type: 'wordcloud', question: '신규 워드클라우드 질문입니다.', timeLimit: 0, isDoublePoints: false });
       renderEditorList();
     });
     document.getElementById('btn-add-postit').addEventListener('click', () => {
-      questions.push({ id: 'q_' + Date.now(), type: 'postit', question: '신규 포스트잇 질문입니다.', timeLimit: 30, isDoublePoints: false });
+      questions.push({ id: 'q_' + Date.now(), type: 'postit', question: '신규 포스트잇 질문입니다.', timeLimit: 0, isDoublePoints: false });
       renderEditorList();
     });
     document.getElementById('btn-cancel-admin').addEventListener('click', () => {
@@ -1119,6 +1140,7 @@
     const participants = roomData.participants || {};
     const responseCount = Object.keys(responses).length;
     const participantCount = Object.keys(participants).length;
+    const isUnlimited = currentQ.type === 'wordcloud' || currentQ.type === 'postit' || currentQ.timeLimit === 0;
 
     if (status === 'SHOW_RANKING') {
       if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
@@ -1157,8 +1179,14 @@
             <div style="display: flex; align-items: center; gap: 12px;">
               <span class="room-badge">Q ${qIndex + 1} / ${questions.length}</span>
               <button id="btn-go-home-display" class="btn btn-secondary" style="font-weight: bold; padding: 6px 14px; font-size: 0.9rem;">🏠 메인으로</button>
+              <select id="select-theme-display" style="padding: 6px 12px; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid var(--border); font-size: 0.9rem; font-weight: bold; cursor: pointer;">
+                <option value="tv" ${getSavedTheme() === 'tv' ? 'selected' : ''}>📺 스마트 TV</option>
+                <option value="chalkboard" ${getSavedTheme() === 'chalkboard' ? 'selected' : ''}>🧹 초록 칠판</option>
+                <option value="marble" ${getSavedTheme() === 'marble' ? 'selected' : ''}>🏛️ 깔끔 대리석</option>
+                <option value="woodlock" ${getSavedTheme() === 'woodlock' ? 'selected' : ''}>🪵 우드락 보드</option>
+              </select>
             </div>
-            <div id="display-timer" class="timer-badge">⏱️ ${currentQ.timeLimit || 20}s</div>
+            <div id="display-timer" class="timer-badge">${isUnlimited ? '⏱️ 무제한 (의견 수렴)' : `⏱️ ${currentQ.timeLimit || 20}s`}</div>
             <button id="btn-toggle-bgm" class="btn btn-outline-sm" style="background: rgba(56, 189, 248, 0.2); border-color: #38bdf8; color: #fff; font-weight: bold;">
               ${AudioEngine.bgmPlaying ? '🎵 BGM 끄기' : '🎵 BGM 켜기'}
             </button>
@@ -1175,7 +1203,7 @@
           </div>
           ${isTeacherControl ? `
             <div style="display: flex; justify-content: flex-end; gap: 16px; margin-top: 20px;">
-              ${status === 'PLAYING' ? `<button class="btn btn-danger" id="btn-force-finish">⏹️ 응답 마감 및 정답 공개</button>` : ''}
+              ${status === 'PLAYING' ? `<button class="btn btn-danger" id="btn-force-finish">${isUnlimited ? '⏹️ 응답 마감 및 의견 공유' : '⏹️ 응답 마감 및 정답 공개'}</button>` : ''}
               ${status === 'SHOW_ANSWER' ? `<button class="btn btn-primary" id="btn-show-ranking">📊 중간 순위 보기 (1~5위)</button>` : ''}
             </div>
           ` : ''}
@@ -1183,6 +1211,7 @@
       `;
 
       document.getElementById('btn-go-home-display')?.addEventListener('click', () => window.location.search = '');
+      document.getElementById('select-theme-display')?.addEventListener('change', (e) => setTheme(e.target.value));
 
       document.getElementById('btn-toggle-bgm')?.addEventListener('click', (e) => {
         const isPlaying = AudioEngine.toggleBGM();
@@ -1201,7 +1230,12 @@
     }
 
     if (status === 'PLAYING') {
-      if (activeTimerQIndex !== qIndex) {
+      if (isUnlimited) {
+        if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+        activeTimerQIndex = qIndex;
+        const timerEl = document.getElementById('display-timer');
+        if (timerEl) timerEl.textContent = '⏱️ 무제한 (의견 수렴)';
+      } else if (activeTimerQIndex !== qIndex) {
         activeTimerQIndex = qIndex;
         if (timerInterval) clearInterval(timerInterval);
         const timeLimit = currentQ.timeLimit || 20;
