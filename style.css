@@ -488,30 +488,30 @@ body {
 }
 .modal-actions { display: flex; gap: 12px; margin-top: 24px; justify-content: flex-end; }
 
-/* 화면 테마 (스마트 TV, 초록 칠판, 깔끔 대리석, 우드락 보드) */
-body.theme-tv {
-  background-color: #090d16;
-  color: #f8fafc;
+/* 화면 테마 4종 (TV, 칠판, 대리석, 우드락) - 강력 오버라이드 */
+body.theme-tv, body.theme-tv #app {
+  background-color: #090d16 !important;
+  color: #f8fafc !important;
 }
 body.theme-tv .quiz-display-container,
 body.theme-tv .lobby-layout,
 body.theme-tv .home-container {
-  border: 8px solid #1e293b;
-  border-radius: 20px;
-  box-shadow: 0 20px 50px rgba(0,0,0,0.8), inset 0 0 20px rgba(56, 189, 248, 0.15);
+  border: 8px solid #1e293b !important;
+  border-radius: 20px !important;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.8), inset 0 0 20px rgba(56, 189, 248, 0.15) !important;
 }
 
-body.theme-chalkboard {
-  background: radial-gradient(circle at center, #1b432c 0%, #0d2618 100%);
-  color: #ffffff;
+body.theme-chalkboard, body.theme-chalkboard #app {
+  background: radial-gradient(circle at center, #1b432c 0%, #0d2618 100%) !important;
+  color: #ffffff !important;
 }
 body.theme-chalkboard .quiz-display-container,
 body.theme-chalkboard .lobby-layout,
 body.theme-chalkboard .home-container {
-  border: 14px solid #78350f;
-  border-radius: 14px;
-  background: rgba(13, 38, 24, 0.95);
-  box-shadow: 0 16px 40px rgba(0,0,0,0.8), inset 0 0 40px rgba(0, 0, 0, 0.5);
+  border: 14px solid #78350f !important;
+  border-radius: 14px !important;
+  background: rgba(13, 38, 24, 0.95) !important;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.8), inset 0 0 40px rgba(0, 0, 0, 0.5) !important;
 }
 body.theme-chalkboard .question-card,
 body.theme-chalkboard .qr-box,
@@ -520,32 +520,33 @@ body.theme-chalkboard .mode-card,
 body.theme-chalkboard .wordcloud-container,
 body.theme-chalkboard .postit-container,
 body.theme-chalkboard .leaderboard-row {
-  background: rgba(19, 54, 34, 0.85);
-  border: 2px dashed rgba(255, 255, 255, 0.35);
-  box-shadow: none;
+  background: rgba(19, 54, 34, 0.9) !important;
+  border: 2px dashed rgba(254, 240, 138, 0.4) !important;
+  color: #ffffff !important;
 }
 body.theme-chalkboard .question-title,
-body.theme-chalkboard .home-title {
+body.theme-chalkboard .home-title,
+body.theme-chalkboard h1, body.theme-chalkboard h2, body.theme-chalkboard h3 {
   color: #fef08a !important;
-  text-shadow: 0 0 10px rgba(254, 240, 138, 0.4);
+  text-shadow: 0 0 10px rgba(254, 240, 138, 0.5) !important;
 }
 body.theme-chalkboard .student-tag {
-  background: #275238;
-  border-color: #3e7a56;
-  color: #fffde7;
+  background: #275238 !important;
+  border-color: #529e71 !important;
+  color: #fffde7 !important;
 }
 
-body.theme-marble {
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
-  color: #ffffff;
+body.theme-marble, body.theme-marble #app {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%) !important;
+  color: #ffffff !important;
 }
 body.theme-marble .quiz-display-container,
 body.theme-marble .lobby-layout,
 body.theme-marble .home-container {
-  border: 8px solid #94a3b8;
-  border-radius: 20px;
-  background: rgba(30, 41, 59, 0.95);
-  box-shadow: 0 20px 45px rgba(0,0,0,0.6);
+  border: 8px solid #94a3b8 !important;
+  border-radius: 20px !important;
+  background: rgba(30, 41, 59, 0.95) !important;
+  box-shadow: 0 20px 45px rgba(0,0,0,0.6) !important;
 }
 body.theme-marble .question-card,
 body.theme-marble .qr-box,
@@ -554,60 +555,68 @@ body.theme-marble .mode-card,
 body.theme-marble .wordcloud-container,
 body.theme-marble .postit-container,
 body.theme-marble .leaderboard-row {
-  background: rgba(15, 23, 42, 0.85);
-  border: 2px solid #64748b;
+  background: rgba(15, 23, 42, 0.9) !important;
+  border: 2px solid #64748b !important;
+  color: #ffffff !important;
+}
+body.theme-marble .question-title,
+body.theme-marble .home-title {
+  color: #e2e8f0 !important;
 }
 
-body.theme-woodlock {
-  background: linear-gradient(135deg, #451a03 0%, #78350f 50%, #290f02 100%);
-  color: #fffef0;
+body.theme-woodlock, body.theme-woodlock #app {
+  background: linear-gradient(135deg, #451a03 0%, #78350f 50%, #290f02 100%) !important;
+  color: #fffef0 !important;
 }
 body.theme-woodlock .quiz-display-container,
 body.theme-woodlock .lobby-layout,
 body.theme-woodlock .home-container {
-  border: 12px solid #b45309;
-  border-radius: 16px;
-  background: rgba(69, 26, 3, 0.95);
-  box-shadow: 0 20px 45px rgba(0,0,0,0.8);
+  border: 14px solid #b45309 !important;
+  border-radius: 16px !important;
+  background: rgba(69, 26, 3, 0.95) !important;
+  box-shadow: 0 20px 45px rgba(0,0,0,0.8), inset 0 0 30px rgba(0,0,0,0.5) !important;
 }
-body.theme-woodlock .question-card,
+body.theme-woodlock .mode-card,
 body.theme-woodlock .qr-box,
 body.theme-woodlock .participants-box,
-body.theme-woodlock .mode-card,
+body.theme-woodlock .question-card,
 body.theme-woodlock .wordcloud-container,
 body.theme-woodlock .postit-container,
 body.theme-woodlock .leaderboard-row {
-  background: rgba(88, 34, 4, 0.85);
-  border: 2px solid #f59e0b;
+  background: rgba(88, 34, 4, 0.9) !important;
+  border: 2px solid #f59e0b !important;
+  color: #fef3c7 !important;
 }
 body.theme-woodlock .question-title,
-body.theme-woodlock .home-title {
+body.theme-woodlock .home-title,
+body.theme-woodlock h1, body.theme-woodlock h2, body.theme-woodlock h3 {
   color: #fde047 !important;
+  text-shadow: 0 0 8px rgba(253, 224, 71, 0.4) !important;
 }
 
-/* 하단 고정 푸터 (가운데 정렬) */
+/* 하단 고정 푸터 (정중앙 100% 강제 정렬) */
 .app-footer {
-  text-align: center;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 6px;
-  padding: 14px 20px;
-  font-size: 0.95rem;
-  color: #94a3b8;
-  background: rgba(15, 23, 42, 0.95);
-  border-top: 1px solid var(--border);
-  margin-top: auto;
-  width: 100%;
-  box-sizing: border-box;
-  z-index: 100;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  text-align: center !important;
+  gap: 8px !important;
+  padding: 14px 20px !important;
+  font-size: 0.95rem !important;
+  color: #94a3b8 !important;
+  background: rgba(15, 23, 42, 0.95) !important;
+  border-top: 1px solid var(--border) !important;
+  margin-top: auto !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  z-index: 100 !important;
 }
 .app-footer .instagram-link {
-  color: #e1306c;
-  font-weight: 800;
-  text-decoration: none;
-  margin-left: 4px;
+  color: #e1306c !important;
+  font-weight: 800 !important;
+  text-decoration: none !important;
+  margin-left: 4px !important;
 }
 .app-footer .instagram-link:hover {
-  text-decoration: underline;
+  text-decoration: underline !important;
 }
