@@ -983,8 +983,12 @@
       if (respEl) respEl.textContent = responseCount;
 
       const mainContentEl = document.getElementById('display-main-content');
-      if (mainContentEl && status === 'SHOW_ANSWER') {
-        mainContentEl.innerHTML = renderQuestionContent(currentQ, responses, status);
+      if (mainContentEl) {
+        const newHash = JSON.stringify(responses) + '_' + status;
+        if (mainContentEl.dataset.resphash !== newHash) {
+          mainContentEl.dataset.resphash = newHash;
+          mainContentEl.innerHTML = renderQuestionContent(currentQ, responses, status, participants);
+        }
       }
     } else {
       container.innerHTML = `
@@ -1003,8 +1007,8 @@
             <h1 class="question-title">${escapeHtml(currentQ.question || '')}</h1>
             ${currentQ.isDoublePoints ? `<div style="color: #fbbf24; font-size: 1.2rem; font-weight: bold; margin-top: 10px;">⚡ 점수 2배 이벤트 문항!</div>` : ''}
           </div>
-          <div id="display-main-content" style="flex: 1; display: flex; flex-direction: column;">
-            ${renderQuestionContent(currentQ, responses, status)}
+          <div id="display-main-content" style="flex: 1; display: flex; flex-direction: column;" data-resphash="${JSON.stringify(responses) + '_' + status}">
+            ${renderQuestionContent(currentQ, responses, status, participants)}
           </div>
           ${isTeacherControl ? `
             <div style="display: flex; justify-content: flex-end; gap: 16px; margin-top: 20px;">
@@ -1113,7 +1117,7 @@
     });
   }
 
-  function renderQuestionContent(currentQ, responses, status) {
+  function renderQuestionContent(currentQ, responses, status, participants = {}) {
     const showAnswer = status === 'SHOW_ANSWER';
 
     if (currentQ.type === 'ox' || currentQ.type === 'choice') {
@@ -1137,7 +1141,12 @@
         <div style="background: var(--card-dark); padding: 30px; border-radius: 16px; text-align: center; flex: 1;">
           ${showAnswer ? `<h2 style="font-size: 2.2rem; color: #10b981; margin-bottom: 20px;">💡 정답: ${escapeHtml(currentQ.correctText)}</h2>` : `<h2 style="font-size: 1.8rem; color: #94a3b8;">학생들이 단답형 답안을 입력하는 중입니다...</h2>`}
           <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; justify-content: center;">
-            ${Object.values(responses).map(r => `<div class="student-tag" style="font-size: 1.1rem; background: #1e293b;">${escapeHtml(r.answer)}</div>`).join('')}
+            ${Object.entries(responses).map(([sid, r]) => {
+              const p = (participants && participants[sid]) || {};
+              const nick = p.nickname || r.nickname || '';
+              const av = p.avatar || r.avatar || '';
+              return `<div class="student-tag" style="font-size: 1.1rem; background: #1e293b;">${av} ${escapeHtml(nick ? nick + ': ' : '')}${escapeHtml(r.answer)}</div>`;
+            }).join('')}
           </div>
         </div>
       `;
@@ -1150,7 +1159,22 @@
     } else if (currentQ.type === 'postit') {
       return `
         <div class="postit-container">
-          ${Object.values(responses).map(r => `<div class="postit-card">${escapeHtml(r.answer)}</div>`).join('')}
+          ${Object.entries(responses).map(([sid, r]) => {
+            const p = (participants && participants[sid]) || {};
+            const nick = p.nickname || r.nickname || '익명 학생';
+            const av = p.avatar || r.avatar || '📌';
+            return `
+              <div class="postit-card">
+                <div style="font-size: 0.95rem; color: #78350f; font-weight: 800; margin-bottom: 8px; border-bottom: 1px dashed rgba(120,53,15,0.3); padding-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                  <span>${av}</span>
+                  <span>${escapeHtml(nick)}</span>
+                </div>
+                <div style="font-size: 1.2rem; word-break: break-all; color: #451a03; font-weight: 700; line-height: 1.4;">
+                  ${escapeHtml(r.answer)}
+                </div>
+              </div>
+            `;
+          }).join('')}
         </div>
       `;
     }
