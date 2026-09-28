@@ -1,6 +1,84 @@
 (function() {
   'use strict';
 
+  // 웹 오디오 합성 엔진 (100% 무설치 / 오프라인 / 교내망 차단 0% 안전 효과음)
+  const AudioEngine = {
+    ctx: null,
+    enabled: true,
+    init() {
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) this.ctx = new AudioCtx();
+      }
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume();
+      }
+    },
+    playTick() {
+      if (!this.enabled) return;
+      this.init();
+      if (!this.ctx) return;
+      try {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = 750;
+        gain.gain.setValueAtTime(0.04, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.04);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.04);
+      } catch (e) {}
+    },
+    playCorrect() {
+      if (!this.enabled) return;
+      this.init();
+      if (!this.ctx) return;
+      try {
+        const now = this.ctx.currentTime;
+        [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.08, now + i * 0.07);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.25);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + i * 0.07);
+          osc.stop(now + i * 0.07 + 0.25);
+        });
+      } catch (e) {}
+    },
+    playFanfare() {
+      if (!this.enabled) return;
+      this.init();
+      if (!this.ctx) return;
+      try {
+        const now = this.ctx.currentTime;
+        const notes = [
+          { f: 523.25, d: 0.15, t: 0 },
+          { f: 659.25, d: 0.15, t: 0.15 },
+          { f: 783.99, d: 0.15, t: 0.30 },
+          { f: 1046.50, d: 0.6, t: 0.45 }
+        ];
+        notes.forEach(n => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'square';
+          osc.frequency.value = n.f;
+          gain.gain.setValueAtTime(0.1, now + n.t);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + n.t + n.d);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + n.t);
+          osc.stop(now + n.t + n.d);
+        });
+      } catch (e) {}
+    }
+  };
+
   // 파이어베이스 기본 내장 설정 (모든 교사/학생 무설치 100% 자동 연결)
   const DEFAULT_FIREBASE_CONFIG = {
     apiKey: "AIzaSyAt1jZhv7DlxRsKiMPBX0YNAI2iN7P8qFY",
@@ -480,7 +558,7 @@
     state.roomId = roomId;
     const initialRoomData = {
       meta: { title: '실시간 수업 퀴즈', createdAt: Date.now(), status: 'LOBBY', currentQuestionIndex: 0 },
-      questions: defaultQuestions,
+      questions: [],
       participants: {}
     };
     await createRoom(roomId, initialRoomData);
@@ -512,6 +590,7 @@
   function renderHostLobbyView(app, isTeacherControl) {
     const baseUrl = window.location.origin + window.location.pathname;
     const studentJoinUrl = `${baseUrl}?room=${state.roomId}&role=student`;
+    const questions = state.roomData?.questions || [];
 
     app.innerHTML = `
       <div class="lobby-layout">
@@ -521,10 +600,16 @@
             ${!isTeacherControl ? '<span style="margin-left: 12px; color: #38bdf8; font-weight: bold;">[전자칠판 디스플레이 모드]</span>' : ''}
           </div>
           <div style="display: flex; gap: 12px;">
-            ${isTeacherControl ? '<button class="btn btn-secondary" id="btn-open-edit">📝 문제 출제 / 편집</button>' : ''}
+            ${isTeacherControl ? '<button class="btn btn-secondary" id="btn-open-edit">📝 문제 출제 / 편집 (' + questions.length + '개)</button>' : ''}
             ${isTeacherControl ? '<button class="btn btn-primary" id="btn-start-quiz" style="font-size: 1.25rem; padding: 14px 32px;">🚀 퀴즈 시작</button>' : ''}
           </div>
         </div>
+
+        ${questions.length === 0 ? `
+          <div style="background: rgba(245, 158, 11, 0.15); border: 1px dashed #f59e0b; padding: 14px 20px; border-radius: 12px; margin-top: 20px; color: #fbbf24; font-weight: bold; text-align: center; font-size: 1.1rem;">
+            💡 출제된 문제가 아직 없습니다. 우측 상단의 <strong>[📝 문제 출제 / 편집]</strong> 버튼을 누르고 질문을 자유롭게 추가해 주세요!
+          </div>
+        ` : ''}
 
         <div class="lobby-content">
           <div class="qr-box">
@@ -557,11 +642,16 @@
 
     document.getElementById('btn-open-edit')?.addEventListener('click', () => {
       renderTeacherAdminModal(state.roomId, state.roomData?.questions, () => {
-        alert('문항이 업데이트되었습니다.');
+        alert('문항이 성공적으로 저장되었습니다.');
       });
     });
 
     document.getElementById('btn-start-quiz')?.addEventListener('click', async () => {
+      const qs = state.roomData?.questions || [];
+      if (qs.length === 0) {
+        alert('출제된 문항이 없습니다. [📝 문제 출제 / 편집] 버튼을 먼저 눌러 문제를 추가해 주세요!');
+        return;
+      }
       await updateRoomMeta(state.roomId, {
         status: 'PLAYING',
         currentQuestionIndex: 0,
@@ -848,6 +938,11 @@
     const responses = (roomData.responses && roomData.responses[qIndex]) || {};
     const participants = roomData.participants || {};
 
+    if (status === 'SHOW_RANKING') {
+      renderIntermediateLeaderboardView(container, roomData, roomId, isTeacherControl);
+      return;
+    }
+
     if (status === 'FINISHED') {
       renderLeaderboardView(container, roomData, isTeacherControl);
       return;
@@ -875,7 +970,7 @@
         ${isTeacherControl ? `
           <div style="display: flex; justify-content: flex-end; gap: 16px; margin-top: 20px;">
             ${status === 'PLAYING' ? `<button class="btn btn-danger" id="btn-force-finish">⏹️ 응답 마감 및 정답 공개</button>` : ''}
-            ${status === 'SHOW_ANSWER' ? `<button class="btn btn-primary" id="btn-next-question">➡️ 다음 문제 / 순위 보기</button>` : ''}
+            ${status === 'SHOW_ANSWER' ? `<button class="btn btn-primary" id="btn-show-ranking">📊 중간 순위 보기 (1~5위)</button>` : ''}
           </div>
         ` : ''}
       </div>
@@ -890,11 +985,12 @@
         const remaining = Math.max(0, timeLimit - elapsed);
         const timerEl = document.getElementById('display-timer');
         if (timerEl) timerEl.textContent = `⏱️ ${remaining}s`;
+        AudioEngine.playTick();
         if (remaining <= 0) {
           clearInterval(timerInterval);
           if (isTeacherControl) processQuestionResults(roomId, roomData);
         }
-      }, 500);
+      }, 1000);
     } else {
       if (timerInterval) clearInterval(timerInterval);
     }
@@ -904,7 +1000,56 @@
       processQuestionResults(roomId, roomData);
     });
 
-    document.getElementById('btn-next-question')?.addEventListener('click', () => {
+    document.getElementById('btn-show-ranking')?.addEventListener('click', () => {
+      AudioEngine.playCorrect();
+      updateRoomMeta(roomId, { status: 'SHOW_RANKING' });
+    });
+  }
+
+  function renderIntermediateLeaderboardView(container, roomData, roomId, isTeacherControl) {
+    const participants = Object.values(roomData.participants || {});
+    participants.sort((a, b) => (b.score || 0) - (a.score || 0));
+    const top5 = participants.slice(0, 5);
+    const meta = roomData.meta || {};
+    const qIndex = meta.currentQuestionIndex || 0;
+    const questions = roomData.questions || [];
+    const isLastQ = qIndex + 1 >= questions.length;
+
+    container.innerHTML = `
+      <div class="quiz-display-container">
+        <div class="leaderboard-container">
+          <h1 class="leaderboard-title">📊 중간 점수 순위 (Top 5)</h1>
+          <p style="text-align: center; color: var(--text-muted); margin-bottom: 20px; font-size: 1.1rem;">
+            Q${qIndex + 1} / ${questions.length} 문제 진행 상황
+          </p>
+          ${top5.map((p, rank) => `
+            <div class="leaderboard-row ${rank === 0 ? 'rank-1' : ''}">
+              <div style="display: flex; align-items: center; gap: 16px;">
+                <div class="rank-badge">${rank === 0 ? '🥇' : rank === 1 ? '🥈' : rank === 2 ? '🥉' : rank + 1}</div>
+                <span style="font-size: 1.8rem; margin-right: 4px;">${p.avatar || '🐶'}</span>
+                <span>${escapeHtml(p.nickname)}</span>
+              </div>
+              <span style="color: #38bdf8;">${p.score || 0}점</span>
+            </div>
+          `).join('')}
+          ${isTeacherControl ? `
+            <div style="display: flex; justify-content: center; margin-top: 30px;">
+              ${isLastQ ? `
+                <button class="btn btn-primary" id="btn-show-ceremony" style="font-size: 1.25rem; padding: 14px 36px;">🏆 최종 시상식 결과 보기</button>
+              ` : `
+                <button class="btn btn-primary" id="btn-next-question-rank" style="font-size: 1.25rem; padding: 14px 36px;">➡️ 다음 문제로 이동 (Q${qIndex + 2})</button>
+              `}
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    `;
+
+    document.getElementById('btn-show-ceremony')?.addEventListener('click', () => {
+      AudioEngine.playFanfare();
+      updateRoomMeta(roomId, { status: 'FINISHED' });
+    });
+    document.getElementById('btn-next-question-rank')?.addEventListener('click', () => {
       advanceToNextQuestion(roomId, roomData);
     });
   }
@@ -956,13 +1101,40 @@
   function renderLeaderboardView(container, roomData, isTeacherControl) {
     const participants = Object.values(roomData.participants || {});
     participants.sort((a, b) => (b.score || 0) - (a.score || 0));
-    const top5 = participants.slice(0, 5);
+    const first = participants[0] || { nickname: '1위', avatar: '🥇', score: 0 };
+    const second = participants[1] || { nickname: '2위', avatar: '🥈', score: 0 };
+    const third = participants[2] || { nickname: '3위', avatar: '🥉', score: 0 };
+
+    AudioEngine.playFanfare();
 
     container.innerHTML = `
       <div class="quiz-display-container">
         <div class="leaderboard-container">
-          <h1 class="leaderboard-title">🏆 최종 명예의 전당 (Top 5)</h1>
-          ${top5.map((p, rank) => `
+          <h1 class="leaderboard-title" style="font-size: 2.8rem;">🏆 최종 퀴즈 시상식</h1>
+          
+          <div class="podium-wrapper">
+            <div class="podium-step podium-2">
+              <div style="font-size: 2.5rem;">${second.avatar || '🥈'}</div>
+              <div style="font-size: 1.2rem;">${escapeHtml(second.nickname)}</div>
+              <div style="font-size: 1rem; color: #e2e8f0; margin-top: 4px;">🥈 2위 (${second.score || 0}점)</div>
+            </div>
+
+            <div class="podium-step podium-1">
+              <div style="font-size: 1.2rem; color: #fef08a;">👑 챔피언 👑</div>
+              <div style="font-size: 3.2rem;">${first.avatar || '🥇'}</div>
+              <div style="font-size: 1.4rem; color: #fff;">${escapeHtml(first.nickname)}</div>
+              <div style="font-size: 1.2rem; color: #fef08a; margin-top: 4px;">🥇 1위 (${first.score || 0}점)</div>
+            </div>
+
+            <div class="podium-step podium-3">
+              <div style="font-size: 2.5rem;">${third.avatar || '🥉'}</div>
+              <div style="font-size: 1.2rem;">${escapeHtml(third.nickname)}</div>
+              <div style="font-size: 1rem; color: #fde68a; margin-top: 4px;">🥉 3위 (${third.score || 0}점)</div>
+            </div>
+          </div>
+
+          <h2 style="font-size: 1.4rem; color: #38bdf8; margin: 24px 0 12px 0; text-align: center;">전체 명예의 전당 랭킹</h2>
+          ${participants.slice(0, 10).map((p, rank) => `
             <div class="leaderboard-row ${rank === 0 ? 'rank-1' : ''}">
               <div style="display: flex; align-items: center; gap: 16px;">
                 <div class="rank-badge">${rank === 0 ? '🥇' : rank === 1 ? '🥈' : rank === 2 ? '🥉' : rank + 1}</div>
@@ -972,8 +1144,9 @@
               <span style="color: #38bdf8;">${p.score || 0}점</span>
             </div>
           `).join('')}
-          <div style="display: flex; justify-content: center; gap: 16px; margin-top: 40px;">
-            <button class="btn btn-success" id="btn-export-csv" style="font-size: 1.2rem;">📥 퀴즈 결과 CSV 다운로드</button>
+
+          <div style="display: flex; justify-content: center; gap: 16px; margin-top: 30px;">
+            <button class="btn btn-success" id="btn-export-csv" style="font-size: 1.2rem;">📥 전체 결과 CSV 내보내기</button>
             <button class="btn btn-secondary" id="btn-restart-app" style="font-size: 1.2rem;">🏠 메인으로 돌아가기</button>
           </div>
         </div>
@@ -1008,9 +1181,37 @@
       return;
     }
 
+    if (status === 'SHOW_RANKING') {
+      const allP = Object.values(roomData.participants || {});
+      allP.sort((a, b) => (b.score || 0) - (a.score || 0));
+      const myRank = allP.findIndex(p => p.nickname === nickname) + 1;
+      container.innerHTML = `
+        <div class="mobile-view">
+          <div class="mobile-card" style="text-align: center; border-color: #f59e0b;">
+            <div style="font-size: 3.5rem; margin-bottom: 12px;">${avatar}</div>
+            <h2 style="font-size: 1.5rem; color: #fbbf24;">현재 ${myRank > 0 ? myRank + '위' : '순위 집계 중'} / 총 ${allP.length}명</h2>
+            <p style="font-size: 1.3rem; font-weight: bold; color: #38bdf8; margin-top: 8px;">총 점수: ${myParticipant.score || 0}점</p>
+            <p style="color: var(--text-muted); margin-top: 14px; font-size: 0.95rem;">선생님이 다음 문제를 시작할 때까지 대기해 주세요!</p>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
     if (status === 'FINISHED') {
       renderStudentFinalFeedback(container, roomData, studentId, nickname, avatar);
       return;
+    }
+
+    const existingPadCard = document.getElementById('student-pad-card');
+    const renderedQIndex = existingPadCard ? Number(existingPadCard.dataset.qindex) : -1;
+    const renderedStatus = existingPadCard ? existingPadCard.dataset.status : '';
+
+    if (existingPadCard && renderedQIndex === qIndex && renderedStatus === status && !myResponse) {
+      const textInput = document.getElementById('input-student-text');
+      if (textInput) {
+        return;
+      }
     }
 
     container.innerHTML = `
