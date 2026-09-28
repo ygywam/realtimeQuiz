@@ -648,32 +648,56 @@ body.theme-woodlock h1, body.theme-woodlock h2, body.theme-woodlock h3 {
     </a>
   </footer>
 
-  <!-- Firebase 설정 모달 (최초 연결용) -->
-  <div id="firebase-modal" class="modal-overlay hidden">
-    <div class="modal-box">
-      <h3>🔥 Firebase 실시간 DB 설정</h3>
-      <p class="modal-desc">
-        교실 전자칠판과 학생 스마트폰 간 0.1초 실시간 통신을 위해 Firebase 설정값을 입력해 주세요. (1회 입력 시 브라우저에 안전하게 저장됩니다)
+  <!-- 1. Firebase 실시간 클라우드 DB 안내 모달 -->
+  <div id="firebase-info-modal" class="modal-overlay hidden">
+    <div class="modal-box" style="max-width: 600px;">
+      <h3 style="color: #10b981; font-size: 1.5rem; margin-bottom: 14px;">☁️ 실시간 클라우드 DB 연동 안내</h3>
+      <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; padding: 20px; border-radius: 14px; margin-bottom: 24px; line-height: 1.6; color: #f8fafc;">
+        <p style="margin-bottom: 12px; font-weight: bold; font-size: 1.08rem; color: #6ee7b7;">
+          ⚡ 별도 설정 없이 바로 100여 명의 학생들과 즉시 수업이 가능합니다!
+        </p>
+        <p style="font-size: 0.95rem; color: #cbd5e1; margin-bottom: 12px;">
+          본 시스템에는 전용 실시간 클라우드 데이터베이스가 기본 연동되어 있어, 교사 PC와 학생 스마트폰 간에 0.1초 반응속도로 문제를 풀고 브레인스토밍을 공유하실 수 있습니다.
+        </p>
+        <p style="font-size: 0.9rem; color: #94a3b8;">
+          🔒 학생들의 인적사항(학번/연락처 등)은 클라우드에 일절 저장되지 않으며, 세션 종료 시 실시간 방 정보는 안전하게 자동 정제됩니다.
+        </p>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-top: 1px solid var(--border); padding-top: 16px;">
+        <button id="btn-open-custom-fb" class="btn btn-outline-sm" style="border-color: #475569; color: #94a3b8;">
+          ⚙️ 나만의 Firebase 개인화 설정
+        </button>
+        <button id="btn-close-fb-info" class="btn btn-primary">확인 (닫기)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. 나만의 Firebase DB 개인화 설정 모달 -->
+  <div id="firebase-custom-modal" class="modal-overlay hidden">
+    <div class="modal-box" style="max-width: 620px;">
+      <h3 style="margin-bottom: 8px;">⚙️ 나만의 Firebase DB 개인화 설정</h3>
+      <p class="modal-desc" style="margin-bottom: 20px; color: var(--text-muted); font-size: 0.95rem;">
+        본인 소유의 Firebase Realtime Database 키로 교체하여 사용하실 수 있습니다. (입력한 설정값은 본인 브라우저에만 안전하게 저장됩니다)
       </p>
       <div class="form-group">
-        <label>API Key</label>
-        <input type="text" id="fb-apiKey" placeholder="AIzaSy...">
+        <label style="font-weight: bold;">API Key</label>
+        <input type="password" id="fb-apiKey" placeholder="개인 키 입력 시 작성 (미입력 시 기본 탑재 DB 연결)" autocomplete="off">
       </div>
       <div class="form-group">
-        <label>Database URL (중요: Realtime Database URL)</label>
+        <label style="font-weight: bold;">Database URL (Realtime Database URL)</label>
         <input type="text" id="fb-dbUrl" placeholder="https://your-project-default-rtdb.firebaseio.com">
       </div>
       <div class="form-group">
-        <label>Project ID</label>
+        <label style="font-weight: bold;">Project ID</label>
         <input type="text" id="fb-projectId" placeholder="your-project-id">
       </div>
-      <div class="modal-actions">
-        <button id="btn-save-fb" class="btn btn-primary">설정 저장 및 연결</button>
-        <button id="btn-close-fb" class="btn btn-secondary">취소</button>
-      </div>
-      <div class="demo-tip">
-        💡 <em>Firebase 프로젝트가 아직 없으신가요? 데모/오프라인 모드로 즉시 체험해 보실 수도 있습니다.</em>
-        <button id="btn-use-demo" class="btn btn-outline-sm">데모/모의 모드로 시작</button>
+      <div class="modal-actions" style="justify-content: space-between; margin-top: 24px;">
+        <button id="btn-reset-fb" class="btn btn-danger btn-outline-sm" style="font-size: 0.9rem;">🔄 기본 연결로 복원</button>
+        <div style="display: flex; gap: 10px;">
+          <button id="btn-close-fb-custom" class="btn btn-secondary">취소</button>
+          <button id="btn-save-fb" class="btn btn-primary">개인 설정 저장 및 반영</button>
+        </div>
       </div>
     </div>
   </div>

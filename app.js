@@ -578,8 +578,8 @@
         <p class="home-subtitle">전자칠판과 학생 스마트폰을 실시간으로 잇는 반응형 퀴즈</p>
 
         <div style="margin-bottom: 25px; display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;">
-          <span class="room-badge" style="font-size: 0.95rem; cursor: pointer; background: rgba(16, 185, 129, 0.2); border-color: #10b981; color: #6ee7b7;" id="btn-open-fb">
-            🟢 Firebase 실시간 DB 자동 연결됨 (스마트폰 즉시 연동)
+          <span class="room-badge" style="font-size: 0.95rem; cursor: pointer; background: rgba(16, 185, 129, 0.2); border-color: #10b981; color: #6ee7b7;" id="btn-open-fb-info">
+            🟢 Firebase 실시간 DB 자동 연결됨 (클릭 시 사용 안내)
           </span>
           <select class="select-theme-dropdown" id="select-theme-home" style="padding: 8px 14px; border-radius: 999px; background: #1e293b; color: #fff; border: 1px solid var(--primary); font-size: 0.9rem; font-weight: bold; cursor: pointer;">
             <option value="tv" ${getSavedTheme() === 'tv' ? 'selected' : ''}>📺 스마트 TV 테마</option>
@@ -661,7 +661,7 @@
     `;
 
     document.getElementById('btn-create-room')?.addEventListener('click', handleCreateRoom);
-    document.getElementById('btn-open-fb')?.addEventListener('click', openFirebaseModal);
+    document.getElementById('btn-open-fb-info')?.addEventListener('click', openFirebaseInfoModal);
     document.getElementById('select-theme-home')?.addEventListener('change', (e) => setTheme(e.target.value));
     document.getElementById('btn-enter-display')?.addEventListener('click', () => {
       const pin = document.getElementById('input-display-pin').value.trim();
@@ -1676,20 +1676,45 @@
     `;
   }
 
-  function openFirebaseModal() {
-    const modal = document.getElementById('firebase-modal');
-    const saved = getSavedFirebaseConfig();
-    if (saved) {
-      document.getElementById('fb-apiKey').value = saved.apiKey || '';
-      document.getElementById('fb-dbUrl').value = saved.databaseURL || '';
-      document.getElementById('fb-projectId').value = saved.projectId || '';
+  function openFirebaseInfoModal() {
+    const modal = document.getElementById('firebase-info-modal');
+    if (modal) modal.classList.remove('hidden');
+  }
+
+  function closeFirebaseInfoModal() {
+    const modal = document.getElementById('firebase-info-modal');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  function openFirebaseCustomModal() {
+    closeFirebaseInfoModal();
+    const modal = document.getElementById('firebase-custom-modal');
+    if (!modal) return;
+
+    const savedCustom = localStorage.getItem('class_quiz_fb_config');
+    if (savedCustom) {
+      try {
+        const parsed = JSON.parse(savedCustom);
+        document.getElementById('fb-apiKey').value = parsed.apiKey || '';
+        document.getElementById('fb-dbUrl').value = parsed.databaseURL || '';
+        document.getElementById('fb-projectId').value = parsed.projectId || '';
+      } catch (e) {}
+    } else {
+      document.getElementById('fb-apiKey').value = '';
+      document.getElementById('fb-dbUrl').value = '';
+      document.getElementById('fb-projectId').value = '';
     }
     modal.classList.remove('hidden');
   }
 
-  document.getElementById('btn-close-fb')?.addEventListener('click', () => {
-    document.getElementById('firebase-modal').classList.add('hidden');
-  });
+  function closeFirebaseCustomModal() {
+    const modal = document.getElementById('firebase-custom-modal');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  document.getElementById('btn-close-fb-info')?.addEventListener('click', closeFirebaseInfoModal);
+  document.getElementById('btn-open-custom-fb')?.addEventListener('click', openFirebaseCustomModal);
+  document.getElementById('btn-close-fb-custom')?.addEventListener('click', closeFirebaseCustomModal);
 
   document.getElementById('btn-save-fb')?.addEventListener('click', () => {
     const apiKey = document.getElementById('fb-apiKey').value.trim();
@@ -1697,15 +1722,16 @@
     const projectId = document.getElementById('fb-projectId').value.trim();
     if (!apiKey || !databaseURL) return alert('API Key와 Database URL은 필수입니다.');
     saveFirebaseConfig({ apiKey, databaseURL, projectId });
-    alert('Firebase 설정이 저장되었습니다. 새로고침합니다.');
+    alert('개인 Firebase 설정이 저장되었습니다. 페이지를 새로고침합니다.');
     window.location.reload();
   });
 
-  document.getElementById('btn-use-demo')?.addEventListener('click', () => {
-    localStorage.removeItem('class_quiz_fb_config');
-    document.getElementById('firebase-modal').classList.add('hidden');
-    alert('데모 모드로 동작합니다.');
-    window.location.reload();
+  document.getElementById('btn-reset-fb')?.addEventListener('click', () => {
+    if (confirm('기본 탑재 클라우드 DB 연결로 복원하시겠습니까?')) {
+      localStorage.removeItem('class_quiz_fb_config');
+      alert('기본 연결로 복원되었습니다. 새로고침합니다.');
+      window.location.reload();
+    }
   });
 
   function escapeHtml(str) {
