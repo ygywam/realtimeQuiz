@@ -172,6 +172,52 @@
     return Math.floor(100000 + Math.random() * 900000).toString();
   }
 
+  const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+
+  function getMyLocalQuizRooms() {
+    try {
+      const raw = localStorage.getItem('my_created_quiz_rooms');
+      const list = raw ? JSON.parse(raw) : [];
+      const now = Date.now();
+      const valid = list.filter(r => (now - (r.lastAccessedAt || r.createdAt || now)) < THREE_DAYS_MS);
+      if (valid.length !== list.length) {
+        localStorage.setItem('my_created_quiz_rooms', JSON.stringify(valid));
+      }
+      return valid;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveMyLocalQuizRoom(roomMeta) {
+    const list = getMyLocalQuizRooms();
+    const idx = list.findIndex(r => r.roomId === roomMeta.roomId);
+    const now = Date.now();
+    const item = {
+      roomId: roomMeta.roomId,
+      title: roomMeta.title || '실시간 수업 퀴즈',
+      questionCount: typeof roomMeta.questionCount === 'number' ? roomMeta.questionCount : 0,
+      createdAt: roomMeta.createdAt || (idx >= 0 ? list[idx].createdAt : now),
+      lastAccessedAt: now
+    };
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...item };
+    } else {
+      list.unshift(item);
+    }
+    localStorage.setItem('my_created_quiz_rooms', JSON.stringify(list));
+  }
+
+  function removeMyLocalQuizRoom(roomId) {
+    const list = getMyLocalQuizRooms().filter(r => r.roomId !== roomId);
+    localStorage.setItem('my_created_quiz_rooms', JSON.stringify(list));
+  }
+
+  function isRoomCreatorLocal(roomId) {
+    const list = getMyLocalQuizRooms();
+    return list.some(r => r.roomId === roomId);
+  }
+
   let db = null;
   let broadcastChannel = null;
 
@@ -508,8 +554,9 @@
 
   function renderHomeView(app) {
     const isFbConnected = !state.isDemo;
+    const localRooms = getMyLocalQuizRooms();
     app.innerHTML = `
-      <div class="home-container">
+      <div class="home-container" style="max-width: 980px;">
         <h1 class="home-title">⚡ 클래스 라이브 퀴즈</h1>
         <p class="home-subtitle">전자칠판과 학생 스마트폰을 실시간으로 잇는 반응형 퀴즈</p>
 
@@ -547,6 +594,46 @@
             </div>
           </div>
         </div>
+
+        <!-- 이 기기 전용 내가 생성한 퀴즈 방 목록 (3일 후 자동 정제) -->
+        <div style="margin-top: 36px; text-align: left; background: var(--card-dark); border: 1px solid var(--border); border-radius: 16px; padding: 24px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h2 style="font-size: 1.3rem; color: #38bdf8; display: flex; align-items: center; gap: 8px; margin: 0;">
+              📁 내가 생성한 퀴즈 방 목록 <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: normal;">(이 기기 전용 / 3일 지나면 자동 정리)</span>
+            </h2>
+            <span style="font-size: 0.9rem; color: #fbbf24; font-weight: bold;">보관: ${localRooms.length}개</span>
+          </div>
+
+          ${localRooms.length === 0 ? `
+            <div style="text-align: center; color: var(--text-muted); padding: 26px 16px; font-size: 0.98rem; border: 1px dashed var(--border); border-radius: 12px; background: #0f172a;">
+              💡 이 컴퓨터에서 생성한 퀴즈 방이 없습니다. 상단의 <strong>[새 퀴즈 방 만들기]</strong>로 첫 문항을 작성해 보세요!
+            </div>
+          ` : `
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px;">
+              ${localRooms.map(room => {
+                const dateStr = new Date(room.createdAt).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                return `
+                  <div style="background: #0f172a; border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span class="room-badge" style="font-size: 0.9rem;">PIN: ${room.roomId}</span>
+                        <span style="font-size: 0.8rem; color: var(--text-muted);">${dateStr}</span>
+                      </div>
+                      <h4 style="font-size: 1.05rem; color: #fff; margin-bottom: 6px;">${escapeHtml(room.title)}</h4>
+                      <p style="font-size: 0.9rem; color: #38bdf8; font-weight: bold; margin-bottom: 14px;">📝 문항 수: ${room.questionCount}개</p>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                      <button class="btn btn-primary btn-run-room" data-pin="${room.roomId}" style="padding: 8px 4px; font-size: 0.85rem;">🚀 교사 진행</button>
+                      <button class="btn btn-secondary btn-display-room" data-pin="${room.roomId}" style="padding: 8px 4px; font-size: 0.85rem;">🖥️ 전자칠판</button>
+                      <button class="btn btn-outline-sm btn-edit-room" data-pin="${room.roomId}" style="padding: 6px 4px; font-size: 0.82rem; border-color: #fbbf24; color: #fbbf24;">📝 편집</button>
+                      <button class="btn btn-danger btn-del-room" data-pin="${room.roomId}" style="padding: 6px 4px; font-size: 0.82rem;">🗑️ 삭제</button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `}
+        </div>
       </div>
     `;
 
@@ -562,6 +649,34 @@
       if (pin.length === 6) window.location.search = `?room=${pin}&role=student`;
       else alert('6자리 PIN 번호를 입력해 주세요.');
     });
+
+    document.querySelectorAll('.btn-run-room').forEach(btn => {
+      btn.addEventListener('click', (e) => window.location.search = `?room=${e.currentTarget.dataset.pin}&role=teacher`);
+    });
+    document.querySelectorAll('.btn-display-room').forEach(btn => {
+      btn.addEventListener('click', (e) => window.location.search = `?room=${e.currentTarget.dataset.pin}&role=display`);
+    });
+    document.querySelectorAll('.btn-edit-room').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const pin = e.currentTarget.dataset.pin;
+        const roomData = await fetchFirebaseRest(`rooms/${pin}`) || JSON.parse(localStorage.getItem(`demo_room_${pin}`) || '{}');
+        renderTeacherAdminModal(pin, roomData.questions || [], async () => {
+          const updated = await fetchFirebaseRest(`rooms/${pin}`) || roomData;
+          saveMyLocalQuizRoom({ roomId: pin, questionCount: (updated.questions || []).length });
+          alert('문항이 성공적으로 저장되었습니다.');
+          renderHomeView(app);
+        });
+      });
+    });
+    document.querySelectorAll('.btn-del-room').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const pin = e.currentTarget.dataset.pin;
+        if (confirm(`PIN [${pin}] 퀴즈 방을 삭제하시겠습니까?`)) {
+          removeMyLocalQuizRoom(pin);
+          renderHomeView(app);
+        }
+      });
+    });
   }
 
   async function handleCreateRoom() {
@@ -573,6 +688,7 @@
       participants: {}
     };
     await createRoom(roomId, initialRoomData);
+    saveMyLocalQuizRoom({ roomId, title: '실시간 수업 퀴즈', questionCount: 0, createdAt: Date.now() });
     window.location.search = `?room=${roomId}&role=teacher`;
   }
 
@@ -606,8 +722,9 @@
     app.innerHTML = `
       <div class="lobby-layout">
         <div class="lobby-header">
-          <div>
+          <div style="display: flex; align-items: center;">
             <span class="room-badge">방 PIN : ${state.roomId}</span>
+            <button class="btn btn-secondary" id="btn-go-home-lobby" style="margin-left: 12px; font-weight: bold; padding: 6px 14px; font-size: 0.9rem;">🏠 메인으로</button>
             ${!isTeacherControl ? '<span style="margin-left: 12px; color: #38bdf8; font-weight: bold;">[전자칠판 디스플레이 모드]</span>' : ''}
           </div>
           <div style="display: flex; gap: 12px;">
@@ -651,8 +768,15 @@
 
     updateParticipantList(state.roomData?.participants || {});
 
+    document.getElementById('btn-go-home-lobby')?.addEventListener('click', () => window.location.search = '');
+
     document.getElementById('btn-open-edit')?.addEventListener('click', () => {
+      if (!isRoomCreatorLocal(state.roomId)) {
+        alert('🔒 문제 편집 권한 안내\n\n이 퀴즈 방은 다른 컴퓨터/기기에서 작성된 방입니다.\n문제 수정 및 삭제는 처음 이 퀴즈를 출제하신 교사 PC(로컬)에서만 가능하며, 본 컴퓨터에서는 퀴즈 진행 및 송출만 실행하실 수 있습니다.');
+        return;
+      }
       renderTeacherAdminModal(state.roomId, state.roomData?.questions, () => {
+        saveMyLocalQuizRoom({ roomId: state.roomId, questionCount: (state.roomData?.questions || []).length });
         alert('문항이 성공적으로 저장되었습니다.');
       });
     });
@@ -994,7 +1118,10 @@
       container.innerHTML = `
         <div class="quiz-display-container" id="host-display-card" data-qindex="${qIndex}" data-status="${status}">
           <div class="quiz-top-bar">
-            <span class="room-badge">Q ${qIndex + 1} / ${questions.length}</span>
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span class="room-badge">Q ${qIndex + 1} / ${questions.length}</span>
+              <button id="btn-go-home-display" class="btn btn-secondary" style="font-weight: bold; padding: 6px 14px; font-size: 0.9rem;">🏠 메인으로</button>
+            </div>
             <div id="display-timer" class="timer-badge">⏱️ ${currentQ.timeLimit || 20}s</div>
             <button id="btn-toggle-bgm" class="btn btn-outline-sm" style="background: rgba(56, 189, 248, 0.2); border-color: #38bdf8; color: #fff; font-weight: bold;">
               ${AudioEngine.bgmPlaying ? '🎵 BGM 끄기' : '🎵 BGM 켜기'}
@@ -1018,6 +1145,8 @@
           ` : ''}
         </div>
       `;
+
+      document.getElementById('btn-go-home-display')?.addEventListener('click', () => window.location.search = '');
 
       document.getElementById('btn-toggle-bgm')?.addEventListener('click', (e) => {
         const isPlaying = AudioEngine.toggleBGM();
@@ -1095,18 +1224,19 @@
               <span style="color: #38bdf8;">${p.score || 0}점</span>
             </div>
           `).join('')}
-          ${isTeacherControl ? `
-            <div style="display: flex; justify-content: center; margin-top: 30px;">
-              ${isLastQ ? `
-                <button class="btn btn-primary" id="btn-show-ceremony" style="font-size: 1.25rem; padding: 14px 36px;">🏆 최종 시상식 결과 보기</button>
-              ` : `
-                <button class="btn btn-primary" id="btn-next-question-rank" style="font-size: 1.25rem; padding: 14px 36px;">➡️ 다음 문제로 이동 (Q${qIndex + 2})</button>
-              `}
-            </div>
-          ` : ''}
+          <div style="display: flex; justify-content: center; gap: 16px; margin-top: 30px;">
+            ${isTeacherControl ? (isLastQ ? `
+              <button class="btn btn-primary" id="btn-show-ceremony" style="font-size: 1.2rem; padding: 12px 32px;">🏆 최종 시상식 결과 보기</button>
+            ` : `
+              <button class="btn btn-primary" id="btn-next-question-rank" style="font-size: 1.2rem; padding: 12px 32px;">➡️ 다음 문제로 이동 (Q${qIndex + 2})</button>
+            `) : ''}
+            <button class="btn btn-secondary" id="btn-go-home-inter" style="font-size: 1.1rem; padding: 12px 24px;">🏠 메인으로</button>
+          </div>
         </div>
       </div>
     `;
+
+    document.getElementById('btn-go-home-inter')?.addEventListener('click', () => window.location.search = '');
 
     document.getElementById('btn-show-ceremony')?.addEventListener('click', () => {
       AudioEngine.playFanfare();
