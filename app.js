@@ -5,6 +5,9 @@
   const AudioEngine = {
     ctx: null,
     enabled: true,
+    bgmAudio: null,
+    bgmPlaying: false,
+    bgmSynthInterval: null,
     init() {
       if (!this.ctx) {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -76,63 +79,71 @@
           osc.stop(now + n.t + n.d);
         });
       } catch (e) {}
+    },
+    playBGM(customUrl) {
+      this.stopBGM();
+      this.init();
+      if (customUrl) {
+        try {
+          this.bgmAudio = new Audio(customUrl);
+          this.bgmAudio.loop = true;
+          this.bgmAudio.volume = 0.4;
+          this.bgmAudio.play().catch(e => console.warn('BGM 재생 제한:', e));
+          this.bgmPlaying = true;
+          return;
+        } catch (e) {}
+      }
+      if (!this.ctx) return;
+      this.bgmPlaying = true;
+      const notes = [261.63, 329.63, 392.00, 523.25, 392.00, 329.63];
+      let step = 0;
+      this.bgmSynthInterval = setInterval(() => {
+        if (!this.bgmPlaying || !this.ctx) return;
+        try {
+          const freq = notes[step % notes.length];
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.03, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.18);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(this.ctx.currentTime + 0.18);
+          step++;
+        } catch (e) {}
+      }, 200);
+    },
+    stopBGM() {
+      this.bgmPlaying = false;
+      if (this.bgmAudio) {
+        try { this.bgmAudio.pause(); this.bgmAudio.currentTime = 0; } catch (e) {}
+        this.bgmAudio = null;
+      }
+      if (this.bgmSynthInterval) {
+        clearInterval(this.bgmSynthInterval);
+        this.bgmSynthInterval = null;
+      }
+    },
+    toggleBGM(customUrl) {
+      if (this.bgmPlaying) {
+        this.stopBGM();
+        return false;
+      } else {
+        this.playBGM(customUrl);
+        return true;
+      }
     }
   };
 
-  // 파이어베이스 기본 내장 설정 (모든 교사/학생 무설치 100% 자동 연결)
   const DEFAULT_FIREBASE_CONFIG = {
     apiKey: "AIzaSyAt1jZhv7DlxRsKiMPBX0YNAI2iN7P8qFY",
     databaseURL: "https://recordtuner-default-rtdb.firebaseio.com",
     projectId: "recordtuner"
   };
 
-  const defaultQuestions = [
-    {
-      id: "q1",
-      type: "ox",
-      question: "지구는 태양 주위를 공전한다.",
-      options: ["O (그렇다)", "X (아니다)"],
-      correctAnswer: 0,
-      timeLimit: 15,
-      explanation: "지구는 태양 주위를 약 365일에 걸쳐 1바퀴씩 공전합니다.",
-      isDoublePoints: false
-    },
-    {
-      id: "q2",
-      type: "choice",
-      question: "대한민국의 수도는 어디일까요?",
-      options: ["부산", "인천", "서울", "대구"],
-      correctAnswer: 2,
-      timeLimit: 15,
-      explanation: "대한민국의 수도는 서울특별시입니다.",
-      isDoublePoints: false
-    },
-    {
-      id: "q3",
-      type: "short",
-      question: "식물이 빛을 받아 양분을 만드는 작용을 무엇이라고 할까요?",
-      correctText: "광합성",
-      timeLimit: 20,
-      explanation: "정답은 '광합성'입니다.",
-      isDoublePoints: true
-    },
-    {
-      id: "q4",
-      type: "wordcloud",
-      question: "오늘 수업을 한 단어로 표현한다면?",
-      timeLimit: 25,
-      explanation: "자유롭게 의견을 적어보세요.",
-      isDoublePoints: false
-    },
-    {
-      id: "q5",
-      type: "postit",
-      question: "환경 보호를 위해 우리가 실천할 수 있는 일은?",
-      timeLimit: 30,
-      explanation: "좋은 아이디어를 작성해 주세요.",
-      isDoublePoints: false
-    }
-  ];
+  const defaultQuestions = [];
 
   const AVATARS = ['🐶', '🐱', '🦊', '🐯', '🦁', '🐸', '🤖', '🚀', '🎃', '🦄', '🐥', '🐼'];
 
@@ -777,9 +788,9 @@
   }
 
   function renderTeacherAdminModal(roomId, currentQuestions, onSaveCallback) {
-    let questions = currentQuestions && currentQuestions.length > 0 
+    let questions = Array.isArray(currentQuestions) 
       ? JSON.parse(JSON.stringify(currentQuestions)) 
-      : JSON.parse(JSON.stringify(defaultQuestions));
+      : [];
 
     const modalHtml = `
       <div id="admin-modal" class="modal-overlay">
@@ -809,6 +820,14 @@
     const container = document.getElementById('question-list-editor');
 
     function renderEditorList() {
+      if (questions.length === 0) {
+        container.innerHTML = `
+          <div style="text-align: center; color: var(--text-muted); padding: 50px 20px; font-size: 1.1rem; background: #0f172a; border-radius: 12px; border: 1px dashed var(--border);">
+            📝 아직 작성된 문항이 없습니다.<br><br>아래의 <strong>[+ 새 문항 유형 선택 추가]</strong> 버튼을 눌러 첫 문제를 출제해 주세요!
+          </div>
+        `;
+        return;
+      }
       container.innerHTML = questions.map((q, idx) => `
         <div style="background: #0f172a; border: 1px solid var(--border); padding: 20px; border-radius: 12px; margin-bottom: 14px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
@@ -928,6 +947,7 @@
   }
 
   let timerInterval = null;
+  let activeTimerQIndex = -1;
 
   function renderHostDisplayView(container, roomData, roomId, isTeacherControl = false) {
     const meta = roomData.meta || {};
@@ -937,86 +957,125 @@
     const currentQ = questions[qIndex] || {};
     const responses = (roomData.responses && roomData.responses[qIndex]) || {};
     const participants = roomData.participants || {};
+    const responseCount = Object.keys(responses).length;
+    const participantCount = Object.keys(participants).length;
 
     if (status === 'SHOW_RANKING') {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      activeTimerQIndex = -1;
       renderIntermediateLeaderboardView(container, roomData, roomId, isTeacherControl);
       return;
     }
 
     if (status === 'FINISHED') {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      activeTimerQIndex = -1;
       renderLeaderboardView(container, roomData, isTeacherControl);
       return;
     }
 
-    const responseCount = Object.keys(responses).length;
-    const participantCount = Object.keys(participants).length;
+    const currentDisplayCard = document.getElementById('host-display-card');
+    const renderedStatus = currentDisplayCard ? currentDisplayCard.dataset.status : '';
+    const renderedQIdx = currentDisplayCard ? Number(currentDisplayCard.dataset.qindex) : -1;
 
-    container.innerHTML = `
-      <div class="quiz-display-container">
-        <div class="quiz-top-bar">
-          <span class="room-badge">Q ${qIndex + 1} / ${questions.length}</span>
-          <div id="display-timer" class="timer-badge">⏱️ ${currentQ.timeLimit || 20}s</div>
-          <div style="font-size: 1.4rem; font-weight: bold; color: #38bdf8;">
-            제출 인원: <span id="resp-count">${responseCount}</span> / ${participantCount}명
-          </div>
-        </div>
-        <div class="question-card">
-          <h1 class="question-title">${escapeHtml(currentQ.question || '')}</h1>
-          ${currentQ.isDoublePoints ? `<div style="color: #fbbf24; font-size: 1.2rem; font-weight: bold; margin-top: 10px;">⚡ 점수 2배 이벤트 문항!</div>` : ''}
-        </div>
-        <div id="display-main-content" style="flex: 1; display: flex; flex-direction: column;">
-          ${renderQuestionContent(currentQ, responses, status)}
-        </div>
-        ${isTeacherControl ? `
-          <div style="display: flex; justify-content: flex-end; gap: 16px; margin-top: 20px;">
-            ${status === 'PLAYING' ? `<button class="btn btn-danger" id="btn-force-finish">⏹️ 응답 마감 및 정답 공개</button>` : ''}
-            ${status === 'SHOW_ANSWER' ? `<button class="btn btn-primary" id="btn-show-ranking">📊 중간 순위 보기 (1~5위)</button>` : ''}
-          </div>
-        ` : ''}
-      </div>
-    `;
+    if (currentDisplayCard && renderedStatus === status && renderedQIdx === qIndex) {
+      const respEl = document.getElementById('resp-count');
+      if (respEl) respEl.textContent = responseCount;
 
-    if (status === 'PLAYING') {
-      const timeLimit = currentQ.timeLimit || 20;
-      const startedAt = meta.timerStartedAt || Date.now();
-      if (timerInterval) clearInterval(timerInterval);
-      timerInterval = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - startedAt) / 1000);
-        const remaining = Math.max(0, timeLimit - elapsed);
-        const timerEl = document.getElementById('display-timer');
-        if (timerEl) timerEl.textContent = `⏱️ ${remaining}s`;
-        AudioEngine.playTick();
-        if (remaining <= 0) {
-          clearInterval(timerInterval);
-          if (isTeacherControl) processQuestionResults(roomId, roomData);
-        }
-      }, 1000);
+      const mainContentEl = document.getElementById('display-main-content');
+      if (mainContentEl && status === 'SHOW_ANSWER') {
+        mainContentEl.innerHTML = renderQuestionContent(currentQ, responses, status);
+      }
     } else {
-      if (timerInterval) clearInterval(timerInterval);
+      container.innerHTML = `
+        <div class="quiz-display-container" id="host-display-card" data-qindex="${qIndex}" data-status="${status}">
+          <div class="quiz-top-bar">
+            <span class="room-badge">Q ${qIndex + 1} / ${questions.length}</span>
+            <div id="display-timer" class="timer-badge">⏱️ ${currentQ.timeLimit || 20}s</div>
+            <button id="btn-toggle-bgm" class="btn btn-outline-sm" style="background: rgba(56, 189, 248, 0.2); border-color: #38bdf8; color: #fff; font-weight: bold;">
+              ${AudioEngine.bgmPlaying ? '🎵 BGM 끄기' : '🎵 BGM 켜기'}
+            </button>
+            <div style="font-size: 1.4rem; font-weight: bold; color: #38bdf8;">
+              제출 인원: <span id="resp-count">${responseCount}</span> / ${participantCount}명
+            </div>
+          </div>
+          <div class="question-card">
+            <h1 class="question-title">${escapeHtml(currentQ.question || '')}</h1>
+            ${currentQ.isDoublePoints ? `<div style="color: #fbbf24; font-size: 1.2rem; font-weight: bold; margin-top: 10px;">⚡ 점수 2배 이벤트 문항!</div>` : ''}
+          </div>
+          <div id="display-main-content" style="flex: 1; display: flex; flex-direction: column;">
+            ${renderQuestionContent(currentQ, responses, status)}
+          </div>
+          ${isTeacherControl ? `
+            <div style="display: flex; justify-content: flex-end; gap: 16px; margin-top: 20px;">
+              ${status === 'PLAYING' ? `<button class="btn btn-danger" id="btn-force-finish">⏹️ 응답 마감 및 정답 공개</button>` : ''}
+              ${status === 'SHOW_ANSWER' ? `<button class="btn btn-primary" id="btn-show-ranking">📊 중간 순위 보기 (1~5위)</button>` : ''}
+            </div>
+          ` : ''}
+        </div>
+      `;
+
+      document.getElementById('btn-toggle-bgm')?.addEventListener('click', (e) => {
+        const isPlaying = AudioEngine.toggleBGM();
+        e.currentTarget.textContent = isPlaying ? '🎵 BGM 끄기' : '🎵 BGM 켜기';
+      });
+
+      document.getElementById('btn-force-finish')?.addEventListener('click', () => {
+        if (timerInterval) clearInterval(timerInterval);
+        processQuestionResults(roomId, state.roomData || roomData);
+      });
+
+      document.getElementById('btn-show-ranking')?.addEventListener('click', () => {
+        AudioEngine.playCorrect();
+        updateRoomMeta(roomId, { status: 'SHOW_RANKING' });
+      });
     }
 
-    document.getElementById('btn-force-finish')?.addEventListener('click', () => {
-      if (timerInterval) clearInterval(timerInterval);
-      processQuestionResults(roomId, roomData);
-    });
+    if (status === 'PLAYING') {
+      if (activeTimerQIndex !== qIndex) {
+        activeTimerQIndex = qIndex;
+        if (timerInterval) clearInterval(timerInterval);
+        const timeLimit = currentQ.timeLimit || 20;
+        const startedAt = meta.timerStartedAt || Date.now();
 
-    document.getElementById('btn-show-ranking')?.addEventListener('click', () => {
-      AudioEngine.playCorrect();
-      updateRoomMeta(roomId, { status: 'SHOW_RANKING' });
-    });
+        timerInterval = setInterval(() => {
+          const currentMeta = state.roomData?.meta || {};
+          const currentStartedAt = currentMeta.timerStartedAt || startedAt;
+          const elapsed = Math.floor((Date.now() - currentStartedAt) / 1000);
+          const remaining = Math.max(0, timeLimit - elapsed);
+          const timerEl = document.getElementById('display-timer');
+          if (timerEl) timerEl.textContent = `⏱️ ${remaining}s`;
+          if (remaining > 0 && remaining <= 5) AudioEngine.playTick();
+          if (remaining <= 0) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+            if (isTeacherControl) processQuestionResults(roomId, state.roomData || roomData);
+          }
+        }, 1000);
+      }
+    } else {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      activeTimerQIndex = -1;
+    }
   }
 
   function renderIntermediateLeaderboardView(container, roomData, roomId, isTeacherControl) {
-    const participants = Object.values(roomData.participants || {});
-    participants.sort((a, b) => (b.score || 0) - (a.score || 0));
-    const top5 = participants.slice(0, 5);
     const meta = roomData.meta || {};
     const qIndex = meta.currentQuestionIndex || 0;
     const questions = roomData.questions || [];
     const isLastQ = qIndex + 1 >= questions.length;
 
+    const existingIntCard = document.getElementById('intermediate-ranking-card');
+    if (existingIntCard && existingIntCard.dataset.qindex == qIndex) {
+      return;
+    }
+
+    const participants = Object.values(roomData.participants || {});
+    participants.sort((a, b) => (b.score || 0) - (a.score || 0));
+    const top5 = participants.slice(0, 5);
+
     container.innerHTML = `
-      <div class="quiz-display-container">
+      <div class="quiz-display-container" id="intermediate-ranking-card" data-qindex="${qIndex}">
         <div class="leaderboard-container">
           <h1 class="leaderboard-title">📊 중간 점수 순위 (Top 5)</h1>
           <p style="text-align: center; color: var(--text-muted); margin-bottom: 20px; font-size: 1.1rem;">
@@ -1099,6 +1158,10 @@
   }
 
   function renderLeaderboardView(container, roomData, isTeacherControl) {
+    if (document.getElementById('final-podium-container')) {
+      return;
+    }
+
     const participants = Object.values(roomData.participants || {});
     participants.sort((a, b) => (b.score || 0) - (a.score || 0));
     const first = participants[0] || { nickname: '1위', avatar: '🥇', score: 0 };
@@ -1108,7 +1171,7 @@
     AudioEngine.playFanfare();
 
     container.innerHTML = `
-      <div class="quiz-display-container">
+      <div class="quiz-display-container" id="final-podium-container">
         <div class="leaderboard-container">
           <h1 class="leaderboard-title" style="font-size: 2.8rem;">🏆 최종 퀴즈 시상식</h1>
           
@@ -1167,8 +1230,9 @@
     const myParticipant = (roomData.participants && roomData.participants[studentId]) || {};
 
     if (status === 'LOBBY') {
+      if (document.getElementById('student-lobby-card')) return;
       container.innerHTML = `
-        <div class="mobile-view">
+        <div class="mobile-view" id="student-lobby-card">
           <div class="mobile-card">
             <div style="font-size: 3.5rem; margin-bottom: 12px;">${avatar}</div>
             <h2 style="font-size: 1.6rem; color: #38bdf8;">${avatar} ${escapeHtml(nickname)} 님, 대기 중!</h2>
@@ -1182,11 +1246,14 @@
     }
 
     if (status === 'SHOW_RANKING') {
+      const existingRankCard = document.getElementById('student-ranking-card');
+      if (existingRankCard && existingRankCard.dataset.qindex == qIndex) return;
+
       const allP = Object.values(roomData.participants || {});
       allP.sort((a, b) => (b.score || 0) - (a.score || 0));
       const myRank = allP.findIndex(p => p.nickname === nickname) + 1;
       container.innerHTML = `
-        <div class="mobile-view">
+        <div class="mobile-view" id="student-ranking-card" data-qindex="${qIndex}">
           <div class="mobile-card" style="text-align: center; border-color: #f59e0b;">
             <div style="font-size: 3.5rem; margin-bottom: 12px;">${avatar}</div>
             <h2 style="font-size: 1.5rem; color: #fbbf24;">현재 ${myRank > 0 ? myRank + '위' : '순위 집계 중'} / 총 ${allP.length}명</h2>
@@ -1199,6 +1266,7 @@
     }
 
     if (status === 'FINISHED') {
+      if (document.getElementById('student-final-card')) return;
       renderStudentFinalFeedback(container, roomData, studentId, nickname, avatar);
       return;
     }
@@ -1206,16 +1274,18 @@
     const existingPadCard = document.getElementById('student-pad-card');
     const renderedQIndex = existingPadCard ? Number(existingPadCard.dataset.qindex) : -1;
     const renderedStatus = existingPadCard ? existingPadCard.dataset.status : '';
+    const hasMyResponseAlready = existingPadCard ? existingPadCard.dataset.submitted === 'true' : false;
 
-    if (existingPadCard && renderedQIndex === qIndex && renderedStatus === status && !myResponse) {
-      const textInput = document.getElementById('input-student-text');
-      if (textInput) {
+    if (existingPadCard && renderedQIndex === qIndex && renderedStatus === status) {
+      if (!myResponse) {
+        return;
+      } else if (hasMyResponseAlready) {
         return;
       }
     }
 
     container.innerHTML = `
-      <div class="mobile-view">
+      <div class="mobile-view" id="student-pad-card" data-qindex="${qIndex}" data-status="${status}" data-submitted="${!!myResponse}">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
           <span class="room-badge" style="font-size: 0.95rem;">Q${qIndex + 1} / ${questions.length}</span>
           <span style="font-weight: 800; color: #38bdf8; font-size: 1.1rem;">${avatar} ${escapeHtml(nickname)} (${myParticipant.score || 0}점)</span>
@@ -1310,7 +1380,7 @@
     const myP = roomData.participants[studentId] || {};
 
     container.innerHTML = `
-      <div class="mobile-view">
+      <div class="mobile-view" id="student-final-card">
         <div class="mobile-card">
           <div style="font-size: 3.5rem; margin-bottom: 10px;">${avatar}</div>
           <h1 style="font-size: 2.2rem; color: #fbbf24; margin-bottom: 12px;">🏆 수고하셨습니다!</h1>
