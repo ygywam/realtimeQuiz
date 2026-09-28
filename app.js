@@ -729,7 +729,7 @@
           </div>
           <div style="display: flex; gap: 12px;">
             ${isTeacherControl ? '<button class="btn btn-secondary" id="btn-open-edit">📝 문제 출제 / 편집 (' + questions.length + '개)</button>' : ''}
-            ${isTeacherControl ? '<button class="btn btn-primary" id="btn-start-quiz" style="font-size: 1.25rem; padding: 14px 32px;">🚀 퀴즈 시작</button>' : ''}
+            <button class="btn btn-primary" id="btn-start-quiz" style="font-size: 1.25rem; padding: 14px 32px;">🚀 퀴즈 시작</button>
           </div>
         </div>
 
@@ -927,7 +927,7 @@
           <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; background: #0f172a; padding: 16px; border-radius: 12px;">
             <span style="width: 100%; font-weight: bold; margin-bottom: 4px;">+ 새 문항 유형 선택 추가:</span>
             <button class="btn btn-outline-sm" id="btn-add-ox">+ O/X 참거짓</button>
-            <button class="btn btn-outline-sm" id="btn-add-choice">+ 4지선다형</button>
+            <button class="btn btn-outline-sm" id="btn-add-choice">+ 선다형 (2~5지선다)</button>
             <button class="btn btn-outline-sm" id="btn-add-short">+ 단답형</button>
             <button class="btn btn-outline-sm" id="btn-add-wordcloud">+ 워드클라우드</button>
             <button class="btn btn-outline-sm" id="btn-add-postit">+ 포스트잇 브레인스토밍</button>
@@ -990,6 +990,31 @@
       container.querySelectorAll('.btn-delete-q').forEach(btn => {
         btn.addEventListener('click', (e) => { questions.splice(Number(e.target.dataset.idx), 1); renderEditorList(); });
       });
+
+      container.querySelectorAll('.btn-add-option').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const qIdx = Number(e.currentTarget.dataset.qidx);
+          if (questions[qIdx].options.length < 5) {
+            questions[qIdx].options.push(`보기 ${questions[qIdx].options.length + 1}`);
+            renderEditorList();
+          }
+        });
+      });
+
+      container.querySelectorAll('.btn-del-option').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const qIdx = Number(e.currentTarget.dataset.qidx);
+          const optIdx = Number(e.currentTarget.dataset.optidx);
+          if (questions[qIdx].options.length > 2) {
+            questions[qIdx].options.splice(optIdx, 1);
+            if (questions[qIdx].correctAnswer >= questions[qIdx].options.length) {
+              questions[qIdx].correctAnswer = 0;
+            }
+            renderEditorList();
+          }
+        });
+      });
+
       container.querySelectorAll('.opt-text-input').forEach(input => {
         input.addEventListener('input', (e) => {
           questions[Number(e.target.dataset.qidx)].options[Number(e.target.dataset.optidx)] = e.target.value;
@@ -1014,7 +1039,7 @@
       renderEditorList();
     });
     document.getElementById('btn-add-choice').addEventListener('click', () => {
-      questions.push({ id: 'q_' + Date.now(), type: 'choice', question: '신규 4지선다 질문입니다.', options: ['보기 1', '보기 2', '보기 3', '보기 4'], correctAnswer: 0, timeLimit: 20, isDoublePoints: false });
+      questions.push({ id: 'q_' + Date.now(), type: 'choice', question: '신규 선다형 질문입니다.', options: ['보기 1', '보기 2'], correctAnswer: 0, timeLimit: 20, isDoublePoints: false });
       renderEditorList();
     });
     document.getElementById('btn-add-short').addEventListener('click', () => {
@@ -1041,20 +1066,31 @@
 
   function getQuestionTypeLabel(type) {
     switch(type) {
-      case 'ox': return 'O/X 참거짓'; case 'choice': return '4지선다'; case 'short': return '단답형'; case 'wordcloud': return '워드클라우드'; case 'postit': return '포스트잇'; default: return '퀴즈';
+      case 'ox': return 'O/X 참거짓'; case 'choice': return '선다형'; case 'short': return '단답형'; case 'wordcloud': return '워드클라우드'; case 'postit': return '포스트잇'; default: return '퀴즈';
     }
   }
 
   function renderTypeSpecificEditor(q, idx) {
     if (q.type === 'ox' || q.type === 'choice') {
+      const isChoice = q.type === 'choice';
       return `
-        <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px;">보기 수정 및 정답 선택 (라디오 버튼 클릭):</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <div style="font-size: 0.9rem; color: var(--text-muted);">보기 수정 및 정답 선택 (라디오 버튼 클릭):</div>
+          ${isChoice ? `
+            <div style="display: flex; gap: 8px;">
+              ${q.options.length < 5 ? `<button type="button" class="btn btn-outline-sm btn-add-option" data-qidx="${idx}" style="padding: 4px 10px; font-size: 0.8rem;">+ 보기 추가</button>` : ''}
+            </div>
+          ` : ''}
+        </div>
         <div style="display: flex; flex-direction: column; gap: 8px;">
           ${q.options.map((opt, optIdx) => `
             <div style="display: flex; align-items: center; gap: 10px;">
               <input type="radio" class="correct-radio" name="correct_${idx}" data-qidx="${idx}" value="${optIdx}" ${q.correctAnswer == optIdx ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
               <span style="font-weight: bold; min-width: 24px;">${optIdx + 1}.</span>
-              <input type="text" class="opt-text-input" data-qidx="${idx}" data-optidx="${optIdx}" value="${escapeHtml(opt)}" placeholder="보기 내용 입력" style="flex: 1; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: #fff;">
+              <input type="text" class="opt-text-input" data-qidx="${idx}" data-optidx="${optIdx}" value="${escapeHtml(opt)}" placeholder="보기 내용 입력 (비워두면 자동 제외)" style="flex: 1; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: #fff;">
+              ${isChoice && q.options.length > 2 ? `
+                <button type="button" class="btn btn-danger btn-del-option" data-qidx="${idx}" data-optidx="${optIdx}" style="padding: 4px 8px; font-size: 0.8rem;">❌</button>
+              ` : ''}
             </div>
           `).join('')}
         </div>
@@ -1229,14 +1265,13 @@
               <button class="btn btn-primary" id="btn-show-ceremony" style="font-size: 1.2rem; padding: 12px 32px;">🏆 최종 시상식 결과 보기</button>
             ` : `
               <button class="btn btn-primary" id="btn-next-question-rank" style="font-size: 1.2rem; padding: 12px 32px;">➡️ 다음 문제로 이동 (Q${qIndex + 2})</button>
-            `) : ''}
-            <button class="btn btn-secondary" id="btn-go-home-inter" style="font-size: 1.1rem; padding: 12px 24px;">🏠 메인으로</button>
+            `) : (isLastQ ? `
+              <button class="btn btn-primary" id="btn-show-ceremony" style="font-size: 1.2rem; padding: 12px 32px;">🏆 최종 시상식 결과 보기</button>
+            ` : `<p style="color: #38bdf8; font-size: 1.1rem;">선생님이 다음 문제를 진행할 때까지 대기 중입니다...</p>`)}
           </div>
         </div>
       </div>
     `;
-
-    document.getElementById('btn-go-home-inter')?.addEventListener('click', () => window.location.search = '');
 
     document.getElementById('btn-show-ceremony')?.addEventListener('click', () => {
       AudioEngine.playFanfare();
@@ -1251,16 +1286,25 @@
     const showAnswer = status === 'SHOW_ANSWER';
 
     if (currentQ.type === 'ox' || currentQ.type === 'choice') {
-      const options = currentQ.options || [];
-      const counts = options.map((_, idx) => Object.values(responses).filter(r => Number(r.answer) === idx).length);
+      const rawOptions = currentQ.options || [];
+      const validIndices = [];
+      const options = [];
+      rawOptions.forEach((opt, idx) => {
+        if (String(opt || '').trim() !== '') {
+          validIndices.push(idx);
+          options.push(opt);
+        }
+      });
+      const counts = validIndices.map(idx => Object.values(responses).filter(r => Number(r.answer) === idx).length);
       return `
         <div class="options-grid">
-          ${options.map((opt, idx) => {
-            const isCorrect = showAnswer && idx === currentQ.correctAnswer;
+          ${options.map((opt, displayIdx) => {
+            const realIdx = validIndices[displayIdx];
+            const isCorrect = showAnswer && realIdx === currentQ.correctAnswer;
             return `
-              <div class="option-card-display opt-${idx} ${isCorrect ? 'correct-highlight' : ''}">
+              <div class="option-card-display opt-${realIdx} ${isCorrect ? 'correct-highlight' : ''}">
                 <span>${opt} ${isCorrect ? ' (정답! 🎉)' : ''}</span>
-                <span class="count-bar">${counts[idx]}명</span>
+                <span class="count-bar">${counts[displayIdx]}명</span>
               </div>
             `;
           }).join('')}
@@ -1362,16 +1406,50 @@
             </div>
           `).join('')}
 
-          <div style="display: flex; justify-content: center; gap: 16px; margin-top: 30px;">
-            <button class="btn btn-success" id="btn-export-csv" style="font-size: 1.2rem;">📥 전체 결과 CSV 내보내기</button>
-            <button class="btn btn-secondary" id="btn-restart-app" style="font-size: 1.2rem;">🏠 메인으로 돌아가기</button>
+          <div style="display: flex; justify-content: center; gap: 14px; margin-top: 30px; flex-wrap: wrap;">
+            <button class="btn btn-success" id="btn-export-csv" style="font-size: 1.1rem; padding: 12px 20px;">📥 전체 결과 CSV 내보내기</button>
+            <button class="btn btn-primary" id="btn-export-image" style="font-size: 1.1rem; padding: 12px 20px;">📸 결과 이미지 저장 (PNG)</button>
+            <button class="btn btn-danger" id="btn-reset-finish-app" style="font-size: 1.1rem; padding: 12px 20px;">🏁 퀴즈 완료 & 방 초기화 (메인으로)</button>
           </div>
         </div>
       </div>
     `;
 
     document.getElementById('btn-export-csv')?.addEventListener('click', () => exportResultsToCSV(roomData));
-    document.getElementById('btn-restart-app')?.addEventListener('click', () => window.location.search = '');
+
+    document.getElementById('btn-export-image')?.addEventListener('click', async () => {
+      const elem = document.getElementById('final-podium-container');
+      if (!elem) return;
+      if (window.html2canvas) {
+        try {
+          const canvas = await window.html2canvas(elem, { backgroundColor: '#090d16', scale: 2 });
+          const a = document.createElement('a');
+          a.download = `시상식_결과_PIN_${state.roomId}_${new Date().toISOString().slice(0, 10)}.png`;
+          a.href = canvas.toDataURL('image/png');
+          a.click();
+        } catch (err) {
+          alert('이미지 저장 중 오류가 발생했습니다: ' + err.message);
+        }
+      } else {
+        alert('이미지 저장 라이브러리를 준비 중입니다. 잠시 후 다시 시도해 주세요.');
+      }
+    });
+
+    document.getElementById('btn-reset-finish-app')?.addEventListener('click', async () => {
+      if (confirm('퀴즈를 완료 처리하고 대기실(LOBBY) 상태로 방을 초기화하시겠습니까?\n\n초기화 완료 후 메인 화면으로 돌아가며, 다음 클래스 수업 시 본 방으로 즉시 퀴즈를 다시 진행할 수 있습니다.')) {
+        await updateRoomMeta(state.roomId, { status: 'LOBBY', currentQuestionIndex: 0 });
+        if (db) {
+          try {
+            await db.ref(`rooms/${state.roomId}/participants`).remove();
+            await db.ref(`rooms/${state.roomId}/responses`).remove();
+          } catch (e) {}
+        } else {
+          await putFirebaseRest(`rooms/${state.roomId}/participants`, {});
+          await putFirebaseRest(`rooms/${state.roomId}/responses`, {});
+        }
+        window.location.search = '';
+      }
+    });
   }
 
   function renderStudentPadView(container, roomData, roomId, studentId, nickname, avatar = '🐶') {
@@ -1470,12 +1548,18 @@
 
   function renderPadControls(currentQ) {
     if (currentQ.type === 'ox' || currentQ.type === 'choice') {
-      const options = currentQ.options || [];
+      const rawOptions = currentQ.options || [];
+      const validOptions = [];
+      rawOptions.forEach((opt, idx) => {
+        if (String(opt || '').trim() !== '') {
+          validOptions.push({ opt, idx });
+        }
+      });
       return `
         <div class="mobile-pad-grid">
-          ${options.map((opt, idx) => `
-            <button class="btn-pad pad-${idx}" data-idx="${idx}">
-              ${opt}
+          ${validOptions.map(item => `
+            <button class="btn-pad pad-${item.idx}" data-idx="${item.idx}">
+              ${item.opt}
             </button>
           `).join('')}
         </div>
