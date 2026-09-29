@@ -1003,11 +1003,22 @@
             </div>
           </div>
           <div class="form-group" style="margin-bottom: 12px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
               <label style="font-size: 0.88rem; font-weight: bold;">질문 제목/내용:</label>
-              <span style="font-size: 0.8rem; color: #a5b4fc;">💡 LaTeX 수식 지원: $E=mc^2$ 또는 \( \frac{a}{b} \)</span>
+              <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                <button type="button" class="btn btn-outline-sm btn-open-formula" data-target="title_${idx}" style="padding: 3px 8px; font-size: 0.78rem; border-color: #38bdf8; color: #38bdf8; font-weight: bold; background: rgba(56, 189, 248, 0.1);">
+                  ∑ 수식·도구
+                </button>
+                <button type="button" class="btn btn-outline-sm btn-quick-fmt" data-target="title_${idx}" data-fmt="**" style="padding: 3px 6px; font-size: 0.78rem;"><b>B</b></button>
+                <button type="button" class="btn btn-outline-sm btn-quick-fmt" data-target="title_${idx}" data-fmt="*" style="padding: 3px 6px; font-size: 0.78rem;"><i>i</i></button>
+                <button type="button" class="btn btn-outline-sm btn-quick-sym" data-target="title_${idx}" data-sym="△" style="padding: 3px 6px; font-size: 0.78rem;">△</button>
+                <button type="button" class="btn btn-outline-sm btn-quick-sym" data-target="title_${idx}" data-sym="◯" style="padding: 3px 6px; font-size: 0.78rem;">◯</button>
+                <button type="button" class="btn btn-outline-sm btn-quick-sym" data-target="title_${idx}" data-sym="□" style="padding: 3px 6px; font-size: 0.78rem;">□</button>
+                <button type="button" class="btn btn-outline-sm btn-quick-sym" data-target="title_${idx}" data-sym="★" style="padding: 3px 6px; font-size: 0.78rem;">★</button>
+                <button type="button" class="btn btn-outline-sm btn-quick-sym" data-target="title_${idx}" data-sym="→" style="padding: 3px 6px; font-size: 0.78rem;">→</button>
+              </div>
             </div>
-            <input type="text" class="q-title-input" data-idx="${idx}" value="${escapeHtml(q.question)}" placeholder="질문 내용을 입력하세요 (LaTeX 수식 사용 가능)">
+            <input type="text" id="input_title_${idx}" class="q-title-input" data-idx="${idx}" value="${escapeHtml(q.question)}" placeholder="질문 내용을 입력하세요 (버튼으로 수식/도형/서식 쉽게 입력)">
           </div>
           <div class="form-group" style="margin-bottom: 12px;">
             <label style="font-size: 0.88rem; font-weight: bold;">🖼️ 문제 첨부 이미지 (선택):</label>
@@ -1051,6 +1062,43 @@
       });
       container.querySelectorAll('.btn-delete-q').forEach(btn => {
         btn.addEventListener('click', (e) => { questions.splice(Number(e.target.dataset.idx), 1); renderEditorList(); });
+      });
+
+      container.querySelectorAll('.btn-open-formula').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const targetId = 'input_' + e.currentTarget.dataset.target;
+          const inputEl = document.getElementById(targetId);
+          openFormulaEditorModal(inputEl);
+        });
+      });
+      container.querySelectorAll('.btn-quick-fmt').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const targetId = 'input_' + e.currentTarget.dataset.target;
+          const fmt = e.currentTarget.dataset.fmt;
+          const inputEl = document.getElementById(targetId);
+          if (inputEl) {
+            const start = inputEl.selectionStart || 0;
+            const end = inputEl.selectionEnd || inputEl.value.length;
+            const val = inputEl.value;
+            const sel = val.substring(start, end) || '텍스트';
+            inputEl.value = val.substring(0, start) + fmt + sel + fmt + val.substring(end);
+            inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        });
+      });
+      container.querySelectorAll('.btn-quick-sym').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const targetId = 'input_' + e.currentTarget.dataset.target;
+          const sym = e.currentTarget.dataset.sym;
+          const inputEl = document.getElementById(targetId);
+          if (inputEl) {
+            const start = inputEl.selectionStart || inputEl.value.length;
+            const end = inputEl.selectionEnd || inputEl.value.length;
+            const val = inputEl.value;
+            inputEl.value = val.substring(0, start) + sym + val.substring(end);
+            inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        });
       });
 
       container.querySelectorAll('.btn-add-option').forEach(btn => {
@@ -1149,7 +1197,8 @@
             <div style="display: flex; align-items: center; gap: 10px;">
               <input type="radio" class="correct-radio" name="correct_${idx}" data-qidx="${idx}" value="${optIdx}" ${q.correctAnswer == optIdx ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
               <span style="font-weight: bold; min-width: 24px;">${optIdx + 1}.</span>
-              <input type="text" class="opt-text-input" data-qidx="${idx}" data-optidx="${optIdx}" value="${escapeHtml(opt)}" placeholder="보기 내용 입력 (비워두면 자동 제외)" style="flex: 1; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: #fff;">
+              <input type="text" id="input_opt_${idx}_${optIdx}" class="opt-text-input" data-qidx="${idx}" data-optidx="${optIdx}" value="${escapeHtml(opt)}" placeholder="보기 내용 입력 (비워두면 자동 제외)" style="flex: 1; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: #fff;">
+              <button type="button" class="btn btn-outline-sm btn-open-formula" data-target="opt_${idx}_${optIdx}" style="padding: 4px 8px; font-size: 0.8rem; border-color: #38bdf8; color: #38bdf8;">∑</button>
               ${isChoice && q.options.length > 2 ? `
                 <button type="button" class="btn btn-danger btn-del-option" data-qidx="${idx}" data-optidx="${optIdx}" style="padding: 4px 8px; font-size: 0.8rem;">❌</button>
               ` : ''}
@@ -1160,8 +1209,11 @@
     } else if (q.type === 'short') {
       return `
         <div class="form-group" style="margin-top: 8px;">
-          <label>단답형 정답 텍스트:</label>
-          <input type="text" class="short-target-input" data-qidx="${idx}" value="${escapeHtml(q.correctText || '')}" placeholder="정답 단어/문장 입력">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <label style="font-weight: bold;">단답형 정답 텍스트:</label>
+            <button type="button" class="btn btn-outline-sm btn-open-formula" data-target="short_${idx}" style="padding: 3px 8px; font-size: 0.78rem; border-color: #38bdf8; color: #38bdf8;">∑ 수식 도구</button>
+          </div>
+          <input type="text" id="input_short_${idx}" class="short-target-input" data-qidx="${idx}" value="${escapeHtml(q.correctText || '')}" placeholder="정답 단어/문장 입력">
         </div>
       `;
     }
@@ -1401,9 +1453,32 @@
         </div>
       `;
     } else if (currentQ.type === 'wordcloud') {
+      const counts = {};
+      Object.values(responses).forEach(r => {
+        const word = String(r.answer || '').trim();
+        if (word) {
+          const key = word.toLowerCase();
+          if (!counts[key]) counts[key] = { display: word, count: 0 };
+          counts[key].count++;
+        }
+      });
+
+      const wordList = Object.values(counts);
+      if (wordList.length === 0) {
+        return `<div style="text-align: center; color: var(--text-muted); padding: 40px; font-size: 1.2rem;">학생들의 워드클라우드 응답을 기다리는 중입니다...</div>`;
+      }
+
       return `
         <div class="wordcloud-container">
-          ${Object.values(responses).map(r => `<div class="word-chip">${parseMath(r.answer)}</div>`).join('')}
+          ${wordList.map(item => {
+            const freqClass = item.count >= 3 ? 'freq-3' : (item.count === 2 ? 'freq-2' : 'freq-1');
+            return `
+              <div class="word-chip ${freqClass}">
+                <span>${parseMath(item.display)}</span>
+                ${item.count > 1 ? `<span style="font-size: 0.8em; background: rgba(255,255,255,0.25); padding: 2px 8px; border-radius: 999px;">${item.count}</span>` : ''}
+              </div>
+            `;
+          }).join('')}
         </div>
       `;
     } else if (currentQ.type === 'postit') {
@@ -1811,20 +1886,54 @@
     const participants = Object.values(roomData.participants || {});
     participants.sort((a, b) => (b.score || 0) - (a.score || 0));
     const myRank = participants.findIndex(p => p.nickname === nickname) + 1;
-    const myP = roomData.participants[studentId] || {};
+    const myP = (roomData.participants && roomData.participants[studentId]) || {};
 
     container.innerHTML = `
       <div class="mobile-view" id="student-final-card">
-        <div class="mobile-card">
+        <div class="mobile-card" style="text-align: center;">
           <div style="font-size: 3.5rem; margin-bottom: 10px;">${avatar}</div>
           <h1 style="font-size: 2.2rem; color: #fbbf24; margin-bottom: 12px;">🏆 수고하셨습니다!</h1>
-          <h2 style="font-size: 1.5rem; color: #fff;">${avatar} ${escapeHtml(nickname)} 님의 최종 결과</h2>
+          <h2 style="font-size: 1.4rem; color: #fff;">${avatar} ${escapeHtml(nickname)} 님의 최종 결과</h2>
           <div style="font-size: 2rem; font-weight: 900; color: #38bdf8; margin: 16px 0;">
             ${myP.score || 0}점 (전체 ${myRank}위 / ${participants.length}명)
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 24px;">
+            <button class="btn btn-primary" id="btn-student-join-new" style="font-size: 1.1rem; padding: 12px;">🚀 다른 퀴즈 참여하기 (PIN 입력)</button>
+            <button class="btn btn-secondary" id="btn-student-finish-home" style="font-size: 1.1rem; padding: 12px;">🏁 퀴즈 종료 (메인 홈으로)</button>
+          </div>
+
+          <div id="pin-modal-student" style="display: none; margin-top: 20px; background: #0f172a; padding: 16px; border-radius: 12px; border: 1px solid #38bdf8;">
+            <h4 style="font-size: 1.1rem; color: #38bdf8; margin-bottom: 10px;">새로운 퀴즈 방 PIN 번호 입력</h4>
+            <input type="text" id="input-new-pin-student" placeholder="6자리 PIN 번호" maxlength="6" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: #1e293b; color: #fff; text-align: center; font-size: 1.3rem; font-weight: bold; margin-bottom: 10px;">
+            <button class="btn btn-primary" id="btn-submit-new-pin-student" style="width: 100%; font-size: 1.1rem;">접속 및 참여하기</button>
           </div>
         </div>
       </div>
     `;
+
+    document.getElementById('btn-student-finish-home')?.addEventListener('click', () => {
+      window.location.search = '';
+    });
+
+    document.getElementById('btn-student-join-new')?.addEventListener('click', () => {
+      const modal = document.getElementById('pin-modal-student');
+      if (modal) {
+        modal.style.display = modal.style.display === 'none' ? 'block' : 'none';
+        if (modal.style.display === 'block') {
+          document.getElementById('input-new-pin-student')?.focus();
+        }
+      }
+    });
+
+    document.getElementById('btn-submit-new-pin-student')?.addEventListener('click', () => {
+      const pin = document.getElementById('input-new-pin-student').value.trim();
+      if (pin.length === 6) {
+        window.location.search = `?room=${pin}&role=student`;
+      } else {
+        alert('6자리 PIN 번호를 입력해 주세요.');
+      }
+    });
   }
 
   function openFirebaseInfoModal() {
@@ -1897,6 +2006,11 @@
     if (!str) return '';
     if (typeof str !== 'string') return str;
     let text = escapeHtml(str);
+
+    // Markdown bold & italic formatting
+    text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
+
     if (window.katex) {
       text = text.replace(/\$\$(.*?)\$\$/g, (match, math) => {
         try { return window.katex.renderToString(unescapeHtml(math), { displayMode: true, throwOnError: false }); } catch (e) { return match; }
@@ -1937,6 +2051,133 @@
       img.src = e.target.result;
     };
     reader.readAsDataURL(file);
+  }
+
+  function openFormulaEditorModal(targetInput) {
+    let activeInput = targetInput || document.activeElement;
+    const modalHtml = `
+      <div id="formula-helper-modal" class="modal-overlay" style="z-index: 9999;">
+        <div class="modal-box" style="max-width: 680px; width: 92%; background: #0f172a; border: 2px solid #38bdf8;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
+            <h3 style="margin: 0; color: #38bdf8; font-size: 1.3rem;">∑ 수식 & 서식 보조 편집 도구</h3>
+            <button id="btn-close-formula-modal" class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.9rem;">✕ 닫기</button>
+          </div>
+          <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 12px;">
+            LaTeX 문법을 몰라도 아래 기호/공식 버튼을 클릭하면 수식이 자동 생성됩니다. 입력 시 아래에 실시간 결과가 렌더링됩니다.
+          </p>
+
+          <div style="background: #1e293b; border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 14px;">
+            <div style="font-size: 0.8rem; font-weight: bold; color: #fbbf24; margin-bottom: 8px;">자주 쓰는 수식 & 기호 팔레트 (클릭 시 자동 입력)</div>
+            
+            <div style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 4px;">[분수 / 거듭제곱 / 근호 / 공식]</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\frac{a}{b}" style="font-size: 0.8rem; padding: 4px 8px;">분수 \\frac{a}{b}</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="x^{2}" style="font-size: 0.8rem; padding: 4px 8px;">거듭제곱 x²</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="x_{1}" style="font-size: 0.8rem; padding: 4px 8px;">아래첨자 x₁</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\sqrt{x}" style="font-size: 0.8rem; padding: 4px 8px;">제곱근 √x</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\sqrt[n]{x}" style="font-size: 0.8rem; padding: 4px 8px;">n제곱근</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\sum_{i=1}^{n}" style="font-size: 0.8rem; padding: 4px 8px;">시그마 ∑</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\int_{a}^{b}" style="font-size: 0.8rem; padding: 4px 8px;">적분 ∫</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\lim_{x \\to 0}" style="font-size: 0.8rem; padding: 4px 8px;">극한 lim</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\sin\\theta" style="font-size: 0.8rem; padding: 4px 8px;">sinθ</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\cos\\theta" style="font-size: 0.8rem; padding: 4px 8px;">cosθ</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\tan\\theta" style="font-size: 0.8rem; padding: 4px 8px;">tanθ</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\log x" style="font-size: 0.8rem; padding: 4px 8px;">log x</button>
+            </div>
+
+            <div style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 4px;">[도형 및 연산 기호]</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\triangle" style="font-size: 0.8rem; padding: 4px 8px;">△ 삼각형</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\bigcirc" style="font-size: 0.8rem; padding: 4px 8px;">◯ 원</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\square" style="font-size: 0.8rem; padding: 4px 8px;">□ 사각형</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\star" style="font-size: 0.8rem; padding: 4px 8px;">★ 별</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\angle" style="font-size: 0.8rem; padding: 4px 8px;">∠ 각도</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\perp" style="font-size: 0.8rem; padding: 4px 8px;">⊥ 수직</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\parallel" style="font-size: 0.8rem; padding: 4px 8px;">∥ 평행</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\alpha" style="font-size: 0.8rem; padding: 4px 8px;">α</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\beta" style="font-size: 0.8rem; padding: 4px 8px;">β</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\theta" style="font-size: 0.8rem; padding: 4px 8px;">θ</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\pi" style="font-size: 0.8rem; padding: 4px 8px;">π</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\times" style="font-size: 0.8rem; padding: 4px 8px;">×</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\div" style="font-size: 0.8rem; padding: 4px 8px;">÷</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\pm" style="font-size: 0.8rem; padding: 4px 8px;">±</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\neq" style="font-size: 0.8rem; padding: 4px 8px;">≠</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\le" style="font-size: 0.8rem; padding: 4px 8px;">≤</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\ge" style="font-size: 0.8rem; padding: 4px 8px;">≥</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\approx" style="font-size: 0.8rem; padding: 4px 8px;">≈</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\infty" style="font-size: 0.8rem; padding: 4px 8px;">∞</button>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label style="font-weight: bold; font-size: 0.9rem; color: #fff;">LaTeX / 수식 텍스트 입력:</label>
+            <input type="text" id="formula-latex-input" class="input-nickname" placeholder="예: \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}" style="margin-top: 4px; font-family: monospace; font-size: 1.05rem;">
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <label style="font-weight: bold; font-size: 0.9rem; color: #fff;">📐 실시간 수식 미리보기:</label>
+            <div id="formula-live-preview" style="background: #ffffff; color: #000; border-radius: 8px; padding: 16px; min-height: 60px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; overflow-x: auto; margin-top: 4px;">
+              <span style="color: #94a3b8; font-size: 0.95rem;">수식을 입력하면 이곳에 완성된 모습이 보입니다.</span>
+            </div>
+          </div>
+
+          <div class="modal-actions" style="justify-content: flex-end; gap: 10px;">
+            <button class="btn btn-secondary" id="btn-cancel-formula">취소</button>
+            <button class="btn btn-primary" id="btn-apply-formula">📥 문제/입력창에 수식 완료 삽입</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    const inputEl = document.getElementById('formula-latex-input');
+    const previewEl = document.getElementById('formula-live-preview');
+
+    const updatePreview = () => {
+      const val = inputEl.value.trim();
+      if (!val) {
+        previewEl.innerHTML = `<span style="color: #94a3b8; font-size: 0.95rem;">수식을 입력하면 이곳에 완성된 모습이 보입니다.</span>`;
+      } else {
+        previewEl.innerHTML = parseMath('$' + val + '$');
+      }
+    };
+
+    inputEl.addEventListener('input', updatePreview);
+
+    document.querySelectorAll('.btn-f-sym').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const insertText = e.currentTarget.dataset.insert;
+        const start = inputEl.selectionStart || inputEl.value.length;
+        const end = inputEl.selectionEnd || inputEl.value.length;
+        const oldVal = inputEl.value;
+        inputEl.value = oldVal.substring(0, start) + insertText + oldVal.substring(end);
+        inputEl.focus();
+        inputEl.setSelectionRange(start + insertText.length, start + insertText.length);
+        updatePreview();
+      });
+    });
+
+    document.getElementById('btn-close-formula-modal')?.addEventListener('click', () => {
+      document.getElementById('formula-helper-modal')?.remove();
+    });
+    document.getElementById('btn-cancel-formula')?.addEventListener('click', () => {
+      document.getElementById('formula-helper-modal')?.remove();
+    });
+
+    document.getElementById('btn-apply-formula')?.addEventListener('click', () => {
+      const val = inputEl.value.trim();
+      if (!val) return alert('수식을 먼저 입력해 주세요.');
+      const formatted = ` $${val}$ `;
+      if (activeInput && (activeInput.tagName === 'INPUT' || activeInput.tagName === 'TEXTAREA')) {
+        const start = activeInput.selectionStart || activeInput.value.length;
+        const end = activeInput.selectionEnd || activeInput.value.length;
+        const oldVal = activeInput.value;
+        activeInput.value = oldVal.substring(0, start) + formatted + oldVal.substring(end);
+        activeInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      document.getElementById('formula-helper-modal')?.remove();
+    });
   }
 
   if (document.readyState === 'complete' || document.readyState === 'interactive') {

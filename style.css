@@ -627,3 +627,66 @@ body.theme-woodlock h1, body.theme-woodlock h2, body.theme-woodlock h3 {
 .app-footer .instagram-link:hover {
   text-decoration: underline !important;
 }
+
+/* 워드클라우드 빈도 애니메이션 (흔들림 및 펄스 효과) */
+@keyframes wordWobble {
+  0% { transform: scale(1) rotate(0deg); }
+  25% { transform: scale(1.08) rotate(-3deg); }
+  50% { transform: scale(1.15) rotate(3deg); }
+  75% { transform: scale(1.1) rotate(-2deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+@keyframes wordPulse {
+  0% { transform: scale(1.15); box-shadow: 0 0 10px rgba(56, 189, 248, 0.4); }
+  50% { transform: scale(1.3); box-shadow: 0 0 25px rgba(56, 189, 248, 0.8); }
+  100% { transform: scale(1.15); box-shadow: 0 0 10px rgba(56, 189, 248, 0.4); }
+}
+
+.wordcloud-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: center;
+  align-items: center;
+  padding: 30px;
+  min-height: 250px;
+}
+
+.word-chip {
+  background: var(--card-dark);
+  border: 2px solid var(--primary);
+  color: #fff;
+  padding: 10px 22px;
+  border-radius: 999px;
+  font-weight: bold;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+  animation: wordWobble 3s infinite ease-in-out;
+  user-select: none;
+}
+
+.word-chip.freq-1 {
+  font-size: 1.1rem;
+  border-color: #475569;
+  background: #1e293b;
+  opacity: 0.88;
+}
+
+.word-chip.freq-2 {
+  font-size: 1.55rem;
+  border-color: #38bdf8;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.15);
+  animation: wordWobble 2s infinite ease-in-out;
+}
+
+.word-chip.freq-3 {
+  font-size: 2.2rem;
+  border-color: #fbbf24;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.2);
+  animation: wordPulse 1.8s infinite ease-in-out;
+}
