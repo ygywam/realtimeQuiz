@@ -1003,8 +1003,19 @@
             </div>
           </div>
           <div class="form-group" style="margin-bottom: 12px;">
-            <label style="font-size: 0.88rem;">질문 제목/내용:</label>
-            <input type="text" class="q-title-input" data-idx="${idx}" value="${escapeHtml(q.question)}" placeholder="질문 내용을 입력하세요">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <label style="font-size: 0.88rem; font-weight: bold;">질문 제목/내용:</label>
+              <span style="font-size: 0.8rem; color: #a5b4fc;">💡 LaTeX 수식 지원: $E=mc^2$ 또는 \( \frac{a}{b} \)</span>
+            </div>
+            <input type="text" class="q-title-input" data-idx="${idx}" value="${escapeHtml(q.question)}" placeholder="질문 내용을 입력하세요 (LaTeX 수식 사용 가능)">
+          </div>
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label style="font-size: 0.88rem; font-weight: bold;">🖼️ 문제 첨부 이미지 (선택):</label>
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 4px;">
+              <input type="file" class="q-image-file" data-idx="${idx}" accept="image/*" style="font-size: 0.85rem; color: var(--text-muted);">
+              ${q.imageUrl ? `<button type="button" class="btn btn-danger btn-del-image" data-idx="${idx}" style="padding: 4px 10px; font-size: 0.8rem;">❌ 이미지 삭제</button>` : ''}
+            </div>
+            ${q.imageUrl ? `<div style="margin-top: 8px;"><img src="${q.imageUrl}" style="max-height: 120px; border-radius: 8px; border: 1px solid var(--border);"></div>` : ''}
           </div>
           ${renderTypeSpecificEditor(q, idx)}
         </div>
@@ -1012,6 +1023,25 @@
 
       container.querySelectorAll('.q-title-input').forEach(input => {
         input.addEventListener('input', (e) => { questions[e.target.dataset.idx].question = e.target.value; });
+      });
+      container.querySelectorAll('.q-image-file').forEach(input => {
+        input.addEventListener('change', (e) => {
+          const qIdx = Number(e.target.dataset.idx);
+          const file = e.target.files[0];
+          if (file) {
+            compressImage(file, 600, (dataUrl) => {
+              questions[qIdx].imageUrl = dataUrl;
+              renderEditorList();
+            });
+          }
+        });
+      });
+      container.querySelectorAll('.btn-del-image').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const qIdx = Number(e.target.dataset.idx);
+          delete questions[qIdx].imageUrl;
+          renderEditorList();
+        });
       });
       container.querySelectorAll('.double-points-cb').forEach(cb => {
         cb.addEventListener('change', (e) => { questions[e.target.dataset.idx].isDoublePoints = e.target.checked; });
@@ -1206,7 +1236,8 @@
             </div>
           </div>
           <div class="question-card">
-            <h1 class="question-title">${escapeHtml(currentQ.question || '')}</h1>
+            <h1 class="question-title">${parseMath(currentQ.question || '')}</h1>
+            ${currentQ.imageUrl ? `<div style="text-align: center; margin-top: 14px;"><img src="${currentQ.imageUrl}" style="max-height: 320px; max-width: 100%; border-radius: 12px; box-shadow: 0 8px 20px rgba(0,0,0,0.4);"></div>` : ''}
             ${currentQ.isDoublePoints ? `<div style="color: #fbbf24; font-size: 1.2rem; font-weight: bold; margin-top: 10px;">⚡ 점수 2배 이벤트 문항!</div>` : ''}
           </div>
           <div id="display-main-content" style="flex: 1; display: flex; flex-direction: column;" data-resphash="${JSON.stringify(responses) + '_' + status}">
@@ -1348,7 +1379,7 @@
             const isCorrect = showAnswer && realIdx === currentQ.correctAnswer;
             return `
               <div class="option-card-display opt-${realIdx} ${isCorrect ? 'correct-highlight' : ''}">
-                <span>${opt} ${isCorrect ? ' (정답! 🎉)' : ''}</span>
+                <span>${parseMath(opt)} ${isCorrect ? ' (정답! 🎉)' : ''}</span>
                 <span class="count-bar">${counts[displayIdx]}명</span>
               </div>
             `;
@@ -1358,13 +1389,13 @@
     } else if (currentQ.type === 'short') {
       return `
         <div style="background: var(--card-dark); padding: 30px; border-radius: 16px; text-align: center; flex: 1;">
-          ${showAnswer ? `<h2 style="font-size: 2.2rem; color: #10b981; margin-bottom: 20px;">💡 정답: ${escapeHtml(currentQ.correctText)}</h2>` : `<h2 style="font-size: 1.8rem; color: #94a3b8;">학생들이 단답형 답안을 입력하는 중입니다...</h2>`}
+          ${showAnswer ? `<h2 style="font-size: 2.2rem; color: #10b981; margin-bottom: 20px;">💡 정답: ${parseMath(currentQ.correctText)}</h2>` : `<h2 style="font-size: 1.8rem; color: #94a3b8;">학생들이 단답형 답안을 입력하는 중입니다...</h2>`}
           <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; justify-content: center;">
             ${Object.entries(responses).map(([sid, r]) => {
               const p = (participants && participants[sid]) || {};
               const nick = p.nickname || r.nickname || '';
               const av = p.avatar || r.avatar || '';
-              return `<div class="student-tag" style="font-size: 1.1rem; background: #1e293b;">${av} ${escapeHtml(nick ? nick + ': ' : '')}${escapeHtml(r.answer)}</div>`;
+              return `<div class="student-tag" style="font-size: 1.1rem; background: #1e293b;">${av} ${escapeHtml(nick ? nick + ': ' : '')}${parseMath(r.answer)}</div>`;
             }).join('')}
           </div>
         </div>
@@ -1372,7 +1403,7 @@
     } else if (currentQ.type === 'wordcloud') {
       return `
         <div class="wordcloud-container">
-          ${Object.values(responses).map(r => `<div class="word-chip">${escapeHtml(r.answer)}</div>`).join('')}
+          ${Object.values(responses).map(r => `<div class="word-chip">${parseMath(r.answer)}</div>`).join('')}
         </div>
       `;
     } else if (currentQ.type === 'postit') {
@@ -1388,9 +1419,8 @@
                   <span>${av}</span>
                   <span>${escapeHtml(nick)}</span>
                 </div>
-                <div style="font-size: 1.2rem; word-break: break-all; color: #451a03; font-weight: 700; line-height: 1.4;">
-                  ${escapeHtml(r.answer)}
-                </div>
+                ${r.drawing ? `<div style="text-align: center; margin-bottom: 6px;"><img src="${r.drawing}" style="max-width: 100%; max-height: 160px; border-radius: 6px; background: #fff; border: 1px solid rgba(120,53,15,0.2);"></div>` : ''}
+                ${r.answer ? `<div style="font-size: 1.1rem; word-break: break-all; color: #451a03; font-weight: 700; line-height: 1.4;">${parseMath(r.answer)}</div>` : ''}
               </div>
             `;
           }).join('')}
@@ -1568,7 +1598,8 @@
           <span style="font-weight: 800; color: #38bdf8; font-size: 1.1rem;">${avatar} ${escapeHtml(nickname)} (${myParticipant.score || 0}점)</span>
         </div>
         <div class="mobile-card">
-          <h3 style="font-size: 1.3rem; margin-bottom: 8px;">${escapeHtml(currentQ.question)}</h3>
+          <h3 style="font-size: 1.3rem; margin-bottom: 8px;">${parseMath(currentQ.question)}</h3>
+          ${currentQ.imageUrl ? `<div style="text-align: center; margin: 10px 0;"><img src="${currentQ.imageUrl}" style="max-height: 200px; max-width: 100%; border-radius: 8px; border: 1px solid var(--border);"></div>` : ''}
           ${currentQ.isDoublePoints ? `<span style="color: #fbbf24; font-weight: bold; font-size: 0.95rem;">⚡ 점수 2배 이벤트!</span>` : ''}
         </div>
         ${myResponse ? renderSubmittedLockView(myResponse, currentQ, status) : renderPadControls(currentQ)}
@@ -1588,6 +1619,95 @@
         if (!textVal) return alert('답안을 입력해 주세요!');
         await submitResponse(roomId, qIndex, studentId, { answer: textVal });
       });
+
+      if (currentQ.type === 'postit') {
+        const tabText = document.getElementById('tab-text');
+        const tabCanvas = document.getElementById('tab-canvas');
+        const secText = document.getElementById('postit-text-section');
+        const secCanvas = document.getElementById('postit-canvas-section');
+        const canvas = document.getElementById('postit-canvas');
+
+        if (tabText && tabCanvas && secText && secCanvas && canvas) {
+          tabText.addEventListener('click', () => {
+            secText.style.display = 'block';
+            secCanvas.style.display = 'none';
+            tabText.style.background = 'var(--primary)';
+            tabText.style.color = '#fff';
+            tabCanvas.style.background = 'transparent';
+            tabCanvas.style.color = 'var(--text-muted)';
+          });
+          tabCanvas.addEventListener('click', () => {
+            secText.style.display = 'none';
+            secCanvas.style.display = 'block';
+            tabCanvas.style.background = 'var(--primary)';
+            tabCanvas.style.color = '#fff';
+            tabText.style.background = 'transparent';
+            tabText.style.color = 'var(--text-muted)';
+          });
+
+          const ctx = canvas.getContext('2d');
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 6;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+
+          let isDrawing = false;
+          let hasDrawn = false;
+
+          const getPos = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return {
+              x: (clientX - rect.left) * (canvas.width / rect.width),
+              y: (clientY - rect.top) * (canvas.height / rect.height)
+            };
+          };
+
+          const startDraw = (e) => {
+            isDrawing = true;
+            hasDrawn = true;
+            const pos = getPos(e);
+            ctx.beginPath();
+            ctx.moveTo(pos.x, pos.y);
+          };
+          const draw = (e) => {
+            if (!isDrawing) return;
+            const pos = getPos(e);
+            ctx.lineTo(pos.x, pos.y);
+            ctx.stroke();
+          };
+          const stopDraw = () => {
+            if (isDrawing) {
+              ctx.closePath();
+              isDrawing = false;
+            }
+          };
+
+          canvas.addEventListener('mousedown', startDraw);
+          canvas.addEventListener('mousemove', draw);
+          canvas.addEventListener('mouseup', stopDraw);
+          canvas.addEventListener('mouseleave', stopDraw);
+
+          canvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDraw(e); }, { passive: false });
+          canvas.addEventListener('touchmove', (e) => { e.preventDefault(); draw(e); }, { passive: false });
+          canvas.addEventListener('touchend', stopDraw);
+
+          document.getElementById('draw-color')?.addEventListener('change', (e) => ctx.strokeStyle = e.target.value);
+          document.getElementById('draw-width')?.addEventListener('change', (e) => ctx.lineWidth = Number(e.target.value));
+          document.getElementById('btn-clear-canvas')?.addEventListener('click', () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            hasDrawn = false;
+          });
+
+          document.getElementById('btn-submit-postit')?.addEventListener('click', async () => {
+            const textVal = document.getElementById('input-student-text').value.trim();
+            const drawingData = hasDrawn ? canvas.toDataURL('image/png') : null;
+            if (!textVal && !drawingData) return alert('의견 텍스트를 입력하거나 그림을 그려주세요!');
+            await submitResponse(roomId, qIndex, studentId, { answer: textVal, drawing: drawingData });
+          });
+        }
+      }
     }
   }
 
@@ -1604,9 +1724,40 @@
         <div class="mobile-pad-grid">
           ${validOptions.map(item => `
             <button class="btn-pad pad-${item.idx}" data-idx="${item.idx}">
-              ${item.opt}
+              ${parseMath(item.opt)}
             </button>
           `).join('')}
+        </div>
+      `;
+    } else if (currentQ.type === 'postit') {
+      return `
+        <div class="mobile-card">
+          <div style="display: flex; gap: 8px; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
+            <button type="button" id="tab-text" class="btn btn-outline-sm" style="flex:1; background: var(--primary); color: #fff; font-weight: bold;">✏️ 텍스트</button>
+            <button type="button" id="tab-canvas" class="btn btn-outline-sm" style="flex:1; color: var(--text-muted); font-weight: bold;">🎨 그림 그리기</button>
+          </div>
+          <div id="postit-text-section">
+            <input type="text" id="input-student-text" class="input-nickname" placeholder="포스트잇 의견을 입력하세요" style="margin-top: 4px;">
+          </div>
+          <div id="postit-canvas-section" style="display: none;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <span style="font-size: 0.8rem; color: var(--text-muted);">색상:</span>
+                <input type="color" id="draw-color" value="#000000" style="width: 28px; height: 28px; border: none; border-radius: 4px; cursor: pointer; background: transparent;">
+                <span style="font-size: 0.8rem; color: var(--text-muted); margin-left: 4px;">굵기:</span>
+                <select id="draw-width" style="padding: 2px 6px; border-radius: 4px; background: #0f172a; color: #fff; border: 1px solid var(--border); font-size: 0.8rem;">
+                  <option value="3">얇게</option>
+                  <option value="6" selected>보통</option>
+                  <option value="12">굵게</option>
+                </select>
+              </div>
+              <button type="button" id="btn-clear-canvas" class="btn btn-outline-sm" style="padding: 4px 8px; font-size: 0.8rem; color: #ef4444; border-color: #ef4444;">🧹 지우기</button>
+            </div>
+            <div style="background: #ffffff; border-radius: 8px; padding: 4px; border: 2px solid var(--primary); touch-action: none;">
+              <canvas id="postit-canvas" width="300" height="180" style="width: 100%; height: 180px; display: block; border-radius: 6px; cursor: crosshair; background: #ffffff;"></canvas>
+            </div>
+          </div>
+          <button id="btn-submit-postit" class="btn btn-primary" style="width: 100%; font-size: 1.2rem; margin-top: 14px;">📌 포스트잇 제출하기</button>
         </div>
       `;
     } else {
@@ -1736,6 +1887,56 @@
 
   function escapeHtml(str) {
     return String(str || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function unescapeHtml(str) {
+    return String(str || '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  }
+
+  function parseMath(str) {
+    if (!str) return '';
+    if (typeof str !== 'string') return str;
+    let text = escapeHtml(str);
+    if (window.katex) {
+      text = text.replace(/\$\$(.*?)\$\$/g, (match, math) => {
+        try { return window.katex.renderToString(unescapeHtml(math), { displayMode: true, throwOnError: false }); } catch (e) { return match; }
+      });
+      text = text.replace(/\\\[(.*?)\\\]/g, (match, math) => {
+        try { return window.katex.renderToString(unescapeHtml(math), { displayMode: true, throwOnError: false }); } catch (e) { return match; }
+      });
+      text = text.replace(/\$(.*?)\$/g, (match, math) => {
+        try { return window.katex.renderToString(unescapeHtml(math), { displayMode: false, throwOnError: false }); } catch (e) { return match; }
+      });
+      text = text.replace(/\\\((.*?)\\\)/g, (match, math) => {
+        try { return window.katex.renderToString(unescapeHtml(math), { displayMode: false, throwOnError: false }); } catch (e) { return match; }
+      });
+    }
+    return text;
+  }
+
+  function compressImage(file, maxWidth, callback) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const img = new Image();
+      img.onload = function() {
+        const canvas = document.createElement('canvas');
+        let w = img.width;
+        let h = img.height;
+        if (w > maxWidth) {
+          h = Math.round((h * maxWidth) / w);
+          w = maxWidth;
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        callback(dataUrl);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
   }
 
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
