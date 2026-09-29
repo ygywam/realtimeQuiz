@@ -573,15 +573,15 @@
     const isFbConnected = !state.isDemo;
     const localRooms = getMyLocalQuizRooms();
     app.innerHTML = `
-      <div class="home-container" style="max-width: 980px;">
+      <div class="home-container">
         <h1 class="home-title">⚡ 클래스 라이브 퀴즈</h1>
         <p class="home-subtitle">전자칠판과 학생 스마트폰을 실시간으로 잇는 반응형 퀴즈</p>
 
         <div style="margin-bottom: 25px; display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;">
-          <span class="room-badge" style="font-size: 0.95rem; cursor: pointer; background: rgba(16, 185, 129, 0.2); border-color: #10b981; color: #6ee7b7;" id="btn-open-fb-info">
+          <span class="room-badge" style="font-size: 0.95rem; cursor: pointer; background: rgba(16, 185, 129, 0.2); border-color: #10b981; color: #10b981;" id="btn-open-fb-info">
             🟢 Firebase 실시간 DB 자동 연결됨 (클릭 시 사용 안내)
           </span>
-          <select class="select-theme-dropdown" id="select-theme-home" style="padding: 8px 14px; border-radius: 999px; background: #1e293b; color: #fff; border: 1px solid var(--primary); font-size: 0.9rem; font-weight: bold; cursor: pointer;">
+          <select class="select-theme-dropdown" id="select-theme-home" style="padding: 8px 14px; border-radius: 999px; background: var(--color-surface); color: var(--color-text); border: 1px solid var(--primary); font-size: 0.9rem; font-weight: bold; cursor: pointer;">
             <option value="tv" ${getSavedTheme() === 'tv' ? 'selected' : ''}>📺 스마트 TV 테마</option>
             <option value="chalkboard" ${getSavedTheme() === 'chalkboard' ? 'selected' : ''}>🧹 초록 칠판 테마</option>
             <option value="marble" ${getSavedTheme() === 'marble' ? 'selected' : ''}>🏛️ 깔끔 대리석 테마</option>
@@ -594,16 +594,16 @@
             <div class="mode-icon">👨‍🏫</div>
             <h3>교사 모드</h3>
             <p>새로운 퀴즈 방을 만들고, 문항을 출제/수정하거나 진행을 제어합니다.</p>
-            <button class="btn btn-primary" id="btn-create-room">새 퀴즈 방 만들기</button>
+            <button class="btn btn-primary" id="btn-create-room" style="width: 100%;">새 퀴즈 방 만들기</button>
           </div>
 
           <div class="mode-card">
             <div class="mode-icon">🖥️</div>
             <h3>전자칠판 모드</h3>
             <p>교사 PC에서 생성된 퀴즈 방의 PIN 코드를 입력해 큰 화면에 송출합니다.</p>
-            <div style="display: flex; gap: 8px; width: 100%;">
-              <input type="text" id="input-display-pin" placeholder="PIN 6자리" style="flex:1; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: #0f172a; color: #fff; text-align: center; font-weight: bold;">
-              <button class="btn btn-secondary" id="btn-enter-display">접속</button>
+            <div style="display: flex; gap: 8px; width: 100%; box-sizing: border-box;">
+              <input type="text" id="input-display-pin" placeholder="PIN 6자리" maxlength="6" style="flex: 1; min-width: 0; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--color-bg); color: var(--color-text); text-align: center; font-weight: bold; font-size: 1rem;">
+              <button class="btn btn-secondary" id="btn-enter-display" style="padding: 10px 16px; font-size: 1rem; white-space: nowrap; flex-shrink: 0;">접속</button>
             </div>
           </div>
 
@@ -611,9 +611,9 @@
             <div class="mode-icon">📱</div>
             <h3>학생 모드</h3>
             <p>교실 화면의 QR코드를 스캔하거나 PIN 번호를 직접 입력해 참여합니다.</p>
-            <div style="display: flex; gap: 8px; width: 100%;">
-              <input type="text" id="input-student-pin" placeholder="PIN 6자리" style="flex:1; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: #0f172a; color: #fff; text-align: center; font-weight: bold;">
-              <button class="btn btn-primary" id="btn-enter-student">참여</button>
+            <div style="display: flex; gap: 8px; width: 100%; box-sizing: border-box;">
+              <input type="text" id="input-student-pin" placeholder="PIN 6자리" maxlength="6" style="flex: 1; min-width: 0; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--color-bg); color: var(--color-text); text-align: center; font-weight: bold; font-size: 1rem;">
+              <button class="btn btn-primary" id="btn-enter-student" style="padding: 10px 16px; font-size: 1rem; white-space: nowrap; flex-shrink: 0;">참여</button>
             </div>
           </div>
         </div>
