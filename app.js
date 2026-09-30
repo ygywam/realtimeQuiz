@@ -170,7 +170,9 @@
     avatar: '🐶',
     studentId: '',
     roomData: null,
-    isDemo: false
+    isDemo: false,
+    hideResults: false,
+    showWrongWordcloud: false
   };
 
   function getOrCreateStudentId() {
@@ -959,6 +961,7 @@
             <span style="width: 100%; font-weight: bold; margin-bottom: 4px;">+ 새 문항 유형 선택 추가:</span>
             <button class="btn btn-outline-sm" id="btn-add-ox">+ O/X 참거짓</button>
             <button class="btn btn-outline-sm" id="btn-add-choice">+ 선다형 (2~5지선다)</button>
+            <button class="btn btn-outline-sm" id="btn-add-poll" style="border-color: #f59e0b; color: #fbbf24;">+ 📊 의견 설문/투표</button>
             <button class="btn btn-outline-sm" id="btn-add-short">+ 단답형</button>
             <button class="btn btn-outline-sm" id="btn-add-wordcloud">+ 워드클라우드</button>
             <button class="btn btn-outline-sm" id="btn-add-postit">+ 포스트잇 브레인스토밍</button>
@@ -1152,6 +1155,10 @@
       questions.push({ id: 'q_' + Date.now(), type: 'choice', question: '신규 선다형 질문입니다.', options: ['보기 1', '보기 2'], correctAnswer: 0, timeLimit: 20, isDoublePoints: false });
       renderEditorList();
     });
+    document.getElementById('btn-add-poll')?.addEventListener('click', () => {
+      questions.push({ id: 'q_' + Date.now(), type: 'poll', question: '신규 의견 설문/투표 질문입니다.', options: ['의견 1', '의견 2'], timeLimit: 0, isDoublePoints: false });
+      renderEditorList();
+    });
     document.getElementById('btn-add-short').addEventListener('click', () => {
       questions.push({ id: 'q_' + Date.now(), type: 'short', question: '신규 단답형 질문입니다.', correctText: '정답', timeLimit: 20, isDoublePoints: false });
       renderEditorList();
@@ -1176,16 +1183,17 @@
 
   function getQuestionTypeLabel(type) {
     switch(type) {
-      case 'ox': return 'O/X 참거짓'; case 'choice': return '선다형'; case 'short': return '단답형'; case 'wordcloud': return '워드클라우드'; case 'postit': return '포스트잇'; default: return '퀴즈';
+      case 'ox': return 'O/X 참거짓'; case 'choice': return '선다형'; case 'poll': return '📊 의견 설문/투표'; case 'short': return '단답형'; case 'wordcloud': return '워드클라우드'; case 'postit': return '포스트잇'; default: return '퀴즈';
     }
   }
 
   function renderTypeSpecificEditor(q, idx) {
-    if (q.type === 'ox' || q.type === 'choice') {
-      const isChoice = q.type === 'choice';
+    if (q.type === 'ox' || q.type === 'choice' || q.type === 'poll') {
+      const isChoice = q.type === 'choice' || q.type === 'poll';
+      const isPoll = q.type === 'poll';
       return `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-          <div style="font-size: 0.9rem; color: var(--text-muted);">보기 수정 및 정답 선택 (라디오 버튼 클릭):</div>
+          <div style="font-size: 0.9rem; color: var(--text-muted);">${isPoll ? '설문/투표 항목 수정:' : '보기 수정 및 정답 선택 (라디오 버튼 클릭):'}</div>
           ${isChoice ? `
             <div style="display: flex; gap: 8px;">
               ${q.options.length < 5 ? `<button type="button" class="btn btn-outline-sm btn-add-option" data-qidx="${idx}" style="padding: 4px 10px; font-size: 0.8rem;">+ 보기 추가</button>` : ''}
@@ -1195,7 +1203,11 @@
         <div style="display: flex; flex-direction: column; gap: 8px;">
           ${q.options.map((opt, optIdx) => `
             <div style="display: flex; align-items: center; gap: 10px;">
-              <input type="radio" class="correct-radio" name="correct_${idx}" data-qidx="${idx}" value="${optIdx}" ${q.correctAnswer == optIdx ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
+              ${!isPoll ? `
+                <input type="radio" class="correct-radio" name="correct_${idx}" data-qidx="${idx}" value="${optIdx}" ${q.correctAnswer == optIdx ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
+              ` : `
+                <span style="font-size: 1.1rem; width: 20px; text-align: center;">📊</span>
+              `}
               <span style="font-weight: bold; min-width: 24px;">${optIdx + 1}.</span>
               <input type="text" id="input_opt_${idx}_${optIdx}" class="opt-text-input" data-qidx="${idx}" data-optidx="${optIdx}" value="${escapeHtml(opt)}" placeholder="보기 내용 입력 (비워두면 자동 제외)" style="flex: 1; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: #fff;">
               <button type="button" class="btn btn-outline-sm btn-open-formula" data-target="opt_${idx}_${optIdx}" style="padding: 4px 8px; font-size: 0.8rem; border-color: #38bdf8; color: #38bdf8;">∑</button>
@@ -1269,7 +1281,7 @@
       container.innerHTML = `
         <div class="quiz-display-container" id="host-display-card" data-qindex="${qIndex}" data-status="${status}">
           <div class="quiz-top-bar">
-            <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
               <span class="room-badge">Q ${qIndex + 1} / ${questions.length}</span>
               <button id="btn-go-home-display" class="btn btn-secondary" style="font-weight: bold; padding: 6px 14px; font-size: 0.9rem;">🏠 메인으로</button>
               <select id="select-theme-display" class="select-theme-dropdown" style="padding: 6px 12px; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid var(--border); font-size: 0.9rem; font-weight: bold; cursor: pointer;">
@@ -1280,9 +1292,14 @@
               </select>
             </div>
             <div id="display-timer" class="timer-badge">${isUnlimited ? '⏱️ 무제한 (의견 수렴)' : `⏱️ ${currentQ.timeLimit || 20}s`}</div>
-            <button id="btn-toggle-bgm" class="btn btn-outline-sm" style="background: rgba(56, 189, 248, 0.2); border-color: #38bdf8; color: #fff; font-weight: bold;">
-              ${AudioEngine.bgmPlaying ? '🎵 BGM 끄기' : '🎵 BGM 켜기'}
-            </button>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button id="btn-toggle-results" class="btn btn-outline-sm" style="background: rgba(245, 158, 11, 0.2); border-color: #f59e0b; color: #fbbf24; font-weight: bold;">
+                ${state.hideResults ? '👁️ 결과 공개' : '🙈 결과 가리기'}
+              </button>
+              <button id="btn-toggle-bgm" class="btn btn-outline-sm" style="background: rgba(56, 189, 248, 0.2); border-color: #38bdf8; color: #fff; font-weight: bold;">
+                ${AudioEngine.bgmPlaying ? '🎵 BGM 끄기' : '🎵 BGM 켜기'}
+              </button>
+            </div>
             <div style="font-size: 1.4rem; font-weight: bold; color: #38bdf8;">
               제출 인원: <span id="resp-count">${responseCount}</span> / ${participantCount}명
             </div>
@@ -1292,7 +1309,7 @@
             ${currentQ.imageUrl ? `<div style="text-align: center; margin-top: 14px;"><img src="${currentQ.imageUrl}" style="max-height: 320px; max-width: 100%; border-radius: 12px; box-shadow: 0 8px 20px rgba(0,0,0,0.4);"></div>` : ''}
             ${currentQ.isDoublePoints ? `<div style="color: #fbbf24; font-size: 1.2rem; font-weight: bold; margin-top: 10px;">⚡ 점수 2배 이벤트 문항!</div>` : ''}
           </div>
-          <div id="display-main-content" style="flex: 1; display: flex; flex-direction: column;" data-resphash="${JSON.stringify(responses) + '_' + status}">
+          <div id="display-main-content" style="flex: 1; display: flex; flex-direction: column;" data-resphash="${JSON.stringify(responses) + '_' + status + '_' + state.hideResults + '_' + state.showWrongWordcloud}">
             ${renderQuestionContent(currentQ, responses, status, participants)}
           </div>
           ${isTeacherControl ? `
@@ -1306,6 +1323,20 @@
 
       document.getElementById('btn-go-home-display')?.addEventListener('click', () => window.location.search = '');
       document.getElementById('select-theme-display')?.addEventListener('change', (e) => setTheme(e.target.value));
+
+      document.getElementById('btn-toggle-results')?.addEventListener('click', () => {
+        state.hideResults = !state.hideResults;
+        const mainContentEl = document.getElementById('display-main-content');
+        if (mainContentEl) mainContentEl.dataset.resphash = '';
+        renderHostDisplayView(container, roomData, roomId, isTeacherControl);
+      });
+
+      document.getElementById('btn-toggle-wrong-cloud')?.addEventListener('click', () => {
+        state.showWrongWordcloud = !state.showWrongWordcloud;
+        const mainContentEl = document.getElementById('display-main-content');
+        if (mainContentEl) mainContentEl.dataset.resphash = '';
+        renderHostDisplayView(container, roomData, roomId, isTeacherControl);
+      });
 
       document.getElementById('btn-toggle-bgm')?.addEventListener('click', (e) => {
         const isPlaying = AudioEngine.toggleBGM();
@@ -1413,7 +1444,20 @@
   function renderQuestionContent(currentQ, responses, status, participants = {}) {
     const showAnswer = status === 'SHOW_ANSWER';
 
-    if (currentQ.type === 'ox' || currentQ.type === 'choice') {
+    if (state.hideResults && status === 'PLAYING') {
+      return `
+        <div style="background: rgba(15, 23, 42, 0.85); border: 2px dashed #f59e0b; padding: 50px 20px; border-radius: 16px; text-align: center; margin: auto; max-width: 600px; width: 100%; box-sizing: border-box;">
+          <div style="font-size: 4rem; margin-bottom: 12px;">🙈</div>
+          <h2 style="font-size: 1.8rem; color: #fbbf24; margin-bottom: 10px;">결과 가리기 모드 작동 중</h2>
+          <p style="color: var(--text-muted); font-size: 1.1rem; line-height: 1.5;">
+            학생들이 타인의 답에 영향을 받지 않고 응답 중입니다.<br>
+            상단의 <strong>[👁️ 결과 공개]</strong> 버튼을 누르면 실시간 집계 그래프가 표시됩니다.
+          </p>
+        </div>
+      `;
+    }
+
+    if (currentQ.type === 'ox' || currentQ.type === 'choice' || currentQ.type === 'poll') {
       const rawOptions = currentQ.options || [];
       const validIndices = [];
       const options = [];
@@ -1424,25 +1468,81 @@
         }
       });
       const counts = validIndices.map(idx => Object.values(responses).filter(r => Number(r.answer) === idx).length);
+      const totalCount = counts.reduce((sum, c) => sum + c, 0);
+
+      const BAR_COLORS = ['#38bdf8', '#f59e0b', '#10b981', '#ec4899', '#a855f7'];
+
       return `
-        <div class="options-grid">
+        <div class="poll-chart-container">
           ${options.map((opt, displayIdx) => {
             const realIdx = validIndices[displayIdx];
-            const isCorrect = showAnswer && realIdx === currentQ.correctAnswer;
+            const isCorrect = showAnswer && currentQ.type !== 'poll' && realIdx === currentQ.correctAnswer;
+            const count = counts[displayIdx];
+            const pct = totalCount > 0 ? Math.round((count / totalCount) * 100) : 0;
+            const barColor = BAR_COLORS[displayIdx % BAR_COLORS.length];
             return `
-              <div class="option-card-display opt-${realIdx} ${isCorrect ? 'correct-highlight' : ''}">
-                <span>${parseMath(opt)} ${isCorrect ? ' (정답! 🎉)' : ''}</span>
-                <span class="count-bar">${counts[displayIdx]}명</span>
+              <div class="poll-bar-row ${isCorrect ? 'correct-highlight' : ''}">
+                <div class="poll-option-label">
+                  <span>${displayIdx + 1}. ${parseMath(opt)} ${isCorrect ? ' (정답! 🎉)' : ''}</span>
+                </div>
+                <div class="poll-bar-track">
+                  <div class="poll-bar-fill" style="width: ${pct}%; background-color: ${barColor};"></div>
+                </div>
+                <div class="poll-stat-text" style="color: ${barColor};">
+                  ${pct}% <span style="font-size: 0.85em; color: var(--text-muted);">(${count}명)</span>
+                </div>
               </div>
             `;
           }).join('')}
         </div>
       `;
     } else if (currentQ.type === 'short') {
+      const targetText = String(currentQ.correctText || '').trim().toLowerCase();
+      const wrongCounts = {};
+      let wrongTotal = 0;
+
+      Object.values(responses).forEach(r => {
+        const ans = String(r.answer || '').trim();
+        if (ans && ans.toLowerCase() !== targetText) {
+          const key = ans.toLowerCase();
+          if (!wrongCounts[key]) wrongCounts[key] = { display: ans, count: 0 };
+          wrongCounts[key].count++;
+          wrongTotal++;
+        }
+      });
+
+      const wrongList = Object.values(wrongCounts);
+
       return `
-        <div style="background: var(--card-dark); padding: 30px; border-radius: 16px; text-align: center; flex: 1;">
-          ${showAnswer ? `<h2 style="font-size: 2.2rem; color: #10b981; margin-bottom: 20px;">💡 정답: ${parseMath(currentQ.correctText)}</h2>` : `<h2 style="font-size: 1.8rem; color: #94a3b8;">학생들이 단답형 답안을 입력하는 중입니다...</h2>`}
-          <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; justify-content: center;">
+        <div style="background: var(--card-dark); padding: 30px; border-radius: 16px; text-align: center; flex: 1; display: flex; flex-direction: column;">
+          ${showAnswer ? `<h2 style="font-size: 2.2rem; color: #10b981; margin-bottom: 12px;">💡 정답: ${parseMath(currentQ.correctText)}</h2>` : `<h2 style="font-size: 1.8rem; color: #94a3b8; margin-bottom: 12px;">학생들이 단답형 답안을 입력하는 중입니다...</h2>`}
+
+          ${showAnswer && wrongTotal > 0 ? `
+            <div style="margin-bottom: 16px;">
+              <button class="btn btn-outline-sm" id="btn-toggle-wrong-cloud" style="border-color: #ec4899; color: #ec4899; font-weight: bold; font-size: 1rem; padding: 8px 18px;">
+                ${state.showWrongWordcloud ? '🙈 오답 가리기' : `💬 재미있는 오답 구경하기 (${wrongList.length}종류)`}
+              </button>
+            </div>
+          ` : ''}
+
+          ${showAnswer && state.showWrongWordcloud && wrongList.length > 0 ? `
+            <div style="background: #0f172a; border: 2px dashed #ec4899; border-radius: 16px; padding: 20px; margin-bottom: 20px;">
+              <h3 style="color: #ec4899; font-size: 1.3rem; margin-bottom: 14px;">☁️ 재미있는 오답 워드클라우드 (익명)</h3>
+              <div class="wordcloud-container">
+                ${wrongList.map(item => {
+                  const freqClass = item.count >= 3 ? 'freq-3' : (item.count === 2 ? 'freq-2' : 'freq-1');
+                  return `
+                    <div class="word-chip ${freqClass}" style="background: rgba(236, 72, 153, 0.15); border-color: #ec4899; color: #f472b6;">
+                      <span>${parseMath(item.display)}</span>
+                      ${item.count > 1 ? `<span style="font-size: 0.8em; background: rgba(236, 72, 153, 0.3); padding: 2px 8px; border-radius: 999px;">${item.count}</span>` : ''}
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          ` : ''}
+
+          <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; justify-content: center;">
             ${Object.entries(responses).map(([sid, r]) => {
               const p = (participants && participants[sid]) || {};
               const nick = p.nickname || r.nickname || '';
