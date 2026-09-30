@@ -172,8 +172,25 @@
     roomData: null,
     isDemo: false,
     hideResults: false,
-    showWrongWordcloud: false
+    showWrongWordcloud: false,
+    showShortNicknames: false
   };
+
+  function isScoringQuestion(q) {
+    if (!q) return false;
+    if (q.type === 'wordcloud' || q.type === 'postit') return false;
+    if (q.type === 'ox' || q.type === 'short') return true;
+    if (q.type === 'choice' || q.type === 'poll') {
+      if (q.isScoring === false || q.timeLimit === 0) return false;
+      return true;
+    }
+    return false;
+  }
+
+  function hasScoringQuestions(questions) {
+    if (!Array.isArray(questions)) return false;
+    return questions.some(q => isScoringQuestion(q));
+  }
 
   function getOrCreateStudentId() {
     let id = sessionStorage.getItem('class_quiz_student_id');
@@ -644,13 +661,16 @@
                         <span class="room-badge" style="font-size: 0.9rem;">PIN: ${room.roomId}</span>
                         <span style="font-size: 0.8rem; color: var(--text-muted);">${dateStr}</span>
                       </div>
-                      <h4 style="font-size: 1.05rem; color: #fff; margin-bottom: 6px;">${escapeHtml(room.title)}</h4>
+                      <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 6px;">
+                        <h4 style="font-size: 1.05rem; color: #fff; margin: 0; flex: 1; word-break: break-all;">${escapeHtml(room.title)}</h4>
+                        <button type="button" class="btn btn-outline-sm btn-rename-room" data-pin="${room.roomId}" data-title="${escapeHtml(room.title)}" style="padding: 2px 8px; font-size: 0.78rem; border-color: #38bdf8; color: #38bdf8; white-space: nowrap;">✏️ 이름 수정</button>
+                      </div>
                       <p style="font-size: 0.9rem; color: #38bdf8; font-weight: bold; margin-bottom: 14px;">📝 문항 수: ${room.questionCount}개</p>
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
                       <button class="btn btn-primary btn-run-room" data-pin="${room.roomId}" style="padding: 8px 4px; font-size: 0.85rem;">🚀 교사 진행</button>
                       <button class="btn btn-secondary btn-display-room" data-pin="${room.roomId}" style="padding: 8px 4px; font-size: 0.85rem;">🖥️ 전자칠판</button>
-                      <button class="btn btn-outline-sm btn-edit-room" data-pin="${room.roomId}" style="padding: 6px 4px; font-size: 0.82rem; border-color: #fbbf24; color: #fbbf24;">📝 편집</button>
+                      <button class="btn btn-outline-sm btn-edit-room" data-pin="${room.roomId}" style="padding: 6px 4px; font-size: 0.82rem; border-color: #fbbf24; color: #fbbf24;">📝 문항 편집</button>
                       <button class="btn btn-danger btn-del-room" data-pin="${room.roomId}" style="padding: 6px 4px; font-size: 0.82rem;">🗑️ 삭제</button>
                     </div>
                   </div>
@@ -681,6 +701,19 @@
     });
     document.querySelectorAll('.btn-display-room').forEach(btn => {
       btn.addEventListener('click', (e) => window.location.search = `?room=${e.currentTarget.dataset.pin}&role=display`);
+    });
+    document.querySelectorAll('.btn-rename-room').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const pin = e.currentTarget.dataset.pin;
+        const oldTitle = e.currentTarget.dataset.title || '실시간 수업 퀴즈';
+        const newTitle = prompt('퀴즈 방의 새 이름을 입력하세요:', oldTitle);
+        if (newTitle !== null && newTitle.trim() !== '') {
+          const title = newTitle.trim();
+          saveMyLocalQuizRoom({ roomId: pin, title: title });
+          await updateRoomMeta(pin, { title: title });
+          renderHomeView(app);
+        }
+      });
     });
     document.querySelectorAll('.btn-edit-room').forEach(btn => {
       btn.addEventListener('click', async (e) => {
@@ -949,19 +982,25 @@
       ? JSON.parse(JSON.stringify(currentQuestions)) 
       : [];
 
+    const roomMeta = state.roomData?.meta || {};
+    const currentTitle = roomMeta.title || '실시간 수업 퀴즈';
+
     const modalHtml = `
       <div id="admin-modal" class="modal-overlay">
         <div class="modal-box" style="max-width: 780px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
             <h2>📝 퀴즈 출제 / 문항 관리</h2>
             <span style="color: var(--text-muted);">방 PIN: <strong>${roomId}</strong></span>
           </div>
-          <div id="question-list-editor" style="margin-bottom: 20px; max-height: 55vh; overflow-y: auto;"></div>
+          <div style="margin-bottom: 16px; background: #0f172a; padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border);">
+            <label style="font-weight: bold; font-size: 0.9rem; color: #38bdf8;">🏷️ 퀴즈 방 제목/이름:</label>
+            <input type="text" id="input-admin-room-title" value="${escapeHtml(currentTitle)}" placeholder="퀴즈 방 제목을 입력하세요" style="width: 100%; margin-top: 6px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: #fff; font-weight: bold; font-size: 1rem;">
+          </div>
+          <div id="question-list-editor" style="margin-bottom: 20px; max-height: 50vh; overflow-y: auto;"></div>
           <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; background: #0f172a; padding: 16px; border-radius: 12px;">
             <span style="width: 100%; font-weight: bold; margin-bottom: 4px;">+ 새 문항 유형 선택 추가:</span>
             <button class="btn btn-outline-sm" id="btn-add-ox">+ O/X 참거짓</button>
-            <button class="btn btn-outline-sm" id="btn-add-choice">+ 선다형 (2~5지선다)</button>
-            <button class="btn btn-outline-sm" id="btn-add-poll" style="border-color: #f59e0b; color: #fbbf24;">+ 📊 의견 설문/투표</button>
+            <button class="btn btn-outline-sm" id="btn-add-choice" style="border-color: #38bdf8; color: #38bdf8; font-weight: bold;">+ 선다형 (그리드/막대/원형)</button>
             <button class="btn btn-outline-sm" id="btn-add-short">+ 단답형</button>
             <button class="btn btn-outline-sm" id="btn-add-wordcloud">+ 워드클라우드</button>
             <button class="btn btn-outline-sm" id="btn-add-postit">+ 포스트잇 브레인스토밍</button>
@@ -1002,6 +1041,7 @@
                 <option value="20" ${q.timeLimit == 20 ? 'selected' : ''}>20초</option>
                 <option value="30" ${q.timeLimit == 30 ? 'selected' : ''}>30초</option>
               </select>
+              <button class="btn btn-outline-sm btn-duplicate-q" data-idx="${idx}" style="padding: 6px 12px; font-size: 0.85rem; border-color: #38bdf8; color: #38bdf8; font-weight: bold;">📋 복제</button>
               <button class="btn btn-danger btn-delete-q" data-idx="${idx}" style="padding: 6px 12px; font-size: 0.85rem;">삭제</button>
             </div>
           </div>
@@ -1063,8 +1103,50 @@
       container.querySelectorAll('.time-limit-select').forEach(sel => {
         sel.addEventListener('change', (e) => { questions[e.target.dataset.idx].timeLimit = Number(e.target.value); });
       });
+      container.querySelectorAll('.btn-duplicate-q').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const qIdx = Number(e.currentTarget.dataset.idx);
+          const source = questions[qIdx];
+          if (source) {
+            const cloned = JSON.parse(JSON.stringify(source));
+            cloned.id = 'q_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+            questions.splice(qIdx + 1, 0, cloned);
+            renderEditorList();
+          }
+        });
+      });
       container.querySelectorAll('.btn-delete-q').forEach(btn => {
         btn.addEventListener('click', (e) => { questions.splice(Number(e.target.dataset.idx), 1); renderEditorList(); });
+      });
+      container.querySelectorAll('.choice-chartstyle-select').forEach(sel => {
+        sel.addEventListener('change', (e) => {
+          const qIdx = Number(e.target.dataset.idx);
+          questions[qIdx].chartStyle = e.target.value;
+          renderEditorList();
+        });
+      });
+      container.querySelectorAll('.choice-isscoring-cb').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+          const qIdx = Number(e.target.dataset.idx);
+          questions[qIdx].isScoring = e.target.checked;
+          if (!e.target.checked) {
+            questions[qIdx].timeLimit = 0;
+          }
+          renderEditorList();
+        });
+      });
+      container.querySelectorAll('.poll-multiselect-cb').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+          const qIdx = Number(e.target.dataset.idx);
+          questions[qIdx].isMultiSelect = e.target.checked;
+          renderEditorList();
+        });
+      });
+      container.querySelectorAll('.poll-maxselect-select').forEach(sel => {
+        sel.addEventListener('change', (e) => {
+          const qIdx = Number(e.target.dataset.idx);
+          questions[qIdx].maxSelect = Number(e.target.value);
+        });
       });
 
       container.querySelectorAll('.btn-open-formula').forEach(btn => {
@@ -1152,11 +1234,7 @@
       renderEditorList();
     });
     document.getElementById('btn-add-choice').addEventListener('click', () => {
-      questions.push({ id: 'q_' + Date.now(), type: 'choice', question: '신규 선다형 질문입니다.', options: ['보기 1', '보기 2'], correctAnswer: 0, timeLimit: 20, isDoublePoints: false });
-      renderEditorList();
-    });
-    document.getElementById('btn-add-poll')?.addEventListener('click', () => {
-      questions.push({ id: 'q_' + Date.now(), type: 'poll', question: '신규 의견 설문/투표 질문입니다.', options: ['의견 1', '의견 2'], timeLimit: 0, isDoublePoints: false });
+      questions.push({ id: 'q_' + Date.now(), type: 'choice', question: '신규 선다형 질문입니다.', options: ['보기 1', '보기 2'], correctAnswer: 0, timeLimit: 20, isDoublePoints: false, chartStyle: 'grid', isScoring: true });
       renderEditorList();
     });
     document.getElementById('btn-add-short').addEventListener('click', () => {
@@ -1175,6 +1253,12 @@
       document.getElementById('admin-modal').remove();
     });
     document.getElementById('btn-save-questions').addEventListener('click', async () => {
+      const newTitleInput = document.getElementById('input-admin-room-title');
+      if (newTitleInput) {
+        const title = newTitleInput.value.trim() || '실시간 수업 퀴즈';
+        saveMyLocalQuizRoom({ roomId, title, questionCount: questions.length });
+        await updateRoomMeta(roomId, { title });
+      }
       await updateQuestions(roomId, questions);
       document.getElementById('admin-modal').remove();
       if (onSaveCallback) onSaveCallback();
@@ -1183,27 +1267,62 @@
 
   function getQuestionTypeLabel(type) {
     switch(type) {
-      case 'ox': return 'O/X 참거짓'; case 'choice': return '선다형'; case 'poll': return '📊 의견 설문/투표'; case 'short': return '단답형'; case 'wordcloud': return '워드클라우드'; case 'postit': return '포스트잇'; default: return '퀴즈';
+      case 'ox': return 'O/X 참거짓'; case 'choice': return '선다형'; case 'poll': return '선다형'; case 'short': return '단답형'; case 'wordcloud': return '워드클라우드'; case 'postit': return '포스트잇'; default: return '퀴즈';
     }
   }
 
   function renderTypeSpecificEditor(q, idx) {
     if (q.type === 'ox' || q.type === 'choice' || q.type === 'poll') {
       const isChoice = q.type === 'choice' || q.type === 'poll';
-      const isPoll = q.type === 'poll';
+      const chartStyle = q.chartStyle || 'grid';
+      const isScoring = q.isScoring !== false;
+
       return `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-          <div style="font-size: 0.9rem; color: var(--text-muted);">${isPoll ? '설문/투표 항목 수정:' : '보기 수정 및 정답 선택 (라디오 버튼 클릭):'}</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+          <div style="font-size: 0.9rem; color: var(--text-muted);">보기 수정 및 정답 선택:</div>
           ${isChoice ? `
-            <div style="display: flex; gap: 8px;">
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <select class="choice-chartstyle-select" data-idx="${idx}" style="padding: 4px 8px; border-radius: 6px; background: #1e293b; color: #38bdf8; border: 1px solid var(--border); font-weight: bold; font-size: 0.85rem;">
+                <option value="grid" ${chartStyle === 'grid' ? 'selected' : ''}>▦ 그리드 카드 형태</option>
+                <option value="bar" ${chartStyle === 'bar' ? 'selected' : ''}>📊 막대 그래프 형태</option>
+                <option value="pie" ${chartStyle === 'pie' ? 'selected' : ''}>🍩 원형 그래프 (차트) 형태</option>
+              </select>
               ${q.options.length < 5 ? `<button type="button" class="btn btn-outline-sm btn-add-option" data-qidx="${idx}" style="padding: 4px 10px; font-size: 0.8rem;">+ 보기 추가</button>` : ''}
             </div>
           ` : ''}
         </div>
+
+        ${isChoice ? `
+          <div style="display: flex; gap: 14px; align-items: center; margin-bottom: 12px; background: #1e293b; padding: 10px 12px; border-radius: 8px; flex-wrap: wrap;">
+            <label style="font-size: 0.9rem; color: #10b981; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+              <input type="checkbox" class="choice-isscoring-cb" data-idx="${idx}" ${isScoring ? 'checked' : ''}>
+              💯 점수 반영 (퀴즈 모드 - 정답 1개 선택)
+            </label>
+            ${!isScoring ? `
+              <label style="font-size: 0.9rem; color: #fbbf24; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 6px; margin-left: 10px;">
+                <input type="checkbox" class="poll-multiselect-cb" data-idx="${idx}" ${q.isMultiSelect ? 'checked' : ''}>
+                ☑️ 중복 투표 허용 (다중 선택)
+              </label>
+              ${q.isMultiSelect ? `
+                <label style="font-size: 0.88rem; color: #fff; display: flex; align-items: center; gap: 6px;">
+                  최대 선택 개수:
+                  <select class="poll-maxselect-select" data-idx="${idx}" style="padding: 4px 8px; border-radius: 6px; background: #0f172a; color: #fff; border: 1px solid var(--border);">
+                    <option value="0" ${!q.maxSelect || q.maxSelect == 0 ? 'selected' : ''}>무제한 (자유 선택)</option>
+                    <option value="2" ${q.maxSelect == 2 ? 'selected' : ''}>최대 2개</option>
+                    <option value="3" ${q.maxSelect == 3 ? 'selected' : ''}>최대 3개</option>
+                    <option value="4" ${q.maxSelect == 4 ? 'selected' : ''}>최대 4개</option>
+                    <option value="5" ${q.maxSelect == 5 ? 'selected' : ''}>최대 5개</option>
+                  </select>
+                </label>
+              ` : ''}
+            ` : ''}
+          </div>
+        ` : ''}
+
         <div style="display: flex; flex-direction: column; gap: 8px;">
           ${q.options.map((opt, optIdx) => `
             <div style="display: flex; align-items: center; gap: 10px;">
-              ${!isPoll ? `
+              ${isScoring ? `
                 <input type="radio" class="correct-radio" name="correct_${idx}" data-qidx="${idx}" value="${optIdx}" ${q.correctAnswer == optIdx ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
               ` : `
                 <span style="font-size: 1.1rem; width: 20px; text-align: center;">📊</span>
@@ -1246,6 +1365,7 @@
     const responseCount = Object.keys(responses).length;
     const participantCount = Object.keys(participants).length;
     const isUnlimited = currentQ.type === 'wordcloud' || currentQ.type === 'postit' || currentQ.timeLimit === 0;
+    const isScoringQ = isScoringQuestion(currentQ);
 
     if (status === 'SHOW_RANKING') {
       if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
@@ -1264,14 +1384,21 @@
     const currentDisplayCard = document.getElementById('host-display-card');
     const renderedStatus = currentDisplayCard ? currentDisplayCard.dataset.status : '';
     const renderedQIdx = currentDisplayCard ? Number(currentDisplayCard.dataset.qindex) : -1;
+    const isLastQ = qIndex + 1 >= questions.length;
 
     if (currentDisplayCard && renderedStatus === status && renderedQIdx === qIndex) {
       const respEl = document.getElementById('resp-count');
       if (respEl) respEl.textContent = responseCount;
 
+      const btnResults = document.getElementById('btn-toggle-results');
+      if (btnResults) {
+        btnResults.textContent = state.hideResults ? '👁️ 결과 공개' : '🙈 결과 가리기';
+        btnResults.style.background = state.hideResults ? 'rgba(245, 158, 11, 0.4)' : 'rgba(245, 158, 11, 0.15)';
+      }
+
       const mainContentEl = document.getElementById('display-main-content');
       if (mainContentEl) {
-        const newHash = JSON.stringify(responses) + '_' + status;
+        const newHash = JSON.stringify(responses) + '_' + status + '_' + state.hideResults + '_' + state.showWrongWordcloud + '_' + state.showShortNicknames + '_' + (currentQ.chartStyle || '');
         if (mainContentEl.dataset.resphash !== newHash) {
           mainContentEl.dataset.resphash = newHash;
           mainContentEl.innerHTML = renderQuestionContent(currentQ, responses, status, participants);
@@ -1293,7 +1420,7 @@
             </div>
             <div id="display-timer" class="timer-badge">${isUnlimited ? '⏱️ 무제한 (의견 수렴)' : `⏱️ ${currentQ.timeLimit || 20}s`}</div>
             <div style="display: flex; gap: 8px; align-items: center;">
-              <button id="btn-toggle-results" class="btn btn-outline-sm" style="background: rgba(245, 158, 11, 0.2); border-color: #f59e0b; color: #fbbf24; font-weight: bold;">
+              <button id="btn-toggle-results" class="btn btn-outline-sm" style="background: ${state.hideResults ? 'rgba(245, 158, 11, 0.4)' : 'rgba(245, 158, 11, 0.15)'}; border-color: #f59e0b; color: #fbbf24; font-weight: bold;">
                 ${state.hideResults ? '👁️ 결과 공개' : '🙈 결과 가리기'}
               </button>
               <button id="btn-toggle-bgm" class="btn btn-outline-sm" style="background: rgba(56, 189, 248, 0.2); border-color: #38bdf8; color: #fff; font-weight: bold;">
@@ -1309,15 +1436,20 @@
             ${currentQ.imageUrl ? `<div style="text-align: center; margin-top: 14px;"><img src="${currentQ.imageUrl}" style="max-height: 320px; max-width: 100%; border-radius: 12px; box-shadow: 0 8px 20px rgba(0,0,0,0.4);"></div>` : ''}
             ${currentQ.isDoublePoints ? `<div style="color: #fbbf24; font-size: 1.2rem; font-weight: bold; margin-top: 10px;">⚡ 점수 2배 이벤트 문항!</div>` : ''}
           </div>
-          <div id="display-main-content" style="flex: 1; display: flex; flex-direction: column;" data-resphash="${JSON.stringify(responses) + '_' + status + '_' + state.hideResults + '_' + state.showWrongWordcloud}">
+          <div id="display-main-content" style="flex: 1; display: flex; flex-direction: column;" data-resphash="${JSON.stringify(responses) + '_' + status + '_' + state.hideResults + '_' + state.showWrongWordcloud + '_' + state.showShortNicknames + '_' + (currentQ.chartStyle || '')}">
             ${renderQuestionContent(currentQ, responses, status, participants)}
           </div>
-          ${isTeacherControl ? `
-            <div style="display: flex; justify-content: flex-end; gap: 16px; margin-top: 20px;">
-              ${status === 'PLAYING' ? `<button class="btn btn-danger" id="btn-force-finish">${isUnlimited ? '⏹️ 응답 마감 및 의견 공유' : '⏹️ 응답 마감 및 정답 공개'}</button>` : ''}
-              ${status === 'SHOW_ANSWER' ? `<button class="btn btn-primary" id="btn-show-ranking">📊 중간 순위 보기 (1~5위)</button>` : ''}
-            </div>
-          ` : ''}
+          <div style="display: flex; justify-content: flex-end; gap: 16px; margin-top: 20px; flex-wrap: wrap;">
+            ${status === 'PLAYING' ? `<button class="btn btn-danger" id="btn-force-finish">${isUnlimited ? '⏹️ 응답 마감 및 의견 공유' : '⏹️ 응답 마감 및 정답 공개'}</button>` : ''}
+            ${status === 'SHOW_ANSWER' ? `
+              ${isScoringQ ? `<button class="btn btn-secondary" id="btn-show-ranking">📊 중간 순위 보기 (1~5위)</button>` : ''}
+              ${isLastQ ? `
+                <button class="btn btn-primary" id="btn-next-question-host" style="font-weight: bold; font-size: 1.1rem; padding: 12px 24px;">🏆 최종 시상식 결과 보기</button>
+              ` : `
+                <button class="btn btn-primary" id="btn-next-question-host" style="font-weight: bold; font-size: 1.1rem; padding: 12px 24px;">➡️ 다음 문제로 이동 (Q${qIndex + 2})</button>
+              `}
+            ` : ''}
+          </div>
         </div>
       `;
 
@@ -1326,13 +1458,27 @@
 
       document.getElementById('btn-toggle-results')?.addEventListener('click', () => {
         state.hideResults = !state.hideResults;
+        const btn = document.getElementById('btn-toggle-results');
+        if (btn) {
+          btn.textContent = state.hideResults ? '👁️ 결과 공개' : '🙈 결과 가리기';
+          btn.style.background = state.hideResults ? 'rgba(245, 158, 11, 0.4)' : 'rgba(245, 158, 11, 0.15)';
+        }
+        const mainContentEl = document.getElementById('display-main-content');
+        if (mainContentEl) {
+          mainContentEl.dataset.resphash = '';
+          mainContentEl.innerHTML = renderQuestionContent(currentQ, responses, status, participants);
+        }
+      });
+
+      document.getElementById('btn-toggle-wrong-cloud')?.addEventListener('click', () => {
+        state.showWrongWordcloud = !state.showWrongWordcloud;
         const mainContentEl = document.getElementById('display-main-content');
         if (mainContentEl) mainContentEl.dataset.resphash = '';
         renderHostDisplayView(container, roomData, roomId, isTeacherControl);
       });
 
-      document.getElementById('btn-toggle-wrong-cloud')?.addEventListener('click', () => {
-        state.showWrongWordcloud = !state.showWrongWordcloud;
+      document.getElementById('btn-toggle-short-nicknames')?.addEventListener('click', () => {
+        state.showShortNicknames = !state.showShortNicknames;
         const mainContentEl = document.getElementById('display-main-content');
         if (mainContentEl) mainContentEl.dataset.resphash = '';
         renderHostDisplayView(container, roomData, roomId, isTeacherControl);
@@ -1351,6 +1497,15 @@
       document.getElementById('btn-show-ranking')?.addEventListener('click', () => {
         AudioEngine.playCorrect();
         updateRoomMeta(roomId, { status: 'SHOW_RANKING' });
+      });
+
+      document.getElementById('btn-next-question-host')?.addEventListener('click', () => {
+        if (isLastQ) {
+          AudioEngine.playFanfare();
+          updateRoomMeta(roomId, { status: 'FINISHED' });
+        } else {
+          advanceToNextQuestion(roomId, state.roomData || roomData);
+        }
       });
     }
 
@@ -1377,7 +1532,7 @@
           if (remaining <= 0) {
             clearInterval(timerInterval);
             timerInterval = null;
-            if (isTeacherControl) processQuestionResults(roomId, state.roomData || roomData);
+            processQuestionResults(roomId, state.roomData || roomData);
           }
         }, 1000);
       }
@@ -1392,11 +1547,6 @@
     const qIndex = meta.currentQuestionIndex || 0;
     const questions = roomData.questions || [];
     const isLastQ = qIndex + 1 >= questions.length;
-
-    const existingIntCard = document.getElementById('intermediate-ranking-card');
-    if (existingIntCard && existingIntCard.dataset.qindex == qIndex) {
-      return;
-    }
 
     const participants = Object.values(roomData.participants || {});
     participants.sort((a, b) => (b.score || 0) - (a.score || 0));
@@ -1419,19 +1569,21 @@
               <span style="color: #38bdf8;">${p.score || 0}점</span>
             </div>
           `).join('')}
-          <div style="display: flex; justify-content: center; gap: 16px; margin-top: 30px;">
-            ${isTeacherControl ? (isLastQ ? `
+          <div style="display: flex; justify-content: center; gap: 16px; margin-top: 30px; flex-wrap: wrap;">
+            <button class="btn btn-secondary" id="btn-back-to-answer" style="font-size: 1.1rem; padding: 12px 24px;">🔙 문제 정답 화면으로 돌아가기</button>
+            ${isLastQ ? `
               <button class="btn btn-primary" id="btn-show-ceremony" style="font-size: 1.2rem; padding: 12px 32px;">🏆 최종 시상식 결과 보기</button>
             ` : `
               <button class="btn btn-primary" id="btn-next-question-rank" style="font-size: 1.2rem; padding: 12px 32px;">➡️ 다음 문제로 이동 (Q${qIndex + 2})</button>
-            `) : (isLastQ ? `
-              <button class="btn btn-primary" id="btn-show-ceremony" style="font-size: 1.2rem; padding: 12px 32px;">🏆 최종 시상식 결과 보기</button>
-            ` : `<p style="color: #38bdf8; font-size: 1.1rem;">선생님이 다음 문제를 진행할 때까지 대기 중입니다...</p>`)}
+            `}
           </div>
         </div>
       </div>
     `;
 
+    document.getElementById('btn-back-to-answer')?.addEventListener('click', () => {
+      updateRoomMeta(roomId, { status: 'SHOW_ANSWER' });
+    });
     document.getElementById('btn-show-ceremony')?.addEventListener('click', () => {
       AudioEngine.playFanfare();
       updateRoomMeta(roomId, { status: 'FINISHED' });
@@ -1443,19 +1595,7 @@
 
   function renderQuestionContent(currentQ, responses, status, participants = {}) {
     const showAnswer = status === 'SHOW_ANSWER';
-
-    if (state.hideResults && status === 'PLAYING') {
-      return `
-        <div style="background: rgba(15, 23, 42, 0.85); border: 2px dashed #f59e0b; padding: 50px 20px; border-radius: 16px; text-align: center; margin: auto; max-width: 600px; width: 100%; box-sizing: border-box;">
-          <div style="font-size: 4rem; margin-bottom: 12px;">🙈</div>
-          <h2 style="font-size: 1.8rem; color: #fbbf24; margin-bottom: 10px;">결과 가리기 모드 작동 중</h2>
-          <p style="color: var(--text-muted); font-size: 1.1rem; line-height: 1.5;">
-            학생들이 타인의 답에 영향을 받지 않고 응답 중입니다.<br>
-            상단의 <strong>[👁️ 결과 공개]</strong> 버튼을 누르면 실시간 집계 그래프가 표시됩니다.
-          </p>
-        </div>
-      `;
-    }
+    const isHidden = state.hideResults && status === 'PLAYING';
 
     if (currentQ.type === 'ox' || currentQ.type === 'choice' || currentQ.type === 'poll') {
       const rawOptions = currentQ.options || [];
@@ -1467,35 +1607,100 @@
           options.push(opt);
         }
       });
-      const counts = validIndices.map(idx => Object.values(responses).filter(r => Number(r.answer) === idx).length);
+      const counts = validIndices.map(idx => Object.values(responses).filter(r => {
+        if (Array.isArray(r.answer)) {
+          return r.answer.map(Number).includes(idx);
+        }
+        return Number(r.answer) === idx;
+      }).length);
       const totalCount = counts.reduce((sum, c) => sum + c, 0);
 
+      const chartStyle = currentQ.type === 'ox' ? 'grid' : (currentQ.chartStyle || 'grid');
       const BAR_COLORS = ['#38bdf8', '#f59e0b', '#10b981', '#ec4899', '#a855f7'];
 
-      return `
-        <div class="poll-chart-container">
-          ${options.map((opt, displayIdx) => {
-            const realIdx = validIndices[displayIdx];
-            const isCorrect = showAnswer && currentQ.type !== 'poll' && realIdx === currentQ.correctAnswer;
-            const count = counts[displayIdx];
-            const pct = totalCount > 0 ? Math.round((count / totalCount) * 100) : 0;
-            const barColor = BAR_COLORS[displayIdx % BAR_COLORS.length];
-            return `
-              <div class="poll-bar-row ${isCorrect ? 'correct-highlight' : ''}">
-                <div class="poll-option-label">
-                  <span>${displayIdx + 1}. ${parseMath(opt)} ${isCorrect ? ' (정답! 🎉)' : ''}</span>
+      if (chartStyle === 'bar') {
+        return `
+          <div class="poll-chart-container">
+            ${options.map((opt, displayIdx) => {
+              const realIdx = validIndices[displayIdx];
+              const count = counts[displayIdx];
+              const pct = totalCount > 0 ? Math.round((count / totalCount) * 100) : 0;
+              const barColor = BAR_COLORS[displayIdx % BAR_COLORS.length];
+              const isCorrect = showAnswer && currentQ.isScoring !== false && realIdx === currentQ.correctAnswer;
+              return `
+                <div class="poll-bar-row" style="${isCorrect ? 'border: 2px solid #10b981; background: rgba(16, 185, 129, 0.1);' : ''}">
+                  <div class="poll-option-label">
+                    <span>${displayIdx + 1}. ${parseMath(opt)} ${isCorrect ? ' (정답! 🎉)' : ''}</span>
+                  </div>
+                  <div class="poll-bar-track">
+                    <div class="poll-bar-fill" style="width: ${isHidden ? '0%' : pct + '%'}; background-color: ${barColor};"></div>
+                  </div>
+                  <div class="poll-stat-text" style="color: ${barColor};">
+                    ${isHidden ? '🔒 가림' : `${pct}% <span style="font-size: 0.85em; color: var(--text-muted);">(${count}명)</span>`}
+                  </div>
                 </div>
-                <div class="poll-bar-track">
-                  <div class="poll-bar-fill" style="width: ${pct}%; background-color: ${barColor};"></div>
-                </div>
-                <div class="poll-stat-text" style="color: ${barColor};">
-                  ${pct}% <span style="font-size: 0.85em; color: var(--text-muted);">(${count}명)</span>
-                </div>
+              `;
+            }).join('')}
+          </div>
+        `;
+      } else if (chartStyle === 'pie') {
+        let cumulativePercent = 0;
+        const gradientStops = [];
+        options.forEach((opt, idx) => {
+          const count = counts[idx];
+          const pct = totalCount > 0 ? (count / totalCount) * 100 : 0;
+          const color = BAR_COLORS[idx % BAR_COLORS.length];
+          gradientStops.push(`${color} ${cumulativePercent}% ${cumulativePercent + pct}%`);
+          cumulativePercent += pct;
+        });
+        const conicStyle = gradientStops.length > 0 ? `conic-gradient(${gradientStops.join(', ')})` : '#334155';
+
+        return `
+          <div style="display: flex; align-items: center; justify-content: center; gap: 40px; padding: 20px; flex-wrap: wrap;">
+            <div style="width: 240px; height: 240px; border-radius: 50%; background: ${isHidden || totalCount === 0 ? '#334155' : conicStyle}; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px rgba(0,0,0,0.4); position: relative; transition: background 0.5s ease;">
+              <div style="width: 130px; height: 130px; border-radius: 50%; background: #0f172a; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; font-weight: bold; border: 2px solid var(--border);">
+                <span style="font-size: 1.5rem; color: #38bdf8;">${isHidden ? '🔒' : totalCount + '명'}</span>
+                <span style="font-size: 0.85rem; color: var(--text-muted);">${isHidden ? '가림 모드' : '총 응답'}</span>
               </div>
-            `;
-          }).join('')}
-        </div>
-      `;
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 12px; min-width: 280px; max-width: 440px; flex: 1;">
+              ${options.map((opt, displayIdx) => {
+                const realIdx = validIndices[displayIdx];
+                const count = counts[displayIdx];
+                const pct = totalCount > 0 ? Math.round((count / totalCount) * 100) : 0;
+                const color = BAR_COLORS[displayIdx % BAR_COLORS.length];
+                const isCorrect = showAnswer && currentQ.isScoring !== false && realIdx === currentQ.correctAnswer;
+                return `
+                  <div style="display: flex; align-items: center; justify-content: space-between; background: #1e293b; padding: 12px 18px; border-radius: 12px; border-left: 6px solid ${color}; ${isCorrect ? 'border: 2px solid #10b981;' : ''}">
+                    <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
+                      <span style="width: 14px; height: 14px; border-radius: 50%; background: ${color}; display: inline-block;"></span>
+                      <span style="font-weight: bold; color: #fff; font-size: 1.1rem;">${displayIdx + 1}. ${parseMath(opt)} ${isCorrect ? ' (정답! 🎉)' : ''}</span>
+                    </div>
+                    <div style="font-weight: bold; color: ${color}; font-size: 1.1rem; margin-left: 14px;">
+                      ${isHidden ? '🔒 가림' : `${pct}% (${count}명)`}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      } else {
+        return `
+          <div class="options-grid">
+            ${options.map((opt, displayIdx) => {
+              const realIdx = validIndices[displayIdx];
+              const isCorrect = showAnswer && currentQ.isScoring !== false && realIdx === currentQ.correctAnswer;
+              return `
+                <div class="option-card-display opt-${realIdx} ${isCorrect ? 'correct-highlight' : ''}">
+                  <span>${parseMath(opt)} ${isCorrect ? ' (정답! 🎉)' : ''}</span>
+                  <span class="count-bar">${isHidden ? '🔒 가림' : counts[displayIdx] + '명'}</span>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `;
+      }
     } else if (currentQ.type === 'short') {
       const targetText = String(currentQ.correctText || '').trim().toLowerCase();
       const wrongCounts = {};
@@ -1517,13 +1722,16 @@
         <div style="background: var(--card-dark); padding: 30px; border-radius: 16px; text-align: center; flex: 1; display: flex; flex-direction: column;">
           ${showAnswer ? `<h2 style="font-size: 2.2rem; color: #10b981; margin-bottom: 12px;">💡 정답: ${parseMath(currentQ.correctText)}</h2>` : `<h2 style="font-size: 1.8rem; color: #94a3b8; margin-bottom: 12px;">학생들이 단답형 답안을 입력하는 중입니다...</h2>`}
 
-          ${showAnswer && wrongTotal > 0 ? `
-            <div style="margin-bottom: 16px;">
-              <button class="btn btn-outline-sm" id="btn-toggle-wrong-cloud" style="border-color: #ec4899; color: #ec4899; font-weight: bold; font-size: 1rem; padding: 8px 18px;">
+          <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 16px; flex-wrap: wrap;">
+            ${showAnswer && wrongTotal > 0 ? `
+              <button class="btn btn-outline-sm" id="btn-toggle-wrong-cloud" style="border-color: #ec4899; color: #ec4899; font-weight: bold; font-size: 0.95rem; padding: 8px 16px;">
                 ${state.showWrongWordcloud ? '🙈 오답 가리기' : `💬 재미있는 오답 구경하기 (${wrongList.length}종류)`}
               </button>
-            </div>
-          ` : ''}
+            ` : ''}
+            <button class="btn btn-outline-sm" id="btn-toggle-short-nicknames" style="border-color: #38bdf8; color: #38bdf8; font-weight: bold; font-size: 0.95rem; padding: 8px 16px;">
+              ${state.showShortNicknames ? '🙈 닉네임 가리기' : '👤 닉네임 공개'}
+            </button>
+          </div>
 
           ${showAnswer && state.showWrongWordcloud && wrongList.length > 0 ? `
             <div style="background: #0f172a; border: 2px dashed #ec4899; border-radius: 16px; padding: 20px; margin-bottom: 20px;">
@@ -1543,11 +1751,17 @@
           ` : ''}
 
           <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; justify-content: center;">
-            ${Object.entries(responses).map(([sid, r]) => {
+            ${isHidden ? `
+              <div style="color: #fbbf24; font-size: 1.2rem; padding: 20px; font-weight: bold;">🔒 결과 가리기 모드 작동 중 (응답 집계 중)</div>
+            ` : Object.entries(responses).map(([sid, r]) => {
               const p = (participants && participants[sid]) || {};
               const nick = p.nickname || r.nickname || '';
               const av = p.avatar || r.avatar || '';
-              return `<div class="student-tag" style="font-size: 1.1rem; background: #1e293b;">${av} ${escapeHtml(nick ? nick + ': ' : '')}${parseMath(r.answer)}</div>`;
+              if (state.showShortNicknames) {
+                return `<div class="student-tag" style="font-size: 1.1rem; background: #1e293b;">${av} ${escapeHtml(nick ? nick + ': ' : '')}${parseMath(r.answer)}</div>`;
+              } else {
+                return `<div class="student-tag" style="font-size: 1.1rem; background: #1e293b;">💬 ${parseMath(r.answer)}</div>`;
+              }
             }).join('')}
           </div>
         </div>
@@ -1564,6 +1778,9 @@
       });
 
       const wordList = Object.values(counts);
+      if (isHidden) {
+        return `<div style="text-align: center; color: #fbbf24; padding: 40px; font-size: 1.2rem; font-weight: bold;">🔒 실시간 결과 가리기 모드 작동 중 (응답 집계 중)</div>`;
+      }
       if (wordList.length === 0) {
         return `<div style="text-align: center; color: var(--text-muted); padding: 40px; font-size: 1.2rem;">학생들의 워드클라우드 응답을 기다리는 중입니다...</div>`;
       }
@@ -1582,6 +1799,9 @@
         </div>
       `;
     } else if (currentQ.type === 'postit') {
+      if (isHidden) {
+        return `<div style="text-align: center; color: #fbbf24; padding: 40px; font-size: 1.2rem; font-weight: bold;">🔒 실시간 결과 가리기 모드 작동 중 (응답 집계 중)</div>`;
+      }
       return `
         <div class="postit-container">
           ${Object.entries(responses).map(([sid, r]) => {
@@ -1594,7 +1814,7 @@
                   <span>${av}</span>
                   <span>${escapeHtml(nick)}</span>
                 </div>
-                ${r.drawing ? `<div style="text-align: center; margin-bottom: 6px;"><img src="${r.drawing}" style="max-width: 100%; max-height: 160px; border-radius: 6px; background: #fff; border: 1px solid rgba(120,53,15,0.2);"></div>` : ''}
+                ${r.drawing ? `<div style="text-align: center; margin-bottom: 6px;"><img src="${r.drawing}" style="max-height: 160px; border-radius: 6px; background: #fff; border: 1px solid rgba(120,53,15,0.2);"></div>` : ''}
                 ${r.answer ? `<div style="font-size: 1.1rem; word-break: break-all; color: #451a03; font-weight: 700; line-height: 1.4;">${parseMath(r.answer)}</div>` : ''}
               </div>
             `;
@@ -1610,7 +1830,70 @@
       return;
     }
 
+    const questions = roomData.questions || [];
     const participants = Object.values(roomData.participants || {});
+
+    if (!hasScoringQuestions(questions)) {
+      container.innerHTML = `
+        <div class="quiz-display-container" id="final-podium-container">
+          <div class="leaderboard-container" style="text-align: center;">
+            <h1 class="leaderboard-title" style="font-size: 2.6rem;">📝 전체 의견 수렴이 완료되었습니다!</h1>
+            <p style="font-size: 1.3rem; color: #38bdf8; margin: 16px 0 30px 0;">
+              총 <strong>${participants.length}명</strong>의 학생이 모든 의견 수렴 문항에 적극적으로 참여하였습니다. 👏
+            </p>
+            <div style="background: #0f172a; padding: 24px; border-radius: 16px; border: 1px solid var(--border); margin-bottom: 30px; display: inline-block; max-width: 540px; width: 100%;">
+              <div style="font-size: 4rem; margin-bottom: 10px;">📊💡💬</div>
+              <div style="font-size: 1.1rem; color: var(--text-muted); line-height: 1.6;">
+                제출된 생각과 답변은 교사 보관함 및 CSV 내보내기를 통해 언제든 다시 확인하실 수 있습니다.
+              </div>
+            </div>
+            <div style="display: flex; justify-content: center; gap: 14px; flex-wrap: wrap;">
+              <button class="btn btn-success" id="btn-export-csv" style="font-size: 1.1rem; padding: 12px 20px;">📥 전체 결과 CSV 내보내기</button>
+              <button class="btn btn-primary" id="btn-export-image" style="font-size: 1.1rem; padding: 12px 20px;">📸 결과 이미지 저장 (PNG)</button>
+              <button class="btn btn-danger" id="btn-reset-finish-app" style="font-size: 1.1rem; padding: 12px 20px;">🏁 수렴 완료 & 메인으로</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('btn-export-csv')?.addEventListener('click', () => exportResultsToCSV(roomData));
+
+      document.getElementById('btn-export-image')?.addEventListener('click', async () => {
+        const elem = document.getElementById('final-podium-container');
+        if (!elem) return;
+        if (window.html2canvas) {
+          try {
+            const canvas = await window.html2canvas(elem, { backgroundColor: '#090d16', scale: 2 });
+            const a = document.createElement('a');
+            a.download = `의견수렴_결과_PIN_${state.roomId}_${new Date().toISOString().slice(0, 10)}.png`;
+            a.href = canvas.toDataURL('image/png');
+            a.click();
+          } catch (err) {
+            alert('이미지 저장 중 오류가 발생했습니다: ' + err.message);
+          }
+        } else {
+          alert('이미지 저장 라이브러리를 준비 중입니다. 잠시 후 다시 시도해 주세요.');
+        }
+      });
+
+      document.getElementById('btn-reset-finish-app')?.addEventListener('click', async () => {
+        if (confirm('의견 수렴을 마감하고 방을 대기실(LOBBY) 상태로 초기화하시겠습니까?')) {
+          await updateRoomMeta(state.roomId, { status: 'LOBBY', currentQuestionIndex: 0 });
+          if (db) {
+            try {
+              await db.ref(`rooms/${state.roomId}/participants`).remove();
+              await db.ref(`rooms/${state.roomId}/responses`).remove();
+            } catch (e) {}
+          } else {
+            await putFirebaseRest(`rooms/${state.roomId}/participants`, {});
+            await putFirebaseRest(`rooms/${state.roomId}/responses`, {});
+          }
+          window.location.search = '';
+        }
+      });
+      return;
+    }
+
     participants.sort((a, b) => (b.score || 0) - (a.score || 0));
     const first = participants[0] || { nickname: '1위', avatar: '🥇', score: 0 };
     const second = participants[1] || { nickname: '2위', avatar: '🥈', score: 0 };
@@ -1782,8 +2065,39 @@
     `;
 
     if (!myResponse) {
+      if ((currentQ.type === 'choice' || currentQ.type === 'poll') && currentQ.isMultiSelect && currentQ.isScoring === false) {
+        const selectedIndices = new Set();
+        const maxSelect = currentQ.maxSelect || 0;
+        container.querySelectorAll('.btn-poll-multi').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            const choiceIdx = Number(e.currentTarget.dataset.idx);
+            if (selectedIndices.has(choiceIdx)) {
+              selectedIndices.delete(choiceIdx);
+              e.currentTarget.style.border = 'none';
+              e.currentTarget.style.boxShadow = 'none';
+              e.currentTarget.style.opacity = '1';
+            } else {
+              if (maxSelect > 0 && selectedIndices.size >= maxSelect) {
+                alert(`최대 ${maxSelect}개까지 선택할 수 있습니다.`);
+                return;
+              }
+              selectedIndices.add(choiceIdx);
+              e.currentTarget.style.border = '4px solid #fbbf24';
+              e.currentTarget.style.boxShadow = '0 0 12px rgba(251, 191, 36, 0.6)';
+              e.currentTarget.style.opacity = '0.95';
+            }
+          });
+        });
+
+        document.getElementById('btn-submit-poll-multi')?.addEventListener('click', async () => {
+          if (selectedIndices.size === 0) return alert('최소 1개 이상의 항목을 선택해 주세요.');
+          await submitResponse(roomId, qIndex, studentId, { answer: Array.from(selectedIndices) });
+        });
+      }
+
       container.querySelectorAll('.btn-pad').forEach(btn => {
         btn.addEventListener('click', async (e) => {
+          if (e.currentTarget.classList.contains('btn-poll-multi')) return;
           const choiceIdx = Number(e.currentTarget.dataset.idx);
           await submitResponse(roomId, qIndex, studentId, { answer: choiceIdx });
         });
@@ -1887,7 +2201,31 @@
   }
 
   function renderPadControls(currentQ) {
-    if (currentQ.type === 'ox' || currentQ.type === 'choice') {
+    if ((currentQ.type === 'choice' || currentQ.type === 'poll') && currentQ.isMultiSelect && currentQ.isScoring === false) {
+      const rawOptions = currentQ.options || [];
+      const validOptions = [];
+      rawOptions.forEach((opt, idx) => {
+        if (String(opt || '').trim() !== '') {
+          validOptions.push({ opt, idx });
+        }
+      });
+      const maxText = currentQ.maxSelect > 0 ? `최대 ${currentQ.maxSelect}개 선택 가능` : '자유 중복 선택';
+      return `
+        <div class="mobile-card">
+          <div style="font-size: 0.95rem; color: #fbbf24; font-weight: bold; margin-bottom: 12px; text-align: center;">
+            ☑️ 중복 투표 가능 (${maxText})
+          </div>
+          <div class="mobile-pad-grid" style="margin-bottom: 14px;">
+            ${validOptions.map(item => `
+              <button type="button" class="btn-pad pad-${item.idx} btn-poll-multi" data-idx="${item.idx}">
+                ${parseMath(item.opt)}
+              </button>
+            `).join('')}
+          </div>
+          <button id="btn-submit-poll-multi" class="btn btn-primary" style="width: 100%; font-size: 1.2rem;">📌 선택 항목 제출하기</button>
+        </div>
+      `;
+    } else if (currentQ.type === 'ox' || currentQ.type === 'choice' || currentQ.type === 'poll') {
       const rawOptions = currentQ.options || [];
       const validOptions = [];
       rawOptions.forEach((opt, idx) => {
@@ -1928,8 +2266,8 @@
               </div>
               <button type="button" id="btn-clear-canvas" class="btn btn-outline-sm" style="padding: 4px 8px; font-size: 0.8rem; color: #ef4444; border-color: #ef4444;">🧹 지우기</button>
             </div>
-            <div style="background: #ffffff; border-radius: 8px; padding: 4px; border: 2px solid var(--primary); touch-action: none;">
-              <canvas id="postit-canvas" width="300" height="180" style="width: 100%; height: 180px; display: block; border-radius: 6px; cursor: crosshair; background: #ffffff;"></canvas>
+            <div style="background: #ffffff; border-radius: 8px; padding: 4px; border: 2px solid var(--primary); touch-action: none; width: 100%;">
+              <canvas id="postit-canvas" width="600" height="400" style="width: 100%; height: 50vh; max-height: 380px; min-height: 220px; display: block; border-radius: 6px; cursor: crosshair; background: #ffffff; touch-action: none;"></canvas>
             </div>
           </div>
           <button id="btn-submit-postit" class="btn btn-primary" style="width: 100%; font-size: 1.2rem; margin-top: 14px;">📌 포스트잇 제출하기</button>
