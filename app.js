@@ -1072,8 +1072,16 @@
     const studentJoinUrl = `${baseUrl}?room=${state.roomId}&role=student`;
     const questions = state.roomData?.questions || [];
 
+    const existingLobby = document.getElementById('lobby-layout-box');
+    if (existingLobby) {
+      updateParticipantList(state.roomData?.participants || {});
+      const editBtn = document.getElementById('btn-open-edit');
+      if (editBtn) editBtn.textContent = `📝 문제 출제 / 편집 (${questions.length}개)`;
+      return;
+    }
+
     app.innerHTML = `
-      <div class="lobby-layout">
+      <div class="lobby-layout" id="lobby-layout-box">
         <div class="lobby-header">
           <div style="display: flex; align-items: center;">
             <span class="room-badge">방 PIN : ${state.roomId}</span>
@@ -1103,9 +1111,15 @@
             <h2>스마트폰으로 참여하세요</h2>
             <div class="pin-number">${state.roomId}</div>
             <div class="qr-canvas-container" id="qr-canvas-container" style="background:#fff; padding:10px; border-radius:12px;"></div>
-            <p style="color: var(--text-muted); font-size: 0.95rem; word-break: break-all; margin-top: 10px;">
-              접속 주소: <br><strong>${studentJoinUrl}</strong>
-            </p>
+            <div style="color: var(--text-muted); font-size: 0.95rem; word-break: break-all; margin-top: 12px;">
+              <span>접속 주소:</span>
+              <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 6px; flex-wrap: wrap;">
+                <strong style="color: #38bdf8; font-size: 0.95rem; word-break: break-all; user-select: all; background: #0f172a; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);">${studentJoinUrl}</strong>
+                <button type="button" id="btn-copy-student-url" class="btn btn-outline-sm" style="padding: 6px 12px; font-size: 0.85rem; border-color: #38bdf8; color: #38bdf8; font-weight: bold; cursor: pointer; white-space: nowrap; background: rgba(56, 189, 248, 0.15);">
+                  📋 URL 복사
+                </button>
+              </div>
+            </div>
           </div>
 
           <div class="participants-box">
@@ -1126,6 +1140,29 @@
     }
 
     updateParticipantList(state.roomData?.participants || {});
+
+    document.getElementById('btn-copy-student-url')?.addEventListener('click', (e) => {
+      const btn = e.currentTarget;
+      const copySuccess = () => {
+        const oldText = btn.textContent;
+        btn.textContent = '✅ 복사 완료!';
+        btn.style.borderColor = '#10b981';
+        btn.style.color = '#10b981';
+        setTimeout(() => {
+          btn.textContent = oldText;
+          btn.style.borderColor = '#38bdf8';
+          btn.style.color = '#38bdf8';
+        }, 2000);
+      };
+
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(studentJoinUrl).then(copySuccess).catch(() => {
+          fallbackCopyText(studentJoinUrl, copySuccess);
+        });
+      } else {
+        fallbackCopyText(studentJoinUrl, copySuccess);
+      }
+    });
 
     document.getElementById('btn-go-home-lobby')?.addEventListener('click', () => window.location.search = '');
     document.getElementById('select-theme-lobby')?.addEventListener('change', (e) => setTheme(e.target.value));
@@ -1153,6 +1190,20 @@
         timerStartedAt: Date.now()
       });
     });
+  }
+
+  function fallbackCopyText(text, callback) {
+    const input = document.createElement('input');
+    input.value = text;
+    document.body.appendChild(input);
+    input.select();
+    try {
+      document.execCommand('copy');
+      if (callback) callback();
+    } catch (err) {
+      alert('접속 주소 복사에 실패했습니다.');
+    }
+    document.body.removeChild(input);
   }
 
   function updateParticipantList(participants) {
