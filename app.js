@@ -1283,22 +1283,28 @@
     const modalHtml = `
       <div id="admin-modal" class="modal-overlay">
         <div class="modal-box" style="max-width: 780px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
             <h2>📝 퀴즈 출제 / 문항 관리</h2>
-            <span style="color: var(--text-muted);">방 PIN: <strong>${roomId}</strong></span>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <button type="button" class="btn btn-primary btn-open-batch-modal" style="background: linear-gradient(135deg, #8b5cf6, #ec4899); border: none; font-size: 0.9rem; padding: 6px 14px; font-weight: bold; cursor: pointer;">⚡ 텍스트 1초 일괄 출제</button>
+              <span style="color: var(--text-muted);">방 PIN: <strong>${roomId}</strong></span>
+            </div>
           </div>
           <div style="margin-bottom: 16px; background: #0f172a; padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border);">
             <label style="font-weight: bold; font-size: 0.9rem; color: #38bdf8;">🏷️ 퀴즈 방 제목/이름:</label>
             <input type="text" id="input-admin-room-title" value="${escapeHtml(currentTitle)}" placeholder="퀴즈 방 제목을 입력하세요" style="width: 100%; margin-top: 6px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: #fff; font-weight: bold; font-size: 1rem;">
           </div>
           <div id="question-list-editor" style="margin-bottom: 20px; max-height: 50vh; overflow-y: auto;"></div>
-          <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; background: #0f172a; padding: 16px; border-radius: 12px;">
-            <span style="width: 100%; font-weight: bold; margin-bottom: 4px;">+ 새 문항 유형 선택 추가:</span>
-            <button class="btn btn-outline-sm" id="btn-add-ox">+ O/X 참거짓</button>
-            <button class="btn btn-outline-sm" id="btn-add-choice" style="border-color: #38bdf8; color: #38bdf8; font-weight: bold;">+ 선다형 (그리드/막대/원형)</button>
-            <button class="btn btn-outline-sm" id="btn-add-short">+ 단답형</button>
-            <button class="btn btn-outline-sm" id="btn-add-wordcloud">+ 워드클라우드</button>
-            <button class="btn btn-outline-sm" id="btn-add-postit">+ 포스트잇 브레인스토밍</button>
+          <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; background: #0f172a; padding: 16px; border-radius: 12px; justify-content: space-between; align-items: center;">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+              <span style="font-weight: bold; margin-right: 2px;">+ 개별 추가:</span>
+              <button class="btn btn-outline-sm" id="btn-add-ox">+ O/X 참거짓</button>
+              <button class="btn btn-outline-sm" id="btn-add-choice" style="border-color: #38bdf8; color: #38bdf8; font-weight: bold;">+ 선다형 (그리드/막대/원형)</button>
+              <button class="btn btn-outline-sm" id="btn-add-short">+ 단답형</button>
+              <button class="btn btn-outline-sm" id="btn-add-wordcloud">+ 워드클라우드</button>
+              <button class="btn btn-outline-sm" id="btn-add-postit">+ 포스트잇 브레인스토밍</button>
+            </div>
+            <button type="button" class="btn btn-primary btn-open-batch-modal-2" style="background: linear-gradient(135deg, #8b5cf6, #ec4899); border: none; font-size: 0.9rem; padding: 8px 16px; font-weight: bold; cursor: pointer;">⚡ 텍스트 1초 일괄 출제</button>
           </div>
           <div class="modal-actions">
             <button class="btn btn-secondary" id="btn-cancel-admin">닫기</button>
@@ -1315,7 +1321,7 @@
       if (questions.length === 0) {
         container.innerHTML = `
           <div style="text-align: center; color: var(--text-muted); padding: 50px 20px; font-size: 1.1rem; background: #0f172a; border-radius: 12px; border: 1px dashed var(--border);">
-            📝 아직 작성된 문항이 없습니다.<br><br>아래의 <strong>[+ 새 문항 유형 선택 추가]</strong> 버튼을 눌러 첫 문제를 출제해 주세요!
+            📝 아직 작성된 문항이 없습니다.<br><br>위의 <strong>[⚡ 텍스트 1초 일괄 출제]</strong> 버튼으로 복수 문항을 한번에 넣거나<br>아래의 <strong>[+ 개별 추가]</strong> 버튼을 누르고 첫 문제를 출제해 보세요!
           </div>
         `;
         return;
@@ -1534,6 +1540,13 @@
 
     renderEditorList();
 
+    const openBatchModalHandler = () => {
+      openBatchTextImportModal(questions, () => renderEditorList());
+    };
+    document.querySelectorAll('.btn-open-batch-modal, .btn-open-batch-modal-2').forEach(btn => {
+      btn.addEventListener('click', openBatchModalHandler);
+    });
+
     document.getElementById('btn-add-ox').addEventListener('click', () => {
       questions.push({ id: 'q_' + Date.now(), type: 'ox', question: '신규 O/X 질문입니다.', options: ['O (그렇다)', 'X (아니다)'], correctAnswer: 0, timeLimit: 15, isDoublePoints: false });
       renderEditorList();
@@ -1567,6 +1580,282 @@
       await updateQuestions(roomId, questions);
       document.getElementById('admin-modal').remove();
       if (onSaveCallback) onSaveCallback();
+    });
+  }
+
+  // ============================================================
+  // BATCH TEXT QUESTION PARSER & IMPORT MODAL
+  // ============================================================
+  function parseBatchTextToQuestions(rawText) {
+    if (!rawText || !rawText.trim()) return [];
+    
+    const text = rawText.trim().replace(/\r\n/g, '\n');
+    const rawBlocks = text.split(/(?:^|\n+)(?=\s*(?:\d+[\.\)]|[Qq]\d+[\.\)]|\[\d+\]))/).filter(b => b.trim().length > 0);
+    
+    const parsedQuestions = [];
+
+    rawBlocks.forEach((blockStr, blockIdx) => {
+      const lines = blockStr.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      if (lines.length === 0) return;
+
+      let firstLine = lines[0];
+      firstLine = firstLine.replace(/^\s*(?:\d+[\.\)]|[Qq]\d+[\.\)]|\[\d+\])\s*/, '');
+
+      let answerMatch = firstLine.match(/[\(（\[]\s*(?:답\s*:?|정답\s*:?|단답\s*:?)?\s*([0-9OOXx참거짓\w가-힣\s]+?)\s*[\)）\]]\s*$/);
+      let extractedAnswer = null;
+      let questionTitle = firstLine;
+
+      if (answerMatch) {
+        extractedAnswer = answerMatch[1].trim();
+        questionTitle = firstLine.replace(/[\(（\[]\s*(?:답\s*:?|정답\s*:?|단답\s*:?)?\s*[0-9OOXx참거짓\w가-힣\s]+?\s*[\)）\]]\s*$/, '').trim();
+      }
+
+      const restLines = lines.slice(1);
+      const rawOptionsText = restLines.join(' ');
+
+      let options = [];
+      const optionMatches = [];
+      const optRegex = /(?:^|\s)(?:[1-9①-⑨A-Da-d][\.\)]|[①-⑨])\s*([^\d①-⑨\n]+?)(?=\s*(?:[1-9①-⑨A-Da-d][\.\)]|[①-⑨])|$)/g;
+      
+      let m;
+      while ((m = optRegex.exec(rawOptionsText)) !== null) {
+        const optText = m[1].trim();
+        if (optText) optionMatches.push(optText);
+      }
+
+      if (optionMatches.length >= 2) {
+        options = optionMatches;
+      } else if (restLines.length >= 2 && restLines.every(l => /^(?:[1-9①-⑨A-Da-d][\.\)]|[①-⑨])/.test(l))) {
+        options = restLines.map(l => l.replace(/^(?:[1-9①-⑨A-Da-d][\.\)]|[①-⑨])\s*/, '').trim()).filter(Boolean);
+      }
+
+      if (!extractedAnswer && restLines.length > 0) {
+        const lastLine = restLines[restLines.length - 1];
+        const lastAnsMatch = lastLine.match(/[\(（\[]\s*(?:답\s*:?|정답\s*:?)\s*([0-9OOXx참거짓\w가-힣\s]+?)\s*[\)）\]]\s*$/);
+        if (lastAnsMatch) {
+          extractedAnswer = lastAnsMatch[1].trim();
+        }
+      }
+
+      let type = 'choice';
+      let correctAnswer = 0;
+      let correctText = '';
+      let timeLimit = 20;
+
+      const isOxStyle = options.length === 2 && (
+        (options[0].includes('참') && options[1].includes('거짓')) ||
+        (options[0].toUpperCase().includes('O') && options[1].toUpperCase().includes('X'))
+      );
+
+      if (isOxStyle || (!options.length && extractedAnswer && (extractedAnswer === '참' || extractedAnswer === '거짓' || extractedAnswer.toUpperCase() === 'O' || extractedAnswer.toUpperCase() === 'X'))) {
+        type = 'ox';
+        options = ['O (그렇다)', 'X (아니다)'];
+        timeLimit = 15;
+        if (extractedAnswer) {
+          const uAns = extractedAnswer.toUpperCase();
+          if (uAns === '참' || uAns === 'O' || uAns === '1' || uAns === 'O (그렇다)') {
+            correctAnswer = 0;
+          } else if (uAns === '거짓' || uAns === 'X' || uAns === '2' || uAns === 'X (아니다)') {
+            correctAnswer = 1;
+          }
+        }
+      } else if (options.length >= 2) {
+        type = 'choice';
+        timeLimit = 20;
+        if (extractedAnswer) {
+          if (/^\d+$/.test(extractedAnswer)) {
+            const num = parseInt(extractedAnswer, 10);
+            correctAnswer = Math.max(0, Math.min(options.length - 1, num - 1));
+          } else {
+            const foundIdx = options.findIndex(opt => opt.trim() === extractedAnswer.trim());
+            if (foundIdx >= 0) correctAnswer = foundIdx;
+          }
+        }
+      } else {
+        type = 'short';
+        timeLimit = 20;
+        correctText = extractedAnswer || '';
+      }
+
+      parsedQuestions.push({
+        id: 'q_' + Date.now() + '_' + blockIdx + '_' + Math.random().toString(36).substring(2, 6),
+        type,
+        question: questionTitle || `문항 ${blockIdx + 1}`,
+        options: options.length ? options : (type === 'ox' ? ['O (그렇다)', 'X (아니다)'] : []),
+        correctAnswer: type === 'short' ? 0 : correctAnswer,
+        correctText: type === 'short' ? correctText : '',
+        timeLimit,
+        isDoublePoints: false,
+        chartStyle: 'grid',
+        isScoring: true
+      });
+    });
+
+    return parsedQuestions;
+  }
+
+  function openBatchTextImportModal(existingQuestions, onSaveCallback) {
+    const modalHtml = `
+      <div id="batch-import-modal" class="modal-overlay" style="z-index: 9999;">
+        <div class="modal-box" style="max-width: 820px; width: 94%; max-height: 90vh; display: flex; flex-direction: column; background: #0f172a; border: 2px solid #8b5cf6;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
+            <h3 style="margin: 0; color: #c084fc; font-size: 1.35rem; display: flex; align-items: center; gap: 8px;">
+              ⚡ 텍스트 1초 문항 일괄 자동 출제기
+            </h3>
+            <button id="btn-close-batch-modal" class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.9rem;">✕ 닫기</button>
+          </div>
+
+          <div style="font-size: 0.88rem; color: #e2e8f0; margin-bottom: 10px; line-height: 1.5; background: #1e293b; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #8b5cf6;">
+            💡 <strong>사용 방법:</strong> 아래 텍스트 상자에 퀴즈 문항 텍스트(문제 + 선택지 + 정답)를 붙여넣고 <strong>[🔍 문항 자동 분석하기]</strong> 버튼을 누르면 O/X, 선다형, 단답형 문제로 자동으로 파싱되어 복수 문항이 1초 만에 생성됩니다.
+            <button type="button" id="btn-fill-sample-text" class="btn btn-outline-sm" style="margin-left: 8px; padding: 2px 8px; font-size: 0.78rem; border-color: #fbbf24; color: #fbbf24;">📝 제시하신 샘플 10문항 자동 채우기</button>
+          </div>
+
+          <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; gap: 12px;">
+            <div style="flex: 1; display: flex; flex-direction: column; min-height: 180px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <label style="font-weight: bold; font-size: 0.88rem; color: #38bdf8;">📋 퀴즈 문항 텍스트 붙여넣기:</label>
+                <span id="batch-char-count" style="font-size: 0.78rem; color: var(--text-muted);">0자</span>
+              </div>
+              <textarea id="batch-text-input" placeholder="여기에 텍스트를 붙여넣으세요...&#10;&#10;예시:&#10;1. 하나님을 가장 비슷하게 보여줄 수 있는 것은 무엇인가요?(4)&#10;1)태양 2)우주 3)없다 4)사람&#10;&#10;2. '망령되게'는 '함부로'라는 말로 바꿔서 말할 수 있습니다.(참)&#10;1)참 2)거짓" style="width: 100%; flex: 1; min-height: 160px; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: #090d16; color: #fff; font-family: monospace; font-size: 0.95rem; line-height: 1.5; resize: vertical;"></textarea>
+            </div>
+
+            <div style="display: flex; justify-content: center;">
+              <button type="button" id="btn-parse-batch-text" class="btn btn-primary" style="font-size: 1.05rem; padding: 10px 24px; background: linear-gradient(135deg, #38bdf8, #8b5cf6); border: none; font-weight: bold;">
+                🔍 문항 자동 분석 & 파싱 실행
+              </button>
+            </div>
+
+            <!-- 파싱 결과 미리보기 영역 -->
+            <div id="batch-preview-container" style="display: none; border-top: 1px solid var(--border); padding-top: 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span id="batch-parsed-summary" style="font-weight: bold; font-size: 1.05rem; color: #10b981;">
+                  🎉 총 0개 문항 분석 완료!
+                </span>
+                <span style="font-size: 0.8rem; color: var(--text-muted);">아래 분석된 문항을 확인 후 추가 방식을 선택하세요.</span>
+              </div>
+              <div id="batch-parsed-list" style="max-height: 220px; overflow-y: auto; background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px;">
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-actions" style="margin-top: 14px; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--border); padding-top: 12px;">
+            <button class="btn btn-secondary" id="btn-cancel-batch">취소</button>
+            <button class="btn btn-primary" id="btn-append-batch-qs" style="display: none; background: #38bdf8; border-color: #0284c7; font-weight: bold;">
+              ➕ 기존 문항 뒤에 추가하기
+            </button>
+            <button class="btn btn-primary" id="btn-replace-batch-qs" style="display: none; background: #10b981; border-color: #059669; font-weight: bold;">
+              🔄 기존 문항 지우고 새 문항으로 교체하기
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    const txtInput = document.getElementById('batch-text-input');
+    const charCount = document.getElementById('batch-char-count');
+    const previewBox = document.getElementById('batch-preview-container');
+    const parsedSummary = document.getElementById('batch-parsed-summary');
+    const parsedList = document.getElementById('batch-parsed-list');
+    const btnAppend = document.getElementById('btn-append-batch-qs');
+    const btnReplace = document.getElementById('btn-replace-batch-qs');
+
+    let currentParsed = [];
+
+    txtInput.addEventListener('input', () => {
+      charCount.textContent = `${txtInput.value.length}자`;
+    });
+
+    document.getElementById('btn-fill-sample-text')?.addEventListener('click', () => {
+      txtInput.value = `1.하나님을 가장 비슷하게 보여줄 수 있는 것은 무엇인가요?(4)
+1)태양 2)우주 3)없다 4)사람
+
+2.하나님을 완벽하게 보여줄 수 있는 것은 무엇인가요?(3)
+1)태양 2)우주 3)없다 4)사람
+
+3.’망령되게’는 ‘함부로’라는 말로 바꿔서 말할 수 있습니다.(참)
+1)참 2)거짓
+
+4.주일날 가장 먼저 해야 하는 일은 무엇인가요?
+1)놀러가기 2)게임하기 3)공부하기 4)예배드리기
+
+5.부모님을 공경하면 주어지는 복은 무엇인가요?(4)
+1)똑똑해진다 2)멋있어진다 3)부자가 된다 4)생명이 길어진다
+
+6.친구에게 바보라고 말하는 것도 살인이다.(참)
+1)참 2)거짓
+
+7.한 아빠와 한 엄마로 이루어진 가정은 누가 만들었나요?(2)
+1)아빠 2)하나님 3)엄마 4)부모님
+
+8.남에게 대접을 받고자 하는 대로 남을 대접하는 것이 율법과 선지자이다.(참)
+1)참 2)거짓
+
+9.내가 미워하는 친구에게는 거짓말을 해도 된다.(거짓)
+1)참 2)거짓
+
+10.거짓말로 친구를 괴롭히고 싶을 때는 입장을 바꿔서 생각해 보자.(참)
+1)참 2)거짓`;
+      charCount.textContent = `${txtInput.value.length}자`;
+      document.getElementById('btn-parse-batch-text')?.click();
+    });
+
+    document.getElementById('btn-parse-batch-text')?.addEventListener('click', () => {
+      const text = txtInput.value.trim();
+      if (!text) return alert('분석할 문항 텍스트를 입력해 주세요.');
+
+      currentParsed = parseBatchTextToQuestions(text);
+      if (currentParsed.length === 0) {
+        alert('문항을 인식하지 못했습니다. 번호(1. 또는 Q1.) 형식을 확인해 주세요.');
+        return;
+      }
+
+      previewBox.style.display = 'block';
+      parsedSummary.textContent = `🎉 총 ${currentParsed.length}개 문항 분석 완료!`;
+
+      parsedList.innerHTML = currentParsed.map((q, idx) => `
+        <div style="background: #1e293b; padding: 10px 14px; border-radius: 6px; border: 1px solid var(--border); font-size: 0.9rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <span style="font-weight: bold; color: #38bdf8;">Q${idx + 1}. [${getQuestionTypeLabel(q.type)}] ${escapeHtml(q.question)}</span>
+            <span style="color: #fbbf24; font-size: 0.82rem; font-weight: bold;">
+              ${q.type === 'ox' ? `정답: ${q.correctAnswer === 0 ? 'O (참)' : 'X (거짓)'}` : (q.type === 'choice' ? `정답: 보기 ${q.correctAnswer + 1} (${escapeHtml(q.options[q.correctAnswer] || '')})` : `정답: ${escapeHtml(q.correctText)}`)}
+            </span>
+          </div>
+          ${q.type === 'choice' ? `
+            <div style="color: var(--text-muted); font-size: 0.82rem;">
+              보기: ${q.options.map((opt, i) => `${i + 1})${escapeHtml(opt)}`).join('  ')}
+            </div>
+          ` : ''}
+        </div>
+      `).join('');
+
+      btnAppend.style.display = 'inline-block';
+      btnReplace.style.display = 'inline-block';
+    });
+
+    document.getElementById('btn-close-batch-modal')?.addEventListener('click', () => {
+      document.getElementById('batch-import-modal')?.remove();
+    });
+    document.getElementById('btn-cancel-batch')?.addEventListener('click', () => {
+      document.getElementById('batch-import-modal')?.remove();
+    });
+
+    btnAppend.addEventListener('click', () => {
+      if (currentParsed.length === 0) return;
+      existingQuestions.push(...currentParsed);
+      document.getElementById('batch-import-modal')?.remove();
+      if (typeof onSaveCallback === 'function') onSaveCallback();
+    });
+
+    btnReplace.addEventListener('click', () => {
+      if (currentParsed.length === 0) return;
+      if (confirm(`기존 문항(${existingQuestions.length}개)을 모두 삭제하고 새 파싱 문항(${currentParsed.length}개)으로 교체하시겠습니까?`)) {
+        existingQuestions.length = 0;
+        existingQuestions.push(...currentParsed);
+        document.getElementById('batch-import-modal')?.remove();
+        if (typeof onSaveCallback === 'function') onSaveCallback();
+      }
     });
   }
 
