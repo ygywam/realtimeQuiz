@@ -682,6 +682,131 @@
             </div>
           `}
         </div>
+
+        <!-- 아래로 스크롤 안내 디바이더 -->
+        <div class="landing-scroll-divider">
+          <span>👇 클래스 라이브 퀴즈의 특별한 핵심 기능과 사용 예시 더 살펴보기 (아래로 스크롤)</span>
+        </div>
+
+        <!-- 스크롤 연동 랜딩 피처 소개 섹션 -->
+        <div class="landing-section">
+          <h2 class="landing-title">✨ 왜 클래스 라이브 퀴즈인가요?</h2>
+          <p class="landing-subtitle">교내망 별도 설치 0%! 전자칠판과 학생 모바일을 연결하는 차세대 반응형 교실 퀴즈 플랫폼</p>
+
+          <div class="landing-feature-grid">
+            <!-- Feature 1: 3중 실시간 뷰 연동 -->
+            <div class="landing-card">
+              <div class="landing-card-header">
+                <div class="landing-card-icon">⚡</div>
+                <h3 class="landing-card-title">0.1초 실시간 3대 뷰 연동</h3>
+              </div>
+              <p class="landing-card-desc">
+                전자칠판(대형 송출), 교사 PC(컨트롤러), 학생 스마트폰(QR 1초 응답 패드)이 클라우드 실시간 DB로 0.1초 만에 동기화됩니다. 교내망 AP Isolation 차단 환경도 100% 극복합니다.
+              </p>
+              <div class="landing-preview-box" style="text-align: center;">
+                <div style="display: flex; justify-content: space-around; font-size: 0.9rem; font-weight: bold;">
+                  <span style="color: #fbbf24;">🖥️ 전자칠판 (QR 송출)</span>
+                  <span style="color: #38bdf8;">↔ 👨‍🏫 교사 PC</span>
+                  <span style="color: #10b981;">↔ 📱 학생 (QR 스캔)</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Feature 2: 5종 스마트 문항 & 3종 차트 시각화 (인터랙티브 탭) -->
+            <div class="landing-card">
+              <div class="landing-card-header">
+                <div class="landing-card-icon">📊</div>
+                <h3 class="landing-card-title">5종 스마트 문항 & 3종 실시간 차트</h3>
+              </div>
+              <p class="landing-card-desc">
+                O/X 참거짓, 선다형(그리드, 막대, 원형 도넛 차트), LaTeX 단답형, 실시간 워드클라우드, 50vh 그림 포스트잇까지 수업 성격에 맞게 1초 만에 차트 형태를 전환하세요!
+              </p>
+              <div class="landing-preview-box">
+                <div style="display: flex; gap: 8px; margin-bottom: 12px; justify-content: center;">
+                  <button type="button" class="landing-tab-btn active" id="tab-landing-grid">▦ 그리드</button>
+                  <button type="button" class="landing-tab-btn" id="tab-landing-bar">📊 막대 그래프</button>
+                  <button type="button" class="landing-tab-btn" id="tab-landing-pie">🍩 원형 차트</button>
+                </div>
+                <div id="landing-chart-demo" style="min-height: 120px; display: flex; align-items: center; justify-content: center;"></div>
+              </div>
+            </div>
+
+            <!-- Feature 3: 블라인드 결과 가리기 & 오답 익명 워드클라우드 -->
+            <div class="landing-card">
+              <div class="landing-card-header">
+                <div class="landing-card-icon">🔒</div>
+                <h3 class="landing-card-title">결과 가리기 & 재미있는 오답 워드클라우드</h3>
+              </div>
+              <p class="landing-card-desc">
+                '🙈 결과 가리기' 버튼을 누르면 또래 동조 현상 없이 소신껏 응답할 수 있도록 응답 수치만 블라인드 처리되며, 단답형 오답은 닉네임 없이 익명 워드클라우드로 유쾌하게 공유됩니다.
+              </p>
+              <div class="landing-preview-box">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                  <span style="font-size: 0.85rem; color: #94a3b8;">실시간 블라인드 모드 시뮬레이션:</span>
+                  <button type="button" id="btn-landing-toggle-results" class="btn btn-outline-sm" style="padding: 3px 10px; font-size: 0.8rem; border-color: #f59e0b; color: #fbbf24; background: rgba(245, 158, 11, 0.2);">
+                    🙈 결과 가리기 (클릭해 보세요)
+                  </button>
+                </div>
+                <div id="landing-blind-demo" style="background: #1e293b; padding: 12px; border-radius: 8px; display: flex; justify-content: space-around;">
+                  <span>1. 세종대왕 <strong style="color: #fbbf24;" id="demo-stat-1">🔒 가림</strong></span>
+                  <span>2. 이순신 <strong style="color: #fbbf24;" id="demo-stat-2">🔒 가림</strong></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Feature 4: 스피드 점수 & 3D 시상식 포디움 -->
+            <div class="landing-card">
+              <div class="landing-card-header">
+                <div class="landing-card-icon">🏆</div>
+                <h3 class="landing-card-title">스피드 점수 & 3D 시상식 & 무점수 요약</h3>
+              </div>
+              <p class="landing-card-desc">
+                제한시간 내 정답 제출 시 스피드 가산점이 부여되고 팡파르 음악과 함께 3D 챔피언 시상식이 열립니다. 무점수 의견 수렴 퀴즈는 점수 랭킹 대신 '의견 수렴 완료 요약'을 제공합니다.
+              </p>
+              <div class="landing-preview-box" style="text-align: center;">
+                <div style="display: flex; justify-content: center; gap: 16px; align-items: flex-end; padding: 10px 0;">
+                  <div style="background: #334155; padding: 8px 14px; border-radius: 8px 8px 0 0; color: #e2e8f0; font-size: 0.85rem;">🥈 2위 (420점)</div>
+                  <div style="background: #b45309; padding: 14px 18px; border-radius: 10px 10px 0 0; color: #fef08a; font-weight: bold; font-size: 1rem;">👑 🥇 1위 (580점)</div>
+                  <div style="background: #334155; padding: 6px 12px; border-radius: 8px 8px 0 0; color: #fde68a; font-size: 0.85rem;">🥉 3위 (310점)</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 교실 수업 적용 시나리오 4종 -->
+          <h3 style="font-size: 1.6rem; font-weight: bold; text-align: center; margin: 40px 0 10px 0;">💡 교실 수업에서 이렇게 활용해 보세요!</h3>
+          <div class="scenario-card-grid">
+            <div class="scenario-card">
+              <div class="scenario-icon">📐</div>
+              <div class="scenario-title">수학 / 과학 수식 퀴즈</div>
+              <div class="scenario-desc">LaTeX 수식 편집 보조 헬퍼 모달과 기호 툴바로 분수, 제곱, 근호 문제를 손쉽게 출제하고 시각화합니다.</div>
+            </div>
+            <div class="scenario-card">
+              <div class="scenario-icon">💬</div>
+              <div class="scenario-title">사회 / 국어 의견 수렴</div>
+              <div class="scenario-desc">무점수 워드클라우드 및 50vh 그림 포스트잇으로 학생들의 창의적인 생각과 토론 의견을 실시간 수집합니다.</div>
+            </div>
+            <div class="scenario-card">
+              <div class="scenario-icon">⚡</div>
+              <div class="scenario-title">단원 형성평가 & 복습</div>
+              <div class="scenario-desc">O/X 참거짓 및 3종 차트 선다형 문항으로 스피드 점수 경쟁을 유도하고 흥미진진한 복습 퀴즈를 진행합니다.</div>
+            </div>
+            <div class="scenario-card">
+              <div class="scenario-icon">🎨</div>
+              <div class="scenario-title">공개수업 4종 디자인 테마</div>
+              <div class="scenario-desc">스마트 TV, 초록 칠판, 대리석, 우드락 보드 4종 감성 테마로 교실 및 공개수업 분위기에 맞춰 단번에 전환합니다.</div>
+            </div>
+          </div>
+
+          <!-- 하단 최상단 이동 & 시작하기 CTA -->
+          <div style="margin-top: 50px; text-align: center; padding: 30px; background: var(--card-dark); border: 2px solid var(--primary); border-radius: var(--radius-lg);">
+            <h3 style="font-size: 1.6rem; color: var(--color-primary); margin-bottom: 10px;">🚀 지금 바로 우리 반 퀴즈를 시작해보세요!</h3>
+            <p style="color: var(--text-muted); margin-bottom: 20px; font-size: 1.05rem;">별도 회원가입이나 프로그램 설치 없이 클릭 한 번으로 시작할 수 있습니다.</p>
+            <div style="display: flex; gap: 14px; justify-content: center; flex-wrap: wrap;">
+              <button type="button" class="btn btn-primary" id="btn-scroll-top-cta" style="font-size: 1.1rem; padding: 14px 28px;">⬆️ 맨 위로 이동하여 시작하기</button>
+            </div>
+          </div>
+        </div>
       </div>
     `;
 
@@ -697,6 +822,91 @@
       const pin = document.getElementById('input-student-pin').value.trim();
       if (pin.length === 6) window.location.search = `?room=${pin}&role=student`;
       else alert('6자리 PIN 번호를 입력해 주세요.');
+    });
+
+    // 랜딩 예시 차트 탭 인터랙션
+    const demoBox = document.getElementById('landing-chart-demo');
+    const tabGrid = document.getElementById('tab-landing-grid');
+    const tabBar = document.getElementById('tab-landing-bar');
+    const tabPie = document.getElementById('tab-landing-pie');
+
+    const renderChartDemo = (type) => {
+      if (!demoBox) return;
+      if (type === 'bar') {
+        demoBox.innerHTML = `
+          <div style="width: 100%; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #1e293b; padding: 6px 12px; border-radius: 6px;">
+              <span>1. 세종대왕</span>
+              <div style="flex:1; margin: 0 12px; background: #0f172a; height: 16px; border-radius: 8px; overflow: hidden;"><div style="width: 75%; height: 100%; background: #38bdf8;"></div></div>
+              <span style="color: #38bdf8; font-weight: bold;">75% (15명)</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #1e293b; padding: 6px 12px; border-radius: 6px;">
+              <span>2. 이순신</span>
+              <div style="flex:1; margin: 0 12px; background: #0f172a; height: 16px; border-radius: 8px; overflow: hidden;"><div style="width: 25%; height: 100%; background: #f59e0b;"></div></div>
+              <span style="color: #f59e0b; font-weight: bold;">25% (5명)</span>
+            </div>
+          </div>
+        `;
+      } else if (type === 'pie') {
+        demoBox.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 20px; justify-content: center;">
+            <div style="width: 80px; height: 80px; border-radius: 50%; background: conic-gradient(#38bdf8 0% 75%, #f59e0b 75% 100%); display: flex; align-items: center; justify-content: center;">
+              <div style="width: 44px; height: 44px; border-radius: 50%; background: #0f172a; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold; color: #fff;">20명</div>
+            </div>
+            <div style="font-size: 0.85rem; text-align: left;">
+              <div style="color: #38bdf8;">● 1. 세종대왕: 75%</div>
+              <div style="color: #f59e0b; margin-top: 4px;">● 2. 이순신: 25%</div>
+            </div>
+          </div>
+        `;
+      } else {
+        demoBox.innerHTML = `
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%;">
+            <div style="background: #1e293b; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #38bdf8;">
+              <span style="font-weight: bold;">1. 세종대왕</span>
+              <div style="color: #38bdf8; font-weight: bold; margin-top: 4px;">15명 (75%)</div>
+            </div>
+            <div style="background: #1e293b; padding: 12px; border-radius: 8px; text-align: center;">
+              <span style="font-weight: bold;">2. 이순신</span>
+              <div style="color: #f59e0b; font-weight: bold; margin-top: 4px;">5명 (25%)</div>
+            </div>
+          </div>
+        `;
+      }
+    };
+
+    renderChartDemo('grid');
+
+    tabGrid?.addEventListener('click', () => {
+      [tabGrid, tabBar, tabPie].forEach(b => b?.classList.remove('active'));
+      tabGrid.classList.add('active');
+      renderChartDemo('grid');
+    });
+    tabBar?.addEventListener('click', () => {
+      [tabGrid, tabBar, tabPie].forEach(b => b?.classList.remove('active'));
+      tabBar.classList.add('active');
+      renderChartDemo('bar');
+    });
+    tabPie?.addEventListener('click', () => {
+      [tabGrid, tabBar, tabPie].forEach(b => b?.classList.remove('active'));
+      tabPie.classList.add('active');
+      renderChartDemo('pie');
+    });
+
+    // 결과 가리기 버튼 인터랙션 시뮬레이션
+    let isLandingHide = true;
+    document.getElementById('btn-landing-toggle-results')?.addEventListener('click', (e) => {
+      isLandingHide = !isLandingHide;
+      e.currentTarget.textContent = isLandingHide ? '🙈 결과 가리기 (클릭해 보세요)' : '👁️ 결과 공개 (클릭해 보세요)';
+      const s1 = document.getElementById('demo-stat-1');
+      const s2 = document.getElementById('demo-stat-2');
+      if (s1) s1.innerHTML = isLandingHide ? '🔒 가림' : '15명 (75%)';
+      if (s2) s2.innerHTML = isLandingHide ? '🔒 가림' : '5명 (25%)';
+    });
+
+    // 맨 위로 이동 CTA
+    document.getElementById('btn-scroll-top-cta')?.addEventListener('click', () => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     });
 
     document.querySelectorAll('.btn-run-room').forEach(btn => {
