@@ -176,6 +176,9 @@
     showShortNicknames: false
   };
 
+  let currentEditingQuestions = null;
+  let currentEditingUpdateFn = null;
+
   function isScoringQuestion(q) {
     if (!q) return false;
     if (q.type === 'wordcloud' || q.type === 'postit') return false;
@@ -981,6 +984,7 @@
     let questions = Array.isArray(currentQuestions) 
       ? JSON.parse(JSON.stringify(currentQuestions)) 
       : [];
+    currentEditingQuestions = questions;
 
     const roomMeta = state.roomData?.meta || {};
     const currentTitle = roomMeta.title || '실시간 수업 퀴즈';
@@ -1064,12 +1068,15 @@
             <input type="text" id="input_title_${idx}" class="q-title-input" data-idx="${idx}" value="${escapeHtml(q.question)}" placeholder="질문 내용을 입력하세요 (버튼으로 수식/도형/서식 쉽게 입력)">
           </div>
           <div class="form-group" style="margin-bottom: 12px;">
-            <label style="font-size: 0.88rem; font-weight: bold;">🖼️ 문제 첨부 이미지 (선택):</label>
-            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 4px;">
+            <label style="font-size: 0.88rem; font-weight: bold;">🖼️ 문제 첨부 이미지 / 그래프 (선택):</label>
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 4px;">
               <input type="file" class="q-image-file" data-idx="${idx}" accept="image/*" style="font-size: 0.85rem; color: var(--text-muted);">
+              <button type="button" class="btn btn-outline-sm btn-open-graph-modal" data-idx="${idx}" style="padding: 4px 10px; font-size: 0.82rem; border-color: #10b981; color: #10b981; font-weight: bold; background: rgba(16, 185, 129, 0.12); border-radius: 6px;">
+                📈 함수 그래프 그리기·삽입
+              </button>
               ${q.imageUrl ? `<button type="button" class="btn btn-danger btn-del-image" data-idx="${idx}" style="padding: 4px 10px; font-size: 0.8rem;">❌ 이미지 삭제</button>` : ''}
             </div>
-            ${q.imageUrl ? `<div style="margin-top: 8px;"><img src="${q.imageUrl}" style="max-height: 120px; border-radius: 8px; border: 1px solid var(--border);"></div>` : ''}
+            ${q.imageUrl ? `<div style="margin-top: 8px; display: inline-block; background: #ffffff; padding: 4px; border-radius: 8px; border: 1px solid var(--border);"><img src="${q.imageUrl}" style="max-height: 140px; max-width: 100%; border-radius: 6px; display: block;"></div>` : ''}
           </div>
           ${renderTypeSpecificEditor(q, idx)}
         </div>
@@ -1090,10 +1097,17 @@
           }
         });
       });
+      container.querySelectorAll('.btn-open-graph-modal').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const qIdx = Number(e.currentTarget.dataset.idx);
+          openGraphEditorModal(qIdx, questions, () => renderEditorList());
+        });
+      });
       container.querySelectorAll('.btn-del-image').forEach(btn => {
         btn.addEventListener('click', (e) => {
           const qIdx = Number(e.target.dataset.idx);
           delete questions[qIdx].imageUrl;
+          delete questions[qIdx].graphFormula;
           renderEditorList();
         });
       });
@@ -1153,7 +1167,7 @@
         btn.addEventListener('click', (e) => {
           const targetId = 'input_' + e.currentTarget.dataset.target;
           const inputEl = document.getElementById(targetId);
-          openFormulaEditorModal(inputEl);
+          openFormulaEditorModal(inputEl, questions, () => renderEditorList());
         });
       });
       container.querySelectorAll('.btn-quick-fmt').forEach(btn => {
@@ -2491,14 +2505,19 @@
     reader.readAsDataURL(file);
   }
 
-  function openFormulaEditorModal(targetInput) {
+  function openFormulaEditorModal(targetInput, questionsRef, onUpdateRef) {
     let activeInput = targetInput || document.activeElement;
+    const qList = questionsRef || currentEditingQuestions;
+    const updateFn = onUpdateRef || currentEditingUpdateFn;
     const modalHtml = `
       <div id="formula-helper-modal" class="modal-overlay" style="z-index: 9999;">
         <div class="modal-box" style="max-width: 680px; width: 92%; background: #0f172a; border: 2px solid #38bdf8;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
             <h3 style="margin: 0; color: #38bdf8; font-size: 1.3rem;">∑ 수식 & 서식 보조 편집 도구</h3>
-            <button id="btn-close-formula-modal" class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.9rem;">✕ 닫기</button>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button id="btn-modal-open-graph" class="btn btn-outline-sm" style="padding: 4px 10px; font-size: 0.82rem; border-color: #10b981; color: #10b981; background: rgba(16, 185, 129, 0.15); font-weight: bold;">📈 함수 그래프 그리기</button>
+              <button id="btn-close-formula-modal" class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.9rem;">✕ 닫기</button>
+            </div>
           </div>
           <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 12px;">
             LaTeX 문법을 몰라도 아래 기호/공식 버튼을 클릭하면 수식이 자동 생성됩니다. 입력 시 아래에 실시간 결과가 렌더링됩니다.
@@ -2603,6 +2622,16 @@
       document.getElementById('formula-helper-modal')?.remove();
     });
 
+    document.getElementById('btn-modal-open-graph')?.addEventListener('click', () => {
+      let qIdx = 0;
+      if (activeInput && activeInput.id) {
+        const m = activeInput.id.match(/\d+/);
+        if (m) qIdx = Number(m[0]);
+      }
+      document.getElementById('formula-helper-modal')?.remove();
+      openGraphEditorModal(qIdx, qList, updateFn);
+    });
+
     document.getElementById('btn-apply-formula')?.addEventListener('click', () => {
       const val = inputEl.value.trim();
       if (!val) return alert('수식을 먼저 입력해 주세요.');
@@ -2616,6 +2645,571 @@
       }
       document.getElementById('formula-helper-modal')?.remove();
     });
+  }
+
+  // ============================================================
+  // FUNCTION GRAPH COMPILER & HIGH-RES CANVAS PLOTTER
+  // ============================================================
+  function compileMathExpr(expr) {
+    if (!expr || typeof expr !== 'string') return null;
+    let s = expr.trim();
+    if (!s) return null;
+
+    s = s.replace(/−/g, '-');
+    s = s.replace(/\^/g, '**');
+
+    // Strip leading f(x)= or y= if user typed it
+    s = s.replace(/^[fghFGH]\s*\(\s*x\s*\)\s*=\s*/, '');
+    s = s.replace(/^[yY]\s*=\s*/, '');
+
+    // Implicit multiplication: 2x -> 2*x, 3( -> 3*(, )x -> )*x, )( -> )*(, x( -> x*(
+    s = s.replace(/(\d)\s*([xX\(])/g, '$1*$2');
+    s = s.replace(/(\))\s*(\d|[xX\(])/g, '$1*$2');
+    s = s.replace(/\b([xX])\s*([\(])/g, '$1*$2');
+
+    // Placeholders for ln and log
+    s = s.replace(/\bln\b/gi, '__LN__');
+    s = s.replace(/\blog10\b/gi, '__LOG10__');
+    s = s.replace(/\blog\b/gi, '__LOG10__');
+
+    // Standard Math functions
+    const mathFuncs = ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'sqrt', 'cbrt', 'abs', 'exp', 'floor', 'ceil', 'round'];
+    mathFuncs.forEach(fn => {
+      const re = new RegExp('\\b' + fn + '\\b', 'gi');
+      s = s.replace(re, 'Math.' + fn);
+    });
+
+    s = s.replace(/__LN__/g, 'Math.log');
+    s = s.replace(/__LOG10__/g, 'Math.log10');
+
+    s = s.replace(/\bpi\b/gi, 'Math.PI');
+    s = s.replace(/\be\b/gi, 'Math.E');
+
+    try {
+      const fn = new Function('x', 'Math', 'return (' + s + ');');
+      // Test execution to catch any syntax issues
+      fn(1, Math);
+      return fn;
+    } catch(err) {
+      return null;
+    }
+  }
+
+  function drawFunctionGraphToCanvas(canvas, options) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+
+    const xMin = Number(options.xMin ?? -5);
+    const xMax = Number(options.xMax ?? 5);
+    const yMin = Number(options.yMin ?? -5);
+    const yMax = Number(options.yMax ?? 5);
+    const showGrid = options.showGrid !== false;
+    const showAxes = options.showAxes !== false;
+    const showLabels = options.showLabels !== false;
+    const showLegend = options.showLegend !== false;
+    const lineWidth = options.lineWidth || 3.5;
+
+    // 1. Crisp white background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+
+    const pad = 42;
+    const plotW = w - pad * 2;
+    const plotH = h - pad * 2;
+
+    const toPx = (x) => pad + ((x - xMin) / (xMax - xMin)) * plotW;
+    const toPy = (y) => h - pad - ((y - yMin) / (yMax - yMin)) * plotH;
+
+    // Step calculation for grid and ticks
+    const xSpan = Math.max(0.1, xMax - xMin);
+    const ySpan = Math.max(0.1, yMax - yMin);
+
+    let xStep = 1;
+    if (xSpan > 40) xStep = 5;
+    else if (xSpan > 20) xStep = 2;
+    else if (xSpan <= 4) xStep = 0.5;
+
+    let yStep = 1;
+    if (ySpan > 40) yStep = 5;
+    else if (ySpan > 20) yStep = 2;
+    else if (ySpan <= 4) yStep = 0.5;
+
+    // 2. Grid lines
+    if (showGrid) {
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#e2e8f0';
+
+      const startX = Math.ceil(xMin / xStep) * xStep;
+      for (let x = startX; x <= xMax + 0.0001; x += xStep) {
+        const px = toPx(x);
+        ctx.beginPath();
+        ctx.moveTo(px, pad);
+        ctx.lineTo(px, h - pad);
+        ctx.stroke();
+      }
+
+      const startY = Math.ceil(yMin / yStep) * yStep;
+      for (let y = startY; y <= yMax + 0.0001; y += yStep) {
+        const py = toPy(y);
+        ctx.beginPath();
+        ctx.moveTo(pad, py);
+        ctx.lineTo(w - pad, py);
+        ctx.stroke();
+      }
+    }
+
+    // 3. Axes
+    if (showAxes) {
+      ctx.lineWidth = 2.2;
+      ctx.strokeStyle = '#1e293b';
+
+      const originX = Math.max(pad, Math.min(w - pad, toPx(0)));
+      const originY = Math.max(pad, Math.min(h - pad, toPy(0)));
+
+      // X-Axis
+      ctx.beginPath();
+      ctx.moveTo(pad - 12, originY);
+      ctx.lineTo(w - pad + 18, originY);
+      ctx.stroke();
+
+      // X Arrowhead
+      ctx.beginPath();
+      ctx.moveTo(w - pad + 18, originY);
+      ctx.lineTo(w - pad + 8, originY - 5);
+      ctx.lineTo(w - pad + 8, originY + 5);
+      ctx.fillStyle = '#1e293b';
+      ctx.fill();
+
+      // Y-Axis
+      ctx.beginPath();
+      ctx.moveTo(originX, h - pad + 12);
+      ctx.lineTo(originX, pad - 18);
+      ctx.stroke();
+
+      // Y Arrowhead
+      ctx.beginPath();
+      ctx.moveTo(originX, pad - 18);
+      ctx.lineTo(originX - 5, pad - 8);
+      ctx.lineTo(originX + 5, pad - 8);
+      ctx.fillStyle = '#1e293b';
+      ctx.fill();
+
+      // Origin 'O'
+      ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillStyle = '#334155';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'top';
+      if (0 >= xMin && 0 <= xMax && 0 >= yMin && 0 <= yMax) {
+        ctx.fillText('O', originX - 6, originY + 4);
+      }
+
+      // Axis labels: x and y
+      ctx.font = 'italic bold 17px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillText('x', w - pad + 24, originY + 6);
+      ctx.fillText('y', originX + 16, pad - 18);
+
+      // Ticks & Numbers
+      if (showLabels) {
+        ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.fillStyle = '#64748b';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+
+        const startX = Math.ceil(xMin / xStep) * xStep;
+        for (let x = startX; x <= xMax + 0.0001; x += xStep) {
+          if (Math.abs(x) < 0.001) continue;
+          const px = toPx(x);
+          ctx.beginPath();
+          ctx.moveTo(px, originY - 3);
+          ctx.lineTo(px, originY + 3);
+          ctx.strokeStyle = '#475569';
+          ctx.stroke();
+          ctx.fillText(Number(x.toFixed(2)).toString(), px, originY + 6);
+        }
+
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        const startY = Math.ceil(yMin / yStep) * yStep;
+        for (let y = startY; y <= yMax + 0.0001; y += yStep) {
+          if (Math.abs(y) < 0.001) continue;
+          const py = toPy(y);
+          ctx.beginPath();
+          ctx.moveTo(originX - 3, py);
+          ctx.lineTo(originX + 3, py);
+          ctx.strokeStyle = '#475569';
+          ctx.stroke();
+          ctx.fillText(Number(y.toFixed(2)).toString(), originX - 7, py);
+        }
+      }
+    }
+
+    // 4. Function Curves
+    const plotCurve = (fn, color, width) => {
+      if (!fn) return;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+
+      const samples = 1000;
+      const dx = (xMax - xMin) / samples;
+      let inPath = false;
+      let prevY = null;
+      let prevPy = null;
+
+      ctx.beginPath();
+      for (let i = 0; i <= samples; i++) {
+        const x = xMin + i * dx;
+        let y;
+        try {
+          y = fn(x, Math);
+        } catch (e) {
+          y = NaN;
+        }
+
+        if (typeof y !== 'number' || isNaN(y) || !isFinite(y) || y < yMin - (ySpan * 2) || y > yMax + (ySpan * 2)) {
+          inPath = false;
+          prevY = null;
+          prevPy = null;
+          continue;
+        }
+
+        const px = toPx(x);
+        const py = toPy(y);
+
+        // Discontinuity / Asymptote check
+        if (prevY !== null && prevPy !== null) {
+          const dyPx = Math.abs(py - prevPy);
+          if (dyPx > h * 0.6 && ((prevY > 0 && y < 0) || (prevY < 0 && y > 0))) {
+            inPath = false;
+          }
+        }
+
+        if (!inPath) {
+          ctx.moveTo(px, py);
+          inPath = true;
+        } else {
+          ctx.lineTo(px, py);
+        }
+
+        prevY = y;
+        prevPy = py;
+      }
+      ctx.stroke();
+    };
+
+    if (options.fn1) {
+      plotCurve(options.fn1, options.fn1Color || '#2563eb', lineWidth);
+    }
+    if (options.fn2) {
+      plotCurve(options.fn2, options.fn2Color || '#ea580c', lineWidth);
+    }
+
+    // 5. Legend Badges in top-left
+    if (showLegend) {
+      let legendY = pad + 10;
+      if (options.formula1) {
+        ctx.fillStyle = 'rgba(37, 99, 235, 0.08)';
+        ctx.strokeStyle = '#2563eb';
+        ctx.lineWidth = 1.5;
+        const txt = 'f(x) = ' + options.formula1;
+        ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        const tw = ctx.measureText(txt).width;
+        ctx.fillRect(pad + 12, legendY, tw + 18, 26);
+        ctx.strokeRect(pad + 12, legendY, tw + 18, 26);
+        ctx.fillStyle = '#1d4ed8';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(txt, pad + 21, legendY + 13);
+        legendY += 34;
+      }
+      if (options.formula2) {
+        ctx.fillStyle = 'rgba(234, 88, 12, 0.08)';
+        ctx.strokeStyle = '#ea580c';
+        ctx.lineWidth = 1.5;
+        const txt = 'g(x) = ' + options.formula2;
+        ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        const tw = ctx.measureText(txt).width;
+        ctx.fillRect(pad + 12, legendY, tw + 18, 26);
+        ctx.strokeRect(pad + 12, legendY, tw + 18, 26);
+        ctx.fillStyle = '#c2410c';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(txt, pad + 21, legendY + 13);
+      }
+    }
+
+    // 6. Crisp border
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(1, 1, w - 2, h - 2);
+  }
+
+  function openGraphEditorModal(qIdx, questionsRef, onUpdateRef) {
+    const qList = questionsRef || currentEditingQuestions || [];
+    const updateFn = onUpdateRef || currentEditingUpdateFn;
+    const q = qList[qIdx] || {};
+
+    const initialFormula = q.graphFormula || 'x^2 - 4';
+
+    const modalHtml = `
+      <div id="graph-helper-modal" class="modal-overlay" style="z-index: 9999;">
+        <div class="modal-box" style="max-width: 960px; width: 95%; max-height: 92vh; overflow-y: auto; background: #0f172a; border: 2px solid #10b981; padding: 22px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 1.5rem;">📈</span>
+              <h3 style="margin: 0; color: #10b981; font-size: 1.3rem;">함수 그래프 생성 & 문항 삽입 도구 (Q${qIdx + 1})</h3>
+            </div>
+            <button id="btn-close-graph-modal" class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.9rem;">✕ 닫기</button>
+          </div>
+          <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 14px; line-height: 1.5;">
+            수식으로 함수를 입력하면 좌표평면 위에 함수의 그래프가 실시간으로 렌더링됩니다. 완성된 고화질 그래프 이미지를 <strong>[📥 이 그래프를 문제에 첨부하기]</strong> 버튼을 눌러 문제에 즉시 삽입할 수 있습니다.
+          </p>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 18px; margin-bottom: 16px;">
+            <!-- 좌측: 수식 입력 및 설정 컨트롤 -->
+            <div style="background: #1e293b; border: 1px solid var(--border); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 12px;">
+              <!-- 1. 기본 함수 f(x) -->
+              <div>
+                <label style="font-weight: bold; font-size: 0.88rem; color: #38bdf8; display: flex; justify-content: space-between; align-items: center;">
+                  <span>🔹 기본 함수 f(x) [파란색]:</span>
+                  <span id="f1-status-badge" style="font-size: 0.75rem; color: #10b981;">● 실시간 렌더링 중</span>
+                </label>
+                <input type="text" id="graph-f1-input" class="input-nickname" value="${escapeHtml(initialFormula)}" placeholder="예: x^2 - 4, sin(x), 2x+1, 1/x, sqrt(x+2)" style="margin-top: 4px; font-family: monospace; font-size: 1.05rem; border-color: #38bdf8;">
+              </div>
+
+              <!-- 2. 보조 함수 g(x) 토글 -->
+              <div style="background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid var(--border);">
+                <label style="font-size: 0.85rem; font-weight: bold; color: #ea580c; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                  <input type="checkbox" id="graph-f2-enable">
+                  <span>🔸 보조 함수 g(x) 함께 표시 (교점/비교 분석) [주황색]</span>
+                </label>
+                <div id="graph-f2-wrap" style="display: none; margin-top: 8px;">
+                  <input type="text" id="graph-f2-input" class="input-nickname" value="2x - 1" placeholder="예: 2x - 1, cos(x)" style="font-family: monospace; font-size: 0.95rem; border-color: #ea580c;">
+                </div>
+              </div>
+
+              <!-- 3. 원클릭 대표 함수 프리셋 -->
+              <div>
+                <div style="font-size: 0.8rem; font-weight: bold; color: #fbbf24; margin-bottom: 6px;">자주 출제되는 대표 함수 프리셋 (클릭 시 자동 적용):</div>
+                <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="2x - 1" data-xmin="-5" data-xmax="5" data-ymin="-5" data-ymax="5">일차: 2x-1</button>
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="x^2 - 4" data-xmin="-5" data-xmax="5" data-ymin="-6" data-ymax="6">이차: x²-4</button>
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="-x^2 + 2x + 3" data-xmin="-4" data-xmax="6" data-ymin="-5" data-ymax="6">이차(위): -x²+2x+3</button>
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="x^3 - 3x" data-xmin="-4" data-xmax="4" data-ymin="-5" data-ymax="5">삼차: x³-3x</button>
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="1/x" data-xmin="-5" data-xmax="5" data-ymin="-5" data-ymax="5">유리: 1/x</button>
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="sqrt(x+2)" data-xmin="-3" data-xmax="7" data-ymin="-1" data-ymax="5">무리: √(x+2)</button>
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="sin(x)" data-xmin="-7" data-xmax="7" data-ymin="-2.5" data-ymax="2.5">삼각: sin(x)</button>
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="cos(2x)" data-xmin="-7" data-xmax="7" data-ymin="-2.5" data-ymax="2.5">삼각: cos(2x)</button>
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="2^x" data-xmin="-5" data-xmax="5" data-ymin="-1" data-ymax="9">지수: 2ˣ</button>
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="ln(x)" data-xmin="-1" data-xmax="8" data-ymin="-4" data-ymax="4">로그: ln(x)</button>
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="abs(x) - 2" data-xmin="-6" data-xmax="6" data-ymin="-4" data-ymax="5">절댓값: |x|-2</button>
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="x^2 - 2" data-f2="x" data-f2enable="true" data-xmin="-4" data-xmax="4" data-ymin="-4" data-ymax="6">연립: x²-2 & x</button>
+                </div>
+              </div>
+
+              <!-- 4. 좌표축 범위 설정 -->
+              <div>
+                <div style="font-size: 0.8rem; font-weight: bold; color: var(--text-muted); margin-bottom: 6px;">좌표축 범위 설정:</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                  <div>
+                    <label style="font-size: 0.75rem; color: #94a3b8;">X축 범위 (최소 ~ 최대):</label>
+                    <div style="display: flex; gap: 4px; align-items: center; margin-top: 2px;">
+                      <input type="number" id="graph-xmin" value="-5" step="1" style="width: 100%; padding: 4px 6px; border-radius: 4px; border: 1px solid var(--border); background: #0f172a; color: #fff;">
+                      <span>~</span>
+                      <input type="number" id="graph-xmax" value="5" step="1" style="width: 100%; padding: 4px 6px; border-radius: 4px; border: 1px solid var(--border); background: #0f172a; color: #fff;">
+                    </div>
+                  </div>
+                  <div>
+                    <label style="font-size: 0.75rem; color: #94a3b8;">Y축 범위 (최소 ~ 최대):</label>
+                    <div style="display: flex; gap: 4px; align-items: center; margin-top: 2px;">
+                      <input type="number" id="graph-ymin" value="-5" step="1" style="width: 100%; padding: 4px 6px; border-radius: 4px; border: 1px solid var(--border); background: #0f172a; color: #fff;">
+                      <span>~</span>
+                      <input type="number" id="graph-ymax" value="5" step="1" style="width: 100%; padding: 4px 6px; border-radius: 4px; border: 1px solid var(--border); background: #0f172a; color: #fff;">
+                    </div>
+                  </div>
+                </div>
+                <div style="display: flex; gap: 4px; margin-top: 6px;">
+                  <button type="button" class="btn btn-outline-sm btn-quick-range" data-range="-5,5,-5,5" style="padding: 2px 6px; font-size: 0.75rem;">[-5, 5]</button>
+                  <button type="button" class="btn btn-outline-sm btn-quick-range" data-range="-10,10,-10,10" style="padding: 2px 6px; font-size: 0.75rem;">[-10, 10]</button>
+                  <button type="button" class="btn btn-outline-sm btn-quick-range" data-range="-3,3,-3,3" style="padding: 2px 6px; font-size: 0.75rem;">[-3, 3]</button>
+                  <button type="button" class="btn btn-outline-sm btn-quick-range" data-range="0,10,-1,9" style="padding: 2px 6px; font-size: 0.75rem;">양수 [0, 10]</button>
+                </div>
+              </div>
+
+              <!-- 5. 시각적 옵션 -->
+              <div style="display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.8rem; color: var(--text-muted); border-top: 1px solid var(--border); padding-top: 8px;">
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                  <input type="checkbox" id="graph-opt-grid" checked> 보조 눈금 격자선
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                  <input type="checkbox" id="graph-opt-labels" checked> 원점(O) 및 축 눈금
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                  <input type="checkbox" id="graph-opt-legend" checked> 함수식 범례 뱃지
+                </label>
+              </div>
+            </div>
+
+            <!-- 우측: 실시간 캔버스 렌더링 미리보기 -->
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: #1e293b; border: 1px solid var(--border); border-radius: 10px; padding: 14px;">
+              <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-weight: bold; font-size: 0.88rem; color: #10b981;">📐 실시간 그래프 미리보기</span>
+                <span style="font-size: 0.75rem; color: var(--text-muted);">고해상도 600×450 벡터 렌더링</span>
+              </div>
+              <div style="width: 100%; display: flex; justify-content: center; background: #ffffff; border-radius: 8px; padding: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+                <canvas id="graph-live-canvas" width="600" height="450" style="width: 100%; max-width: 520px; aspect-ratio: 4/3; display: block; border-radius: 4px;"></canvas>
+              </div>
+              <div id="graph-error-msg" style="color: #ef4444; font-size: 0.8rem; margin-top: 8px; min-height: 20px; text-align: center;"></div>
+            </div>
+          </div>
+
+          <!-- 하단 버튼 바 -->
+          <div class="modal-actions" style="justify-content: space-between; gap: 10px; border-top: 1px solid var(--border); padding-top: 12px;">
+            <button class="btn btn-secondary" id="btn-cancel-graph">취소</button>
+            <button class="btn btn-primary" id="btn-apply-graph" style="background: #10b981; border-color: #059669; font-size: 1rem; padding: 10px 20px;">
+              📥 이 그래프를 문제(Q${qIdx + 1})에 첨부하기
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    const canvas = document.getElementById('graph-live-canvas');
+    const f1Input = document.getElementById('graph-f1-input');
+    const f2Input = document.getElementById('graph-f2-input');
+    const f2Enable = document.getElementById('graph-f2-enable');
+    const f2Wrap = document.getElementById('graph-f2-wrap');
+    const xMinInput = document.getElementById('graph-xmin');
+    const xMaxInput = document.getElementById('graph-xmax');
+    const yMinInput = document.getElementById('graph-ymin');
+    const yMaxInput = document.getElementById('graph-ymax');
+    const optGrid = document.getElementById('graph-opt-grid');
+    const optLabels = document.getElementById('graph-opt-labels');
+    const optLegend = document.getElementById('graph-opt-legend');
+    const errorMsg = document.getElementById('graph-error-msg');
+    const statusBadge = document.getElementById('f1-status-badge');
+
+    let currentFn1 = null;
+
+    const updateGraph = () => {
+      const f1Val = f1Input.value.trim();
+      const f2Val = f2Input.value.trim();
+      const isF2 = f2Enable.checked;
+
+      const xMin = parseFloat(xMinInput.value) || -5;
+      const xMax = parseFloat(xMaxInput.value) || 5;
+      const yMin = parseFloat(yMinInput.value) || -5;
+      const yMax = parseFloat(yMaxInput.value) || 5;
+
+      const fn1 = compileMathExpr(f1Val);
+      currentFn1 = fn1;
+      const fn2 = isF2 ? compileMathExpr(f2Val) : null;
+
+      if (!fn1 && f1Val) {
+        errorMsg.textContent = '⚠️ f(x) 수식 형식을 확인해 주세요. (예: x^2 - 4, sin(x), 2x+1)';
+        statusBadge.textContent = '⚠️ 수식 오류';
+        statusBadge.style.color = '#ef4444';
+      } else {
+        errorMsg.textContent = '';
+        statusBadge.textContent = '● 실시간 렌더링 중';
+        statusBadge.style.color = '#10b981';
+      }
+
+      drawFunctionGraphToCanvas(canvas, {
+        xMin, xMax, yMin, yMax,
+        showGrid: optGrid.checked,
+        showAxes: true,
+        showLabels: optLabels.checked,
+        showLegend: optLegend.checked,
+        fn1,
+        fn1Color: '#2563eb',
+        formula1: fn1 ? f1Val : null,
+        fn2,
+        fn2Color: '#ea580c',
+        formula2: (isF2 && fn2) ? f2Val : null,
+        lineWidth: 3.5
+      });
+    };
+
+    // Event listeners
+    f1Input.addEventListener('input', updateGraph);
+    f2Input.addEventListener('input', updateGraph);
+    f2Enable.addEventListener('change', () => {
+      f2Wrap.style.display = f2Enable.checked ? 'block' : 'none';
+      updateGraph();
+    });
+    [xMinInput, xMaxInput, yMinInput, yMaxInput].forEach(inp => inp.addEventListener('input', updateGraph));
+    [optGrid, optLabels, optLegend].forEach(cb => cb.addEventListener('change', updateGraph));
+
+    // Preset buttons
+    document.querySelectorAll('.btn-g-preset').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const ds = e.currentTarget.dataset;
+        if (ds.f1) f1Input.value = ds.f1;
+        if (ds.xmin) xMinInput.value = ds.xmin;
+        if (ds.xmax) xMaxInput.value = ds.xmax;
+        if (ds.ymin) yMinInput.value = ds.ymin;
+        if (ds.ymax) yMaxInput.value = ds.ymax;
+        if (ds.f2) {
+          f2Input.value = ds.f2;
+          f2Enable.checked = true;
+          f2Wrap.style.display = 'block';
+        } else {
+          f2Enable.checked = false;
+          f2Wrap.style.display = 'none';
+        }
+        updateGraph();
+      });
+    });
+
+    // Quick range buttons
+    document.querySelectorAll('.btn-quick-range').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const [xmin, xmax, ymin, ymax] = e.currentTarget.dataset.range.split(',');
+        xMinInput.value = xmin;
+        xMaxInput.value = xmax;
+        yMinInput.value = ymin;
+        yMaxInput.value = ymax;
+        updateGraph();
+      });
+    });
+
+    // Close / Cancel
+    document.getElementById('btn-close-graph-modal')?.addEventListener('click', () => {
+      document.getElementById('graph-helper-modal')?.remove();
+    });
+    document.getElementById('btn-cancel-graph')?.addEventListener('click', () => {
+      document.getElementById('graph-helper-modal')?.remove();
+    });
+
+    // Apply to question
+    document.getElementById('btn-apply-graph')?.addEventListener('click', () => {
+      const f1Val = f1Input.value.trim();
+      if (!currentFn1) {
+        alert('올바른 함수 수식을 먼저 입력해 주세요. (예: x^2 - 4)');
+        f1Input.focus();
+        return;
+      }
+
+      // Convert canvas to PNG dataUrl
+      const dataUrl = canvas.toDataURL('image/png');
+      if (qList[qIdx]) {
+        qList[qIdx].imageUrl = dataUrl;
+        qList[qIdx].graphFormula = f1Val;
+      }
+
+      if (typeof updateFn === 'function') {
+        updateFn();
+      }
+      document.getElementById('graph-helper-modal')?.remove();
+    });
+
+    // Initial render
+    setTimeout(updateGraph, 30);
   }
 
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
