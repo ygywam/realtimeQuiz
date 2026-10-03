@@ -1590,7 +1590,10 @@
     if (!rawText || !rawText.trim()) return [];
     
     const text = rawText.trim().replace(/\r\n/g, '\n');
-    const rawBlocks = text.split(/(?:^|\n+)(?=\s*(?:\d+[\.\)]|[Qq]\d+[\.\)]|\[\d+\]))/).filter(b => b.trim().length > 0);
+    
+    // Split into question blocks by matching digits with DOT '.' at line start (e.g. 1. 2. 10. Q1.)
+    // Note: Never split on choice options '1)' or '2)'
+    const rawBlocks = text.split(/(?:^|\n+)(?=\s*(?:\d+\.|\d+\s*\.|[Qq]\d+[\.\)]|\[\d+\])\s*\S)/).filter(b => b.trim().length > 0);
     
     const parsedQuestions = [];
 
@@ -1599,41 +1602,35 @@
       if (lines.length === 0) return;
 
       let firstLine = lines[0];
-      firstLine = firstLine.replace(/^\s*(?:\d+[\.\)]|[Qq]\d+[\.\)]|\[\d+\])\s*/, '');
 
-      let answerMatch = firstLine.match(/[\(（\[]\s*(?:답\s*:?|정답\s*:?|단답\s*:?)?\s*([0-9OOXx참거짓\w가-힣\s]+?)\s*[\)）\]]\s*$/);
+      // Remove question number prefix (e.g. "1.", "1. ", "Q1.", "[1]")
+      firstLine = firstLine.replace(/^\s*(?:\d+\.|\d+\s*\.|[Qq]\d+[\.\)]|\[\d+\])\s*/, '');
+
+      // Extract answer in parentheses at end of question line e.g. (4), (참), (거짓), (답: 4)
       let extractedAnswer = null;
       let questionTitle = firstLine;
 
+      const answerMatch = firstLine.match(/^(.*?)\s*[\(（\[]\s*(?:답\s*:?|정답\s*:?)?\s*([0-9가-힣\w\s]+?)\s*[\)）\]]\s*$/);
       if (answerMatch) {
-        extractedAnswer = answerMatch[1].trim();
-        questionTitle = firstLine.replace(/[\(（\[]\s*(?:답\s*:?|정답\s*:?|단답\s*:?)?\s*[0-9OOXx참거짓\w가-힣\s]+?\s*[\)）\]]\s*$/, '').trim();
+        questionTitle = answerMatch[1].trim();
+        extractedAnswer = answerMatch[2].trim();
       }
 
-      const restLines = lines.slice(1);
-      const rawOptionsText = restLines.join(' ');
+      const restText = lines.slice(1).join(' ');
 
+      // Extract choice options like "1)태양 2)우주 3)없다 4)사람" or "1)참 2)거짓"
       let options = [];
-      const optionMatches = [];
-      const optRegex = /(?:^|\s)(?:[1-9①-⑨A-Da-d][\.\)]|[①-⑨])\s*([^\d①-⑨\n]+?)(?=\s*(?:[1-9①-⑨A-Da-d][\.\)]|[①-⑨])|$)/g;
-      
-      let m;
-      while ((m = optRegex.exec(rawOptionsText)) !== null) {
-        const optText = m[1].trim();
-        if (optText) optionMatches.push(optText);
+      const optRegex = /(\d+)[\)\.]\s*(.*?)(?=\s*\d+[\)\.]|$)/g;
+      let optMatch;
+      while ((optMatch = optRegex.exec(restText)) !== null) {
+        const val = optMatch[2].trim();
+        if (val) options.push(val);
       }
 
-      if (optionMatches.length >= 2) {
-        options = optionMatches;
-      } else if (restLines.length >= 2 && restLines.every(l => /^(?:[1-9①-⑨A-Da-d][\.\)]|[①-⑨])/.test(l))) {
-        options = restLines.map(l => l.replace(/^(?:[1-9①-⑨A-Da-d][\.\)]|[①-⑨])\s*/, '').trim()).filter(Boolean);
-      }
-
-      if (!extractedAnswer && restLines.length > 0) {
-        const lastLine = restLines[restLines.length - 1];
-        const lastAnsMatch = lastLine.match(/[\(（\[]\s*(?:답\s*:?|정답\s*:?)\s*([0-9OOXx참거짓\w가-힣\s]+?)\s*[\)）\]]\s*$/);
-        if (lastAnsMatch) {
-          extractedAnswer = lastAnsMatch[1].trim();
+      if (options.length === 0 && lines.length > 1) {
+        const lineOptions = lines.slice(1).map(l => l.replace(/^\d+[\)\.]\s*/, '').trim()).filter(Boolean);
+        if (lineOptions.length >= 2) {
+          options = lineOptions;
         }
       }
 
@@ -1706,8 +1703,7 @@
           </div>
 
           <div style="font-size: 0.88rem; color: #e2e8f0; margin-bottom: 10px; line-height: 1.5; background: #1e293b; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #8b5cf6;">
-            💡 <strong>사용 방법:</strong> 아래 텍스트 상자에 퀴즈 문항 텍스트(문제 + 선택지 + 정답)를 붙여넣고 <strong>[🔍 문항 자동 분석하기]</strong> 버튼을 누르면 O/X, 선다형, 단답형 문제로 자동으로 파싱되어 복수 문항이 1초 만에 생성됩니다.
-            <button type="button" id="btn-fill-sample-text" class="btn btn-outline-sm" style="margin-left: 8px; padding: 2px 8px; font-size: 0.78rem; border-color: #fbbf24; color: #fbbf24;">📝 제시하신 샘플 10문항 자동 채우기</button>
+            💡 <strong>사용 방법:</strong> 아래 텍스트 상자에 퀴즈 문항 텍스트(문제 + 선택지 + 정답)를 붙여넣고 <strong>[🔍 문항 자동 분석하기]</strong> 버튼을 누르면 O/X 참거짓, 선다형, 단답형 문제로 자동으로 판별 및 분류되어 생성됩니다.
           </div>
 
           <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; gap: 12px;">
@@ -1716,7 +1712,7 @@
                 <label style="font-weight: bold; font-size: 0.88rem; color: #38bdf8;">📋 퀴즈 문항 텍스트 붙여넣기:</label>
                 <span id="batch-char-count" style="font-size: 0.78rem; color: var(--text-muted);">0자</span>
               </div>
-              <textarea id="batch-text-input" placeholder="여기에 텍스트를 붙여넣으세요...&#10;&#10;예시:&#10;1. 하나님을 가장 비슷하게 보여줄 수 있는 것은 무엇인가요?(4)&#10;1)태양 2)우주 3)없다 4)사람&#10;&#10;2. '망령되게'는 '함부로'라는 말로 바꿔서 말할 수 있습니다.(참)&#10;1)참 2)거짓" style="width: 100%; flex: 1; min-height: 160px; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: #090d16; color: #fff; font-family: monospace; font-size: 0.95rem; line-height: 1.5; resize: vertical;"></textarea>
+              <textarea id="batch-text-input" placeholder="문항 텍스트를 이곳에 붙여넣으세요..." style="width: 100%; flex: 1; min-height: 180px; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: #090d16; color: #fff; font-family: monospace; font-size: 0.95rem; line-height: 1.5; resize: vertical;"></textarea>
             </div>
 
             <div style="display: flex; justify-content: center;">
