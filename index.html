@@ -121,8 +121,10 @@ body {
 .lobby-layout {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  padding: 30px 40px;
+  min-height: calc(100vh - 60px);
+  height: auto;
+  padding: 30px 40px 60px 40px;
+  box-sizing: border-box;
 }
 .lobby-header {
   display: flex;
@@ -214,8 +216,10 @@ body {
 .quiz-display-container {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  padding: 24px 36px;
+  min-height: calc(100vh - 60px);
+  height: auto;
+  padding: 24px 36px 80px 36px;
+  box-sizing: border-box;
 }
 .quiz-top-bar {
   display: flex;
@@ -333,8 +337,10 @@ body {
 /* 리더보드 순위표 */
 .leaderboard-container {
   max-width: 800px;
-  margin: 20px auto;
+  margin: 20px auto 40px auto;
   width: 100%;
+  padding-bottom: 40px;
+  box-sizing: border-box;
 }
 .leaderboard-title {
   font-size: 2.5rem;
@@ -412,10 +418,12 @@ body {
   max-width: 480px;
   margin: 0 auto;
   width: 100%;
-  padding: 20px 16px;
+  padding: 20px 16px 80px 16px;
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  min-height: calc(100vh - 60px);
+  height: auto;
+  box-sizing: border-box;
 }
 .mobile-card {
   background: var(--card-dark);

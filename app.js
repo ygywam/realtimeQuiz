@@ -80,6 +80,39 @@
         });
       } catch (e) {}
     },
+    playCountdownTick(count) {
+      if (!this.enabled) return;
+      this.init();
+      if (!this.ctx) return;
+      try {
+        const now = this.ctx.currentTime;
+        if (count > 0) {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = count === 1 ? 987.77 : (count === 2 ? 880 : 783.99);
+          gain.gain.setValueAtTime(0.12, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.12);
+        } else {
+          [523.25, 659.25, 783.99, 1046.50].forEach((freq) => {
+            const o = this.ctx.createOscillator();
+            const g = this.ctx.createGain();
+            o.type = 'triangle';
+            o.frequency.value = freq;
+            g.gain.setValueAtTime(0.15, now);
+            g.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+            o.connect(g);
+            g.connect(this.ctx.destination);
+            o.start(now);
+            o.stop(now + 0.35);
+          });
+        }
+      } catch (e) {}
+    },
     playBGM(customUrl) {
       this.stopBGM();
       this.init();
@@ -95,25 +128,59 @@
       }
       if (!this.ctx) return;
       this.bgmPlaying = true;
-      const notes = [261.63, 329.63, 392.00, 523.25, 392.00, 329.63];
+
+      const bassNotes = [110, 110, 130.81, 146.83, 110, 110, 164.81, 146.83];
+      const arpNotes = [220, 261.63, 329.63, 440, 329.63, 261.63, 196.00, 246.94];
       let step = 0;
+
       this.bgmSynthInterval = setInterval(() => {
         if (!this.bgmPlaying || !this.ctx) return;
         try {
-          const freq = notes[step % notes.length];
-          const osc = this.ctx.createOscillator();
-          const gain = this.ctx.createGain();
-          osc.type = 'triangle';
-          osc.frequency.value = freq;
-          gain.gain.setValueAtTime(0.03, this.ctx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.18);
-          osc.connect(gain);
-          gain.connect(this.ctx.destination);
-          osc.start();
-          osc.stop(this.ctx.currentTime + 0.18);
+          const now = this.ctx.currentTime;
+          
+          // 트랙 1: Sawtooth 베이스 리듬 (135 BPM)
+          const bFreq = bassNotes[step % bassNotes.length];
+          const bOsc = this.ctx.createOscillator();
+          const bGain = this.ctx.createGain();
+          bOsc.type = 'sawtooth';
+          bOsc.frequency.value = bFreq;
+          bGain.gain.setValueAtTime(0.04, now);
+          bGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+          bOsc.connect(bGain);
+          bGain.connect(this.ctx.destination);
+          bOsc.start(now);
+          bOsc.stop(now + 0.15);
+
+          // 트랙 2: Arpeggio 긴장감 멜로디
+          const aFreq = arpNotes[step % arpNotes.length];
+          const aOsc = this.ctx.createOscillator();
+          const aGain = this.ctx.createGain();
+          aOsc.type = 'triangle';
+          aOsc.frequency.value = aFreq;
+          aGain.gain.setValueAtTime(0.035, now);
+          aGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+          aOsc.connect(aGain);
+          aGain.connect(this.ctx.destination);
+          aOsc.start(now);
+          aOsc.stop(now + 0.12);
+
+          // 트랙 3: 하이햇 틱 음향 효과
+          if (step % 2 === 1) {
+            const hOsc = this.ctx.createOscillator();
+            const hGain = this.ctx.createGain();
+            hOsc.type = 'square';
+            hOsc.frequency.value = 2500;
+            hGain.gain.setValueAtTime(0.015, now);
+            hGain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+            hOsc.connect(hGain);
+            hGain.connect(this.ctx.destination);
+            hOsc.start(now);
+            hOsc.stop(now + 0.03);
+          }
+
           step++;
         } catch (e) {}
-      }, 200);
+      }, 222);
     },
     stopBGM() {
       this.bgmPlaying = false;
@@ -171,7 +238,7 @@
     studentId: '',
     roomData: null,
     isDemo: false,
-    hideResults: false,
+    hideResults: true,
     showWrongWordcloud: false,
     showShortNicknames: false
   };
@@ -484,15 +551,45 @@
     return isDoublePoints ? total * 2 : total;
   }
 
+  let countdownTimer = null;
+
+  async function startCountdownToQuestion(roomId, targetQIndex) {
+    if (countdownTimer) clearInterval(countdownTimer);
+    state.hideResults = true;
+
+    let currentNum = 3;
+    AudioEngine.playCountdownTick(3);
+    await updateRoomMeta(roomId, {
+      status: 'COUNTDOWN',
+      currentQuestionIndex: targetQIndex,
+      countdownNumber: currentNum
+    });
+
+    countdownTimer = setInterval(async () => {
+      currentNum--;
+      if (currentNum > 0) {
+        AudioEngine.playCountdownTick(currentNum);
+        await updateRoomMeta(roomId, { countdownNumber: currentNum });
+      } else if (currentNum === 0) {
+        AudioEngine.playCountdownTick(0);
+        await updateRoomMeta(roomId, { countdownNumber: 0 });
+      } else {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+        await updateRoomMeta(roomId, {
+          status: 'PLAYING',
+          currentQuestionIndex: targetQIndex,
+          timerStartedAt: Date.now()
+        });
+      }
+    }, 1000);
+  }
+
   async function advanceToNextQuestion(roomId, roomData) {
-    const currentIndex = roomData.meta.currentQuestionIndex || 0;
-    const questions = roomData.questions || [];
+    const currentIndex = roomData?.meta?.currentQuestionIndex || 0;
+    const questions = roomData?.questions || [];
     if (currentIndex + 1 < questions.length) {
-      await updateRoomMeta(roomId, {
-        status: 'PLAYING',
-        currentQuestionIndex: currentIndex + 1,
-        timerStartedAt: Date.now()
-      });
+      await startCountdownToQuestion(roomId, currentIndex + 1);
     } else {
       await updateRoomMeta(roomId, { status: 'FINISHED' });
     }
@@ -1184,11 +1281,7 @@
         alert('출제된 문항이 없습니다. [📝 문제 출제 / 편집] 버튼을 먼저 눌러 문제를 추가해 주세요!');
         return;
       }
-      await updateRoomMeta(state.roomId, {
-        status: 'PLAYING',
-        currentQuestionIndex: 0,
-        timerStartedAt: Date.now()
-      });
+      await startCountdownToQuestion(state.roomId, 0);
     });
   }
 
@@ -2008,6 +2101,27 @@
     const isUnlimited = currentQ.type === 'wordcloud' || currentQ.type === 'postit' || currentQ.timeLimit === 0;
     const isScoringQ = isScoringQuestion(currentQ);
 
+    if (status === 'COUNTDOWN') {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      activeTimerQIndex = -1;
+      const countNum = meta.countdownNumber !== undefined ? meta.countdownNumber : 3;
+      container.innerHTML = `
+        <div class="quiz-display-container countdown-display-wrapper" style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 70vh; text-align: center;">
+          <div style="font-size: 1.6rem; color: #38bdf8; font-weight: bold; margin-bottom: 16px;">
+            Q${qIndex + 1} / ${questions.length} 문제 카운트다운!
+          </div>
+          <h1 style="font-size: 2.2rem; color: #fff; margin-bottom: 24px; max-width: 800px; line-height: 1.4;">
+            ${parseMath(currentQ.question || '')}
+          </h1>
+          <div class="countdown-badge-pulse" style="font-size: 8rem; font-weight: 900; color: #fbbf24; text-shadow: 0 0 40px rgba(251, 191, 36, 0.8); margin: 20px 0;">
+            ${countNum > 0 ? countNum : '🚀 START!'}
+          </div>
+          <p style="color: var(--text-muted); font-size: 1.2rem; margin-top: 16px;">잠시 후 문제가 시작됩니다!</p>
+        </div>
+      `;
+      return;
+    }
+
     if (status === 'SHOW_RANKING') {
       if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
       activeTimerQIndex = -1;
@@ -2026,6 +2140,7 @@
     const renderedStatus = currentDisplayCard ? currentDisplayCard.dataset.status : '';
     const renderedQIdx = currentDisplayCard ? Number(currentDisplayCard.dataset.qindex) : -1;
     const isLastQ = qIndex + 1 >= questions.length;
+    const hasAnyScoring = hasScoringQuestions(questions);
 
     if (currentDisplayCard && renderedStatus === status && renderedQIdx === qIndex) {
       const respEl = document.getElementById('resp-count');
@@ -2083,11 +2198,14 @@
           <div style="display: flex; justify-content: flex-end; gap: 16px; margin-top: 20px; flex-wrap: wrap;">
             ${status === 'PLAYING' ? `<button class="btn btn-danger" id="btn-force-finish">${isUnlimited ? '⏹️ 응답 마감 및 의견 공유' : '⏹️ 응답 마감 및 정답 공개'}</button>` : ''}
             ${status === 'SHOW_ANSWER' ? `
-              ${isScoringQ ? `<button class="btn btn-secondary" id="btn-show-ranking">📊 중간 순위 보기 (1~5위)</button>` : ''}
-              ${isLastQ ? `
-                <button class="btn btn-primary" id="btn-next-question-host" style="font-weight: bold; font-size: 1.1rem; padding: 12px 24px;">🏆 최종 시상식 결과 보기</button>
+              ${isScoringQ ? `
+                <button class="btn btn-secondary" id="btn-show-ranking" style="font-weight: bold; font-size: 1.1rem; padding: 12px 24px;">📊 중간 순위 보기 (1~5위)</button>
               ` : `
-                <button class="btn btn-primary" id="btn-next-question-host" style="font-weight: bold; font-size: 1.1rem; padding: 12px 24px;">➡️ 다음 문제로 이동 (Q${qIndex + 2})</button>
+                ${isLastQ ? `
+                  <button class="btn btn-primary" id="btn-next-question-host" style="font-weight: bold; font-size: 1.1rem; padding: 12px 24px;">${hasAnyScoring ? '🏆 최종 시상식 결과 보기' : '🏁 의견 수렴 완료'}</button>
+                ` : `
+                  <button class="btn btn-primary" id="btn-next-question-host" style="font-weight: bold; font-size: 1.1rem; padding: 12px 24px;">➡️ 다음 문제로 이동 (Q${qIndex + 2})</button>
+                `}
               `}
             ` : ''}
           </div>
@@ -2645,6 +2763,23 @@
             <p style="color: var(--text-muted); margin-top: 10px; font-size: 1.1rem; line-height: 1.5;">
               입장이 완료되었습니다!<br>선생님이 퀴즈를 시작할 때까지 잠시 기다려 주세요.
             </p>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    if (status === 'COUNTDOWN') {
+      const countNum = meta.countdownNumber !== undefined ? meta.countdownNumber : 3;
+      container.innerHTML = `
+        <div class="mobile-view" id="student-countdown-card">
+          <div class="mobile-card" style="text-align: center; border-color: #f59e0b; padding: 40px 20px;">
+            <div style="font-size: 1.2rem; color: #38bdf8; font-weight: bold; margin-bottom: 10px;">Q${qIndex + 1} / ${questions.length} 문제 준비!</div>
+            <h3 style="font-size: 1.3rem; color: #fff; margin-bottom: 16px;">${parseMath(currentQ.question || '')}</h3>
+            <div class="countdown-badge-pulse" style="font-size: 5.5rem; font-weight: 900; color: #fbbf24; text-shadow: 0 0 30px rgba(251, 191, 36, 0.7); margin: 15px 0;">
+              ${countNum > 0 ? countNum : '🚀 START!'}
+            </div>
+            <p style="color: var(--text-muted); font-size: 0.95rem;">마음의 준비를 하세요!</p>
           </div>
         </div>
       `;
