@@ -835,8 +835,16 @@
         <div class="modal-box" style="max-width: 580px; text-align: left;">
           <h2 style="font-size: 1.6rem; color: #f59e0b; margin-bottom: 8px;">🎰 선착순 게임 (단독 모드 시작)</h2>
           <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 16px;">
-            퀴즈 진행 없이 바로 참가자 명단 및 코인을 생성하여 핑퐁 낙하 레이스를 즐깁니다.
+            퀴즈 진행 없이 바로 참가자 명단 및 코인을 생성하여 선착순 레이스를 즐깁니다.
           </p>
+
+          <div style="margin-bottom: 14px;">
+            <label style="font-weight: bold; font-size: 0.9rem; color: #ec4899;">🎮 레이스 게임 방식 선택:</label>
+            <select id="select-race-game-type" style="width: 100%; margin-top: 6px; padding: 8px 12px; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid var(--border); font-weight: bold; font-size: 0.95rem;">
+              <option value="pinball">🎰 1번 방식: 핑퐁 핀볼 코인 낙하 레이스 (핀볼 반발 장애물 & 핑퐁 날개)</option>
+              <option value="marble">🔮 2번 방식: 구슬 롤러코스터 트랙 레이스 (지그재그 트랙 & 역주행 반발)</option>
+            </select>
+          </div>
 
           <div style="margin-bottom: 14px;">
             <label style="font-weight: bold; font-size: 0.9rem; color: #38bdf8;">👥 참가자 목록 (쉼표 또는 줄바꿈으로 구분):</label>
@@ -844,7 +852,7 @@
           </div>
 
           <div style="margin-bottom: 18px;">
-            <label style="font-weight: bold; font-size: 0.9rem; color: #fbbf24;">🪙 인당 코인 지급 방식:</label>
+            <label style="font-weight: bold; font-size: 0.9rem; color: #fbbf24;">🪙 인당 코인/구슬 개수 지급 방식:</label>
             <select id="select-race-coin-mode" style="width: 100%; margin-top: 6px; padding: 8px 12px; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid var(--border); font-weight: bold; font-size: 0.95rem;">
               <option value="ranked">등수 순서대로 (1등 5개, 2등 4개, 3등 3개, 4~5등 2개, 6등+ 1개)</option>
               <option value="equal">모두 동일하게 (인당 3개씩)</option>
@@ -869,6 +877,7 @@
     document.getElementById('btn-start-standalone-race-exec')?.addEventListener('click', async () => {
       const rawNames = document.getElementById('input-race-participants')?.value || '';
       const coinMode = document.getElementById('select-race-coin-mode')?.value || 'ranked';
+      const raceType = document.getElementById('select-race-game-type')?.value || 'pinball';
       
       const names = rawNames.split(/[\n,]/).map(n => n.trim()).filter(n => n.length > 0);
       if (names.length < 2) {
@@ -895,20 +904,23 @@
         };
       });
 
+      const titleText = raceType === 'marble' ? '🔮 구슬 롤러코스터 레이스 (단독 모드)' : '🎰 핑퐁 핀볼 낙하 레이스 (단독 모드)';
+
       const roomData = {
         meta: {
-          title: '🎰 선착순 게임 (단독 모드)',
+          title: titleText,
           createdAt: Date.now(),
           status: 'COIN_RACE_LOBBY',
           enableCoinRace: true,
-          isStandaloneRace: true
+          isStandaloneRace: true,
+          raceType: raceType
         },
         questions: [],
         participants: participants,
         responses: {}
       };
 
-      saveMyLocalQuizRoom({ roomId: pin, title: '🎰 선착순 게임 (단독 모드)', questionCount: 0, createdAt: Date.now() });
+      saveMyLocalQuizRoom({ roomId: pin, title: titleText, questionCount: 0, createdAt: Date.now() });
 
       if (db) {
         try { await db.ref(`rooms/${pin}`).set(roomData); } catch (e) {}
@@ -2393,6 +2405,7 @@
     if (status === 'FINISHED') {
       if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
       activeTimerQIndex = -1;
+      if (container.querySelector('#final-podium-container')) return;
       renderLeaderboardView(container, roomData, isTeacherControl);
       return;
     }
@@ -2400,6 +2413,7 @@
     if (status === 'COIN_RACE_LOBBY') {
       if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
       activeTimerQIndex = -1;
+      if (container.querySelector('#coin-race-lobby-card')) return;
       renderCoinRaceLobbyView(container, roomData, roomId, isTeacherControl);
       return;
     }
@@ -2408,13 +2422,18 @@
       if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
       activeTimerQIndex = -1;
       if (document.getElementById('coin-race-canvas')) return;
-      renderCoinRaceRunningView(container, roomData, roomId, isTeacherControl);
+      if (roomData.meta?.raceType === 'marble') {
+        renderMarbleRaceRunningView(container, roomData, roomId, isTeacherControl);
+      } else {
+        renderCoinRaceRunningView(container, roomData, roomId, isTeacherControl);
+      }
       return;
     }
 
     if (status === 'COIN_RACE_RESULT') {
       if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
       activeTimerQIndex = -1;
+      if (container.querySelector('#coin-race-result-card')) return;
       renderCoinRaceResultView(container, roomData, roomId, isTeacherControl);
       return;
     }
@@ -3032,7 +3051,7 @@
   }
 
   // ============================================================
-  // COIN RACE PHYSICS GAME & ALLOCATION
+  // COIN RACE & MARBLE RACE PHYSICS GAME & ALLOCATION
   // ============================================================
   let playedFanfareStateKey = null;
 
@@ -3053,33 +3072,34 @@
 
   function renderCoinRaceLobbyView(container, roomData, roomId, isTeacherControl) {
     const isStandalone = !!roomData.meta?.isStandaloneRace;
+    const isMarble = roomData.meta?.raceType === 'marble';
     const participants = Object.values(roomData.participants || {});
     participants.sort((a, b) => (b.score || 0) - (a.score || 0));
 
     container.innerHTML = `
-      <div class="quiz-display-container" style="padding: 30px; max-width: 1000px; margin: 0 auto; text-align: center;">
+      <div class="quiz-display-container" id="coin-race-lobby-card" style="padding: 30px; max-width: 1000px; margin: 0 auto; text-align: center;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 10px;">
-          <h2 style="font-size: 2rem; color: #f59e0b; font-weight: 800; margin: 0;">
-            🎰 [선착순 코인 핑퐁 낙하 레이스 대기실]
+          <h2 style="font-size: 2rem; color: ${isMarble ? '#38bdf8' : '#f59e0b'}; font-weight: 800; margin: 0;">
+            ${isMarble ? '🔮 [선착순 구슬 롤러코스터 레이스 대기실]' : '🎰 [선착순 코인 핑퐁 낙하 레이스 대기실]'}
           </h2>
           ${renderBgmVolumeControlHtml('coin-lobby')}
         </div>
 
         <p style="font-size: 1.15rem; color: var(--text-muted); margin-bottom: 30px; line-height: 1.6;">
-          지정된 🪙 <strong>코인 개수</strong>를 가지고 출발선에 집결했습니다!<br>
-          핑퐁 핀볼 장애물과 서로 부딪히며 가장 먼저 도착선(Bottom)을 통과하는 선착순 우승자가 가려집니다!
+          지정된 🪙 <strong>${isMarble ? '구슬 개수' : '코인 개수'}</strong>를 가지고 출발선에 집결했습니다!<br>
+          ${isMarble ? '지그재그 롤러코스터 트랙과 역주행 범퍼를 뚫고 가장 먼저 도착선을 통과하는 우승자가 가려집니다!' : '핑퐁 핀볼 장애물과 서로 부딪히며 가장 먼저 도착선(Bottom)을 통과하는 선착순 우승자가 가려집니다!'}
         </p>
 
         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-bottom: 36px; max-height: 50vh; overflow-y: auto; padding: 8px;">
           ${participants.map((p, idx) => {
             const coins = getCoinAllocationForParticipant(p, idx, participants.length);
             return `
-              <div style="background: #0f172a; border: 2px solid ${idx === 0 ? '#f59e0b' : 'var(--border)'}; border-radius: 14px; padding: 16px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+              <div style="background: #0f172a; border: 2px solid ${idx === 0 ? (isMarble ? '#38bdf8' : '#f59e0b') : 'var(--border)'}; border-radius: 14px; padding: 16px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
                 <div style="font-size: 2.2rem; margin-bottom: 6px;">${p.avatar || '🐶'}</div>
                 <div style="font-size: 1.15rem; font-weight: bold; color: #fff;">${escapeHtml(p.nickname)}</div>
                 <div style="font-size: 0.9rem; color: #38bdf8; margin: 4px 0 10px 0;">${isStandalone ? '참가자' : `퀴즈 ${idx + 1}위 (${p.score || 0}점)`}</div>
-                <div style="background: #1e293b; border-radius: 8px; padding: 8px; font-size: 1.2rem; font-weight: bold; color: #fbbf24;">
-                  ${'🪙'.repeat(coins)} <span style="font-size: 0.95rem; color: #fff;">(${coins}개)</span>
+                <div style="background: #1e293b; border-radius: 8px; padding: 8px; font-size: 1.2rem; font-weight: bold; color: ${isMarble ? '#38bdf8' : '#fbbf24'};">
+                  ${isMarble ? '🔮'.repeat(coins) : '🪙'.repeat(coins)} <span style="font-size: 0.95rem; color: #fff;">(${coins}개)</span>
                 </div>
               </div>
             `;
@@ -3088,8 +3108,8 @@
 
         <div style="display: flex; justify-content: center; gap: 16px; flex-wrap: wrap;">
           ${isTeacherControl ? `
-            <button id="btn-start-coin-race-run" class="btn btn-primary" style="font-size: 1.35rem; padding: 16px 40px; background: linear-gradient(135deg, #f59e0b, #ec4899); border: none; font-weight: 900; box-shadow: 0 6px 24px rgba(245, 158, 11, 0.6); cursor: pointer;">
-              🚀 낙하 레이스 출발! (3-2-1 카운트다운)
+            <button id="btn-start-coin-race-run" class="btn btn-primary" style="font-size: 1.35rem; padding: 16px 40px; background: linear-gradient(135deg, ${isMarble ? '#0284c7, #ec4899' : '#f59e0b, #ec4899'}); border: none; font-weight: 900; box-shadow: 0 6px 24px rgba(245, 158, 11, 0.6); cursor: pointer;">
+              🚀 ${isMarble ? '구슬 레이스 출발!' : '낙하 레이스 출발!'} (3-2-1 카운트다운)
             </button>
           ` : `<div style="font-size: 1.2rem; color: #38bdf8; font-weight: bold;">선생님이 출발 버튼을 누르면 레이스가 시작됩니다!</div>`}
           <button id="btn-back-to-finished" class="btn btn-secondary" style="font-size: 1.1rem; padding: 14px 24px;">
@@ -3120,6 +3140,10 @@
     if (coinRaceAnimId) {
       cancelAnimationFrame(coinRaceAnimId);
       coinRaceAnimId = null;
+    }
+    if (marbleRaceAnimId) {
+      cancelAnimationFrame(marbleRaceAnimId);
+      marbleRaceAnimId = null;
     }
 
     const participants = Object.values(roomData.participants || {});
@@ -3248,35 +3272,30 @@
       }
     }
 
-    // 2. Rotating Gears (8 gears down course)
+    // 2. Rotating Gears (8 gears placed away from island tips)
     const gears = [
-      { x: 260, y: 1050, r: 65, teeth: 10, omega: 0.04, angle: 0 },
-      { x: 580, y: 1180, r: 70, teeth: 12, omega: -0.045, angle: 0 },
-      { x: 300, y: 1950, r: 60, teeth: 9, omega: -0.035, angle: 0 },
-      { x: 560, y: 2100, r: 65, teeth: 10, omega: 0.04, angle: 0 },
-      { x: 320, y: 2950, r: 65, teeth: 10, omega: 0.04, angle: 0 },
-      { x: 580, y: 3300, r: 70, teeth: 12, omega: -0.045, angle: 0 },
-      { x: 280, y: 4050, r: 60, teeth: 9, omega: -0.04, angle: 0 },
-      { x: 580, y: 4650, r: 65, teeth: 10, omega: 0.045, angle: 0 }
+      { x: 240, y: 1000, r: 65, teeth: 10, omega: 0.04, angle: 0 },
+      { x: 620, y: 1000, r: 70, teeth: 12, omega: -0.045, angle: 0 },
+      { x: 300, y: 2000, r: 60, teeth: 9, omega: -0.035, angle: 0 },
+      { x: 560, y: 2000, r: 65, teeth: 10, omega: 0.04, angle: 0 },
+      { x: 240, y: 3100, r: 65, teeth: 10, omega: 0.04, angle: 0 },
+      { x: 620, y: 3100, r: 70, teeth: 12, omega: -0.045, angle: 0 },
+      { x: 300, y: 4200, r: 60, teeth: 9, omega: -0.04, angle: 0 },
+      { x: 560, y: 4200, r: 65, teeth: 10, omega: 0.045, angle: 0 }
     ];
 
-    // 3. Spring Bumpers (15 bouncy bumpers across course)
+    // 3. Spring Bumpers (Adjusted position away from island tips + Center Flipper Bumper)
     const bumpers = [
-      { x: 430, y: 350, r: 20, pulse: 0 },
-      { x: 250, y: 850, r: 18, pulse: 0 },
-      { x: 610, y: 850, r: 18, pulse: 0 },
-      { x: 430, y: 1300, r: 22, pulse: 0 },
-      { x: 200, y: 1750, r: 18, pulse: 0 },
-      { x: 660, y: 1750, r: 18, pulse: 0 },
-      { x: 320, y: 2200, r: 20, pulse: 0 },
-      { x: 540, y: 2200, r: 20, pulse: 0 },
-      { x: 430, y: 2700, r: 22, pulse: 0 },
-      { x: 200, y: 3150, r: 18, pulse: 0 },
-      { x: 660, y: 3150, r: 18, pulse: 0 },
-      { x: 300, y: 3750, r: 20, pulse: 0 },
-      { x: 560, y: 3750, r: 20, pulse: 0 },
-      { x: 250, y: 4400, r: 18, pulse: 0 },
-      { x: 610, y: 4400, r: 18, pulse: 0 }
+      { x: 430, y: 380, r: 20, pulse: 0 },
+      { x: 220, y: 1420, r: 18, pulse: 0 },
+      { x: 640, y: 1420, r: 18, pulse: 0 },
+      { x: 220, y: 2420, r: 18, pulse: 0 },
+      { x: 640, y: 2420, r: 18, pulse: 0 },
+      { x: 220, y: 3420, r: 18, pulse: 0 },
+      { x: 640, y: 3420, r: 18, pulse: 0 },
+      { x: 220, y: 4420, r: 18, pulse: 0 },
+      { x: 640, y: 4420, r: 18, pulse: 0 },
+      { x: 430, y: 5060, r: 24, pulse: 0, isCore: true } // 💥 핑퐁 날개 중앙 코어 장애물!
     ];
 
     // 4. Galimgil Split Islands (4 island wedges)
@@ -3341,24 +3360,23 @@
       let left = 50;
       let right = width - 50;
 
-      if (y >= 500 && y <= 750) {
-        const pinch = Math.sin((y - 500) / 250 * Math.PI) * 140;
+      if (y >= 700 && y <= 950) {
+        const pinch = Math.sin((y - 700) / 250 * Math.PI) * 170;
         left = 50 + pinch; right = width - 50 - pinch;
-      } else if (y >= 1150 && y <= 1400) {
-        const shift = -Math.sin((y - 1150) / 250 * Math.PI) * 150;
+      } else if (y >= 1500 && y <= 1800) {
+        const shift = -Math.sin((y - 1500) / 300 * Math.PI) * 190;
         left = 50 + shift; right = width - 50 + shift;
-      } else if (y >= 1850 && y <= 2150) {
-        const pinch = Math.sin((y - 1850) / 300 * Math.PI) * 150;
-        left = 50 + pinch; right = width - 50 - pinch;
-      } else if (y >= 2800 && y <= 3100) {
-        const shift = Math.sin((y - 2800) / 300 * Math.PI) * 150;
+      } else if (y >= 2500 && y <= 2800) {
+        const shift = Math.sin((y - 2500) / 300 * Math.PI) * 190;
         left = 50 + shift; right = width - 50 + shift;
-      } else if (y >= 3800 && y <= 4100) {
-        const pinch = Math.sin((y - 3800) / 300 * Math.PI) * 160;
+      } else if (y >= 3600 && y <= 3850) {
+        const pinch = Math.sin((y - 3600) / 250 * Math.PI) * 175;
         left = 50 + pinch; right = width - 50 - pinch;
-      } else if (y >= 4850 && y <= 5080) {
-        const pinch = Math.sin((y - 4850) / 230 * Math.PI) * 150;
-        left = 50 + pinch; right = width - 50 - pinch;
+      } else if (y >= 4600 && y <= 4850) {
+        const shift = -Math.sin((y - 4600) / 250 * Math.PI) * 180;
+        left = 50 + shift; right = width - 50 + shift;
+      } else if (y >= 4950 && y <= 5080) {
+        left = 280; right = 580;
       }
 
       return { left, right };
@@ -3535,20 +3553,20 @@
           const rCurr = b.r + Math.max(0, b.pulse) * 8;
           ctx.beginPath();
           ctx.arc(b.x, b.y - cameraY, rCurr, 0, Math.PI * 2);
-          ctx.fillStyle = '#ec4899';
-          ctx.shadowColor = '#ec4899';
-          ctx.shadowBlur = 12;
+          ctx.fillStyle = b.isCore ? '#f43f5e' : '#ec4899';
+          ctx.shadowColor = b.isCore ? '#f43f5e' : '#ec4899';
+          ctx.shadowBlur = 14;
           ctx.fill();
           ctx.shadowBlur = 0;
           ctx.strokeStyle = '#fff';
-          ctx.lineWidth = 2;
+          ctx.lineWidth = b.isCore ? 3 : 2;
           ctx.stroke();
 
           ctx.fillStyle = '#fff';
           ctx.font = 'bold 12px sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText('💥', b.x, b.y - cameraY);
+          ctx.fillText(b.isCore ? '🏓' : '💥', b.x, b.y - cameraY);
         }
       });
 
@@ -3721,12 +3739,30 @@
           }
         }
 
+        // Manual Finish Button Overlay (No auto transition)
         if (arrivedParticipants.length === participants.length && !raceFinishedSent) {
           raceFinishedSent = true;
-          if (isTeacherControl) {
-            setTimeout(async () => {
+          const canvasBox = canvas.parentElement;
+          if (canvasBox && !document.getElementById('race-finish-announcement-overlay')) {
+            const overlay = document.createElement('div');
+            overlay.id = 'race-finish-announcement-overlay';
+            overlay.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 100; background: rgba(15, 23, 42, 0.95); border: 3px solid #fbbf24; border-radius: 20px; padding: 24px 32px; text-align: center; box-shadow: 0 0 40px rgba(251, 191, 36, 0.85); width: 85%; max-width: 480px; backdrop-filter: blur(8px);';
+            overlay.innerHTML = `
+              <div style="font-size: 3rem; margin-bottom: 6px;">🏁</div>
+              <h2 style="font-size: 1.6rem; color: #fbbf24; font-weight: 900; margin-bottom: 10px;">전원 결승선 도착 완료!</h2>
+              <p style="color: #cbd5e1; font-size: 1rem; margin-bottom: 20px; line-height: 1.5;">모든 코인이 경주를 마쳤습니다.<br>버튼을 누르면 최종 순위를 공개합니다!</p>
+              ${isTeacherControl ? `
+                <button id="btn-trigger-race-results-now" class="btn btn-primary" style="font-size: 1.25rem; padding: 14px 28px; background: linear-gradient(135deg, #f59e0b, #ec4899); border: none; font-weight: 900; box-shadow: 0 4px 18px rgba(245, 158, 11, 0.6); cursor: pointer; width: 100%;">
+                  🏆 최종 순위 발표 & 명예의 전당 보기
+                </button>
+              ` : `<div style="font-size: 1.1rem; color: #38bdf8; font-weight: bold;">선생님이 순위를 발표할 때까지 잠시 기다려 주세요!</div>`}
+            `;
+            canvasBox.appendChild(overlay);
+
+            document.getElementById('btn-trigger-race-results-now')?.addEventListener('click', async () => {
+              if (coinRaceAnimId) cancelAnimationFrame(coinRaceAnimId);
               await updateRoomMeta(roomId, { status: 'COIN_RACE_RESULT', coinRaceResults: arrivedParticipants });
-            }, 1800);
+            });
           }
         }
       }
@@ -3789,13 +3825,479 @@
     });
   }
 
-  function renderCoinRaceResultView(container, roomData, roomId, isTeacherControl) {
+  // ============================================================
+  // MARBLE ROLLERCOASTER RACE VIEW (Mode 2)
+  // ============================================================
+  let marbleRaceAnimId = null;
+
+  function renderMarbleRaceRunningView(container, roomData, roomId, isTeacherControl) {
+    if (marbleRaceAnimId) {
+      cancelAnimationFrame(marbleRaceAnimId);
+      marbleRaceAnimId = null;
+    }
     if (coinRaceAnimId) {
       cancelAnimationFrame(coinRaceAnimId);
       coinRaceAnimId = null;
     }
 
+    const participants = Object.values(roomData.participants || {});
+    participants.sort((a, b) => (b.score || 0) - (a.score || 0));
+
+    container.innerHTML = `
+      <div class="quiz-display-container" style="padding: 16px; text-align: center; max-width: 1220px; margin: 0 auto;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+          <h2 style="font-size: 1.6rem; color: #38bdf8; font-weight: 900; margin: 0; display: flex; align-items: center; gap: 8px;">
+            🔮 선착순 구슬 롤러코스터 레이스 (5,500px 지그재그 코스터!)
+          </h2>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            ${renderBgmVolumeControlHtml('marble-run')}
+            ${isTeacherControl ? `
+              <button id="btn-force-finish-marble-race" class="btn btn-primary" style="background: linear-gradient(135deg, #10b981, #059669); border: none; font-weight: bold;">
+                🏆 레이스 결과 발표
+              </button>
+            ` : ''}
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 16px; justify-content: center; align-items: flex-start; flex-wrap: wrap;">
+          <div style="position: relative; background: #090d16; border: 3px solid #38bdf8; border-radius: 16px; overflow: hidden; box-shadow: 0 8px 32px rgba(56, 189, 248, 0.4);">
+            <canvas id="coin-race-canvas" width="860" height="640" style="display: block; background: radial-gradient(circle at center, #0f172a 0%, #020617 100%); cursor: grab;"></canvas>
+            <button id="btn-reset-camera" class="btn btn-outline-sm" style="position: absolute; top: 12px; right: 12px; z-index: 10; background: rgba(15, 23, 42, 0.85); border-color: #38bdf8; color: #38bdf8; font-weight: bold; cursor: pointer; backdrop-filter: blur(4px);">
+              🎥 1등 구슬 자동 추적
+            </button>
+            <div style="position: absolute; bottom: 12px; left: 12px; z-index: 10; background: rgba(15, 23, 42, 0.75); padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; color: #94a3b8; pointer-events: none;">
+              💡 마우스 드래그/휠 스크롤로 트랙 위치 자율 조작 가능
+            </div>
+          </div>
+
+          <div style="width: 290px; background: #0f172a; border: 1px solid var(--border); border-radius: 16px; padding: 16px; min-height: 640px; display: flex; flex-direction: column;">
+            <h3 style="font-size: 1.2rem; color: #38bdf8; margin: 0 0 10px 0; border-bottom: 2px solid var(--border); padding-bottom: 8px; text-align: center;">
+              🚩 실시간 구슬 도착 현황
+            </h3>
+            <div id="race-live-arrivals-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+              <div style="color: var(--text-muted); font-size: 0.95rem; text-align: center; margin-top: 20px;">
+                3-2-1 출발 준비 중...
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    bindBgmVolumeControlEvents(container);
+
+    const canvas = document.getElementById('coin-race-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    const width = canvas.width;
+    const height = canvas.height;
+    const VIRTUAL_HEIGHT = 5500;
+    const finishY = 5250;
+
+    let cameraY = 0;
+    let isManualCamera = false;
+    let isDragging = false;
+    let dragStartY = 0;
+    let startCamY = 0;
+
+    canvas.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      dragStartY = e.clientY;
+      startCamY = cameraY;
+      canvas.style.cursor = 'grabbing';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        isManualCamera = true;
+        const dy = e.clientY - dragStartY;
+        cameraY = Math.max(0, Math.min(VIRTUAL_HEIGHT - height, startCamY - dy));
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
+      if (canvas) canvas.style.cursor = 'grab';
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      isManualCamera = true;
+      cameraY = Math.max(0, Math.min(VIRTUAL_HEIGHT - height, cameraY + e.deltaY * 0.8));
+    }, { passive: false });
+
+    document.getElementById('btn-reset-camera')?.addEventListener('click', () => {
+      isManualCamera = false;
+    });
+
+    const PALETTE = ['#38bdf8', '#ec4899', '#f59e0b', '#10b981', '#a855f7', '#ef4444', '#84cc16', '#06b6d4', '#f97316', '#e11d48'];
+
+    const marbles = [];
+    participants.forEach((p, rankIdx) => {
+      const coinCount = getCoinAllocationForParticipant(p, rankIdx, participants.length);
+      const color = PALETTE[rankIdx % PALETTE.length];
+      for (let c = 0; c < coinCount; c++) {
+        marbles.push({
+          id: p.nickname + '_' + c,
+          nickname: p.nickname,
+          avatar: p.avatar || '🐶',
+          color: color,
+          x: 100 + Math.random() * 200,
+          y: 80 + Math.random() * 20,
+          vx: 1.5 + Math.random() * 1.5,
+          vy: 0.5,
+          radius: 14,
+          arrived: false
+        });
+      }
+    });
+
+    // Generate 15 slanted Coaster Rails
+    const rails = [];
+    const railNum = 15;
+    for (let i = 0; i < railNum; i++) {
+      const yStart = 150 + i * 330;
+      const yEnd = yStart + 220;
+      const isRightDown = i % 2 === 0;
+      rails.push({
+        id: i,
+        x1: isRightDown ? 60 : width - 60,
+        y1: yStart,
+        x2: isRightDown ? width - 60 : 60,
+        y2: yEnd,
+        isRightDown: isRightDown,
+        slope: (yEnd - yStart) / ((isRightDown ? width - 60 : 60) - (isRightDown ? 60 : width - 60))
+      });
+    }
+
+    // Reverse Boosters / Springs on Rails
+    const reverseSprings = [
+      { x: 500, y: 350, r: 22, text: '⚡ 역주행' },
+      { x: 300, y: 1000, r: 22, text: '⚡ 역주행' },
+      { x: 550, y: 1650, r: 22, text: '⚡ 역주행' },
+      { x: 320, y: 2300, r: 22, text: '⚡ 역주행' },
+      { x: 580, y: 2950, r: 22, text: '⚡ 역주행' },
+      { x: 280, y: 3600, r: 22, text: '⚡ 역주행' },
+      { x: 520, y: 4250, r: 22, text: '⚡ 역주행' },
+      { x: 350, y: 4900, r: 22, text: '⚡ 역주행' }
+    ];
+
+    let countdown = 3;
+    let countdownTimer = setInterval(() => {
+      countdown--;
+      AudioEngine.playCountdownTick(countdown);
+      if (countdown <= 0) {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+      }
+    }, 1000);
+
+    const arrivedParticipants = [];
+    const arrivedNicknames = new Set();
+    let raceFinishedSent = false;
+
+    function updateArrivalsListDOM() {
+      const listEl = document.getElementById('race-live-arrivals-list');
+      if (!listEl) return;
+      if (arrivedParticipants.length === 0) {
+        listEl.innerHTML = `<div style="color: var(--text-muted); font-size: 0.95rem; text-align: center; margin-top: 20px;">구슬 레이스 진행 중...</div>`;
+        return;
+      }
+      listEl.innerHTML = arrivedParticipants.map((p, idx) => `
+        <div style="background: #1e293b; border-left: 4px solid ${idx === 0 ? '#fbbf24' : idx === 1 ? '#94a3b8' : idx === 2 ? '#b45309' : '#38bdf8'}; border-radius: 8px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-weight: 800; font-size: 1rem; color: #fbbf24;">${idx === 0 ? '🥇 1위' : idx === 1 ? '🥈 2위' : idx === 2 ? '🥉 3위' : (idx + 1) + '위'}</span>
+            <span style="font-size: 1.3rem;">${p.avatar}</span>
+            <span style="font-size: 0.95rem; font-weight: bold; color: #fff;">${escapeHtml(p.nickname)}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function loop() {
+      if (!isManualCamera) {
+        let maxMarbleY = 0;
+        marbles.forEach(m => {
+          if (!m.arrived && m.y > maxMarbleY) maxMarbleY = m.y;
+        });
+        if (maxMarbleY > 0) {
+          const targetCamY = Math.max(0, Math.min(VIRTUAL_HEIGHT - height, maxMarbleY - 220));
+          cameraY += (targetCamY - cameraY) * 0.12;
+        }
+      }
+
+      ctx.clearRect(0, 0, width, height);
+
+      // Render Grid Lines
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.05)';
+      ctx.lineWidth = 1;
+      const startGridY = Math.floor(cameraY / 40) * 40;
+      for (let y = startGridY; y < cameraY + height; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(0, y - cameraY);
+        ctx.lineTo(width, y - cameraY);
+        ctx.stroke();
+      }
+
+      // Draw Coaster Rails
+      rails.forEach(r => {
+        if (r.y2 - cameraY > 0 && r.y1 - cameraY < height) {
+          ctx.strokeStyle = '#0284c7';
+          ctx.lineWidth = 14;
+          ctx.beginPath();
+          ctx.moveTo(r.x1, r.y1 - cameraY);
+          ctx.lineTo(r.x2, r.y2 - cameraY);
+          ctx.stroke();
+
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(r.x1, r.y1 - cameraY);
+          ctx.lineTo(r.x2, r.y2 - cameraY);
+          ctx.stroke();
+
+          ctx.fillStyle = '#f59e0b';
+          ctx.beginPath();
+          ctx.arc(r.x2, r.y2 - cameraY, 12, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+
+      // Draw Reverse Springs
+      reverseSprings.forEach(sp => {
+        if (sp.y + sp.r - cameraY > 0 && sp.y - sp.r - cameraY < height) {
+          ctx.fillStyle = '#ec4899';
+          ctx.shadowColor = '#ec4899';
+          ctx.shadowBlur = 12;
+          ctx.beginPath();
+          ctx.arc(sp.x, sp.y - cameraY, sp.r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 11px Cafe24Surround, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(sp.text, sp.x, sp.y - cameraY);
+        }
+      });
+
+      // Finish Line
+      if (finishY - cameraY < height && finishY + 60 - cameraY > 0) {
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.25)';
+        ctx.fillRect(50, finishY - cameraY, width - 100, 50);
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 4;
+        ctx.setLineDash([10, 10]);
+        ctx.beginPath(); ctx.moveTo(50, finishY - cameraY); ctx.lineTo(width - 50, finishY - cameraY); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#38bdf8';
+        ctx.font = 'bold 18px Cafe24Surround, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🔮 FINISH LINE (구슬 도착선) 🔮', width / 2, finishY - cameraY + 32);
+      }
+
+      if (countdown <= 0) {
+        marbles.forEach(m => {
+          if (m.arrived) return;
+
+          let currentRail = null;
+          for (let r of rails) {
+            const minY = Math.min(r.y1, r.y2) - 30;
+            const maxY = Math.max(r.y1, r.y2) + 30;
+            if (m.y >= minY && m.y <= maxY) {
+              currentRail = r;
+              break;
+            }
+          }
+
+          m.vy += 0.25;
+          if (currentRail) {
+            const dirX = currentRail.isRightDown ? 1 : -1;
+            m.vx += dirX * 0.22;
+            const targetY = currentRail.y1 + (m.x - currentRail.x1) * currentRail.slope;
+            if (m.y >= targetY - m.radius && m.y <= targetY + 25) {
+              m.y = targetY - m.radius;
+              m.vy *= 0.2;
+            }
+          }
+
+          m.vx *= 0.985;
+          m.vy = Math.min(m.vy, 7.0);
+          m.x += m.vx;
+          m.y += m.vy;
+
+          if (m.x < 50 + m.radius) {
+            m.x = 50 + m.radius;
+            m.vx = Math.abs(m.vx) * 0.7 + 1.0;
+          }
+          if (m.x > width - 50 - m.radius) {
+            m.x = width - 50 - m.radius;
+            m.vx = -Math.abs(m.vx) * 0.7 - 1.0;
+          }
+
+          reverseSprings.forEach(sp => {
+            const dx = m.x - sp.x;
+            const dy = m.y - sp.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < m.radius + sp.r && dist > 0) {
+              m.vx = -m.vx * 1.8;
+              m.vy = -Math.abs(m.vy) * 0.8 - 3.0;
+              AudioEngine.playCorrect();
+            }
+          });
+
+          if (m.y >= finishY && !m.arrived) {
+            m.arrived = true;
+            if (!arrivedNicknames.has(m.nickname)) {
+              arrivedNicknames.add(m.nickname);
+              arrivedParticipants.push({
+                nickname: m.nickname,
+                avatar: m.avatar,
+                rank: arrivedParticipants.length + 1
+              });
+              updateArrivalsListDOM();
+              AudioEngine.playFanfare();
+            }
+          }
+        });
+
+        for (let i = 0; i < marbles.length; i++) {
+          for (let j = i + 1; j < marbles.length; j++) {
+            const m1 = marbles[i];
+            const m2 = marbles[j];
+            if (m1.arrived || m2.arrived) continue;
+
+            const dx = m2.x - m1.x;
+            const dy = m2.y - m1.y;
+            const dist = Math.hypot(dx, dy);
+            const minDist = m1.radius + m2.radius;
+            if (dist < minDist && dist > 0) {
+              const nx = dx / dist;
+              const ny = dy / dist;
+              const overlap = minDist - dist;
+              m1.x -= nx * overlap * 0.5;
+              m1.y -= ny * overlap * 0.5;
+              m2.x += nx * overlap * 0.5;
+              m2.y += ny * overlap * 0.5;
+
+              const kx = m1.vx - m2.vx;
+              const ky = m1.vy - m2.vy;
+              const pVal = 2 * (nx * kx + ny * ky) / 2;
+              m1.vx -= pVal * nx;
+              m1.vy -= pVal * ny;
+              m2.vx += pVal * nx;
+              m2.vy += pVal * ny;
+            }
+          }
+        }
+
+        if (arrivedParticipants.length === participants.length && !raceFinishedSent) {
+          raceFinishedSent = true;
+          const canvasBox = canvas.parentElement;
+          if (canvasBox && !document.getElementById('race-finish-announcement-overlay')) {
+            const overlay = document.createElement('div');
+            overlay.id = 'race-finish-announcement-overlay';
+            overlay.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 100; background: rgba(15, 23, 42, 0.95); border: 3px solid #38bdf8; border-radius: 20px; padding: 24px 32px; text-align: center; box-shadow: 0 0 40px rgba(56, 189, 248, 0.85); width: 85%; max-width: 480px; backdrop-filter: blur(8px);';
+            overlay.innerHTML = `
+              <div style="font-size: 3rem; margin-bottom: 6px;">🔮</div>
+              <h2 style="font-size: 1.6rem; color: #38bdf8; font-weight: 900; margin-bottom: 10px;">구슬 롤러코스터 전원 도착 완료!</h2>
+              <p style="color: #cbd5e1; font-size: 1rem; margin-bottom: 20px; line-height: 1.5;">모든 구슬이 롤러코스터를 통과했습니다.<br>버튼을 누르면 최종 순위를 공개합니다!</p>
+              ${isTeacherControl ? `
+                <button id="btn-trigger-race-results-now" class="btn btn-primary" style="font-size: 1.25rem; padding: 14px 28px; background: linear-gradient(135deg, #0284c7, #ec4899); border: none; font-weight: 900; box-shadow: 0 4px 18px rgba(56, 189, 248, 0.6); cursor: pointer; width: 100%;">
+                  🏆 최종 순위 발표 & 명예의 전당 보기
+                </button>
+              ` : `<div style="font-size: 1.1rem; color: #38bdf8; font-weight: bold;">선생님이 순위를 발표할 때까지 잠시 기다려 주세요!</div>`}
+            `;
+            canvasBox.appendChild(overlay);
+
+            document.getElementById('btn-trigger-race-results-now')?.addEventListener('click', async () => {
+              if (marbleRaceAnimId) cancelAnimationFrame(marbleRaceAnimId);
+              await updateRoomMeta(roomId, { status: 'COIN_RACE_RESULT', coinRaceResults: arrivedParticipants });
+            });
+          }
+        }
+      }
+
+      marbles.forEach(m => {
+        if (m.y + m.radius - cameraY > 0 && m.y - m.radius - cameraY < height) {
+          ctx.save();
+          const grad = ctx.createRadialGradient(m.x - 4, m.y - cameraY - 4, 2, m.x, m.y - cameraY, m.radius);
+          grad.addColorStop(0, '#ffffff');
+          grad.addColorStop(0.3, m.color);
+          grad.addColorStop(1, '#0f172a');
+
+          ctx.beginPath();
+          ctx.arc(m.x, m.y - cameraY, m.radius, 0, Math.PI * 2);
+          ctx.fillStyle = grad;
+          ctx.shadowColor = m.color;
+          ctx.shadowBlur = 8;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '11px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(m.avatar, m.x, m.y - cameraY);
+
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 10px Cafe24Surround, sans-serif';
+          ctx.fillText(m.nickname.slice(0, 4), m.x, m.y - cameraY - m.radius - 3);
+          ctx.restore();
+        }
+      });
+
+      if (countdown > 0) {
+        ctx.fillStyle = 'rgba(9, 13, 22, 0.65)';
+        ctx.fillRect(0, 0, width, height);
+        ctx.fillStyle = '#38bdf8';
+        ctx.font = '900 90px Cafe24Surround, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(countdown > 0 ? countdown : 'GO!', width / 2, height / 2);
+      }
+
+      marbleRaceAnimId = requestAnimationFrame(loop);
+    }
+
+    loop();
+
+    document.getElementById('btn-force-finish-marble-race')?.addEventListener('click', async () => {
+      if (marbleRaceAnimId) cancelAnimationFrame(marbleRaceAnimId);
+      participants.forEach(p => {
+        if (!arrivedNicknames.has(p.nickname)) {
+          arrivedNicknames.add(p.nickname);
+          arrivedParticipants.push({
+            nickname: p.nickname,
+            avatar: p.avatar,
+            rank: arrivedParticipants.length + 1
+          });
+        }
+      });
+      await updateRoomMeta(roomId, { status: 'COIN_RACE_RESULT', coinRaceResults: arrivedParticipants });
+    });
+  }
+
+  function renderCoinRaceResultView(container, roomData, roomId, isTeacherControl) {
+    if (coinRaceAnimId) {
+      cancelAnimationFrame(coinRaceAnimId);
+      coinRaceAnimId = null;
+    }
+    if (marbleRaceAnimId) {
+      cancelAnimationFrame(marbleRaceAnimId);
+      marbleRaceAnimId = null;
+    }
+
     const isStandalone = !!roomData.meta?.isStandaloneRace;
+    const isMarble = roomData.meta?.raceType === 'marble';
     const raceResults = roomData.meta?.coinRaceResults || [];
     const first = raceResults[0] || {};
     const second = raceResults[1] || {};
@@ -3807,10 +4309,10 @@
     }
 
     container.innerHTML = `
-      <div class="quiz-display-container" style="padding: 30px; max-width: 1000px; margin: 0 auto; text-align: center;">
+      <div class="quiz-display-container" id="coin-race-result-card" style="padding: 30px; max-width: 1000px; margin: 0 auto; text-align: center;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 10px;">
           <h2 style="font-size: 2.2rem; color: #fbbf24; font-weight: 900; margin: 0; text-shadow: 0 0 20px rgba(251, 191, 36, 0.5);">
-            🏆 선착순 핑퐁 낙하 레이스 최종 명예의 전당!
+            🏆 ${isMarble ? '선착순 구슬 롤러코스터' : '선착순 핑퐁 낙하'} 레이스 최종 명예의 전당!
           </h2>
           ${renderBgmVolumeControlHtml('coin-result')}
         </div>
