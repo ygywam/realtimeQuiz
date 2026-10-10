@@ -3953,58 +3953,72 @@
       }
     });
 
-    // Generate 16 GraviTrax Coaster Track Tiers & Rails
-    const rails = [];
-    const cornerGuides = [];
+    // Generate 16 Continuous Serpentine Racing Road Tiers & U-Turn Elbows
+    const roadStraights = [];
+    const uTurnElbows = [];
     const reverseSprings = [];
     const speedBoosters = [];
     const swirlFunnels = [];
     const railNum = 16;
+    const ROAD_WIDTH = 110;
 
     for (let i = 0; i < railNum; i++) {
       const yStart = 160 + i * 320;
-      const yEnd = yStart + 210;
+      const yEnd = yStart + 220;
       const isRightDown = i % 2 === 0;
 
-      const x1 = isRightDown ? 80 : 780;
-      const x2 = isRightDown ? 740 : 120;
+      const x1 = isRightDown ? 110 : 750;
+      const x2 = isRightDown ? 750 : 110;
 
-      rails.push({
+      roadStraights.push({
         id: i,
         x1, y1: yStart,
         x2, y2: yEnd,
         isRightDown,
+        dx: x2 - x1,
+        dy: yEnd - yStart,
+        length: Math.hypot(x2 - x1, yEnd - yStart),
         slope: (yEnd - yStart) / (x2 - x1)
       });
 
-      if (isRightDown) {
-        cornerGuides.push({
-          x: 800, y: yEnd + 35, r: 35, isRight: true, label: '↩️'
-        });
-      } else {
-        cornerGuides.push({
-          x: 60, y: yEnd + 35, r: 35, isRight: false, label: '↪️'
-        });
+      if (i < railNum - 1) {
+        if (isRightDown) {
+          uTurnElbows.push({
+            id: i,
+            centerX: 750,
+            centerY: yEnd + 50,
+            radius: 50,
+            isRight: true
+          });
+        } else {
+          uTurnElbows.push({
+            id: i,
+            centerX: 110,
+            centerY: yEnd + 50,
+            radius: 50,
+            isRight: false
+          });
+        }
       }
 
       if (i % 2 === 1 || i === 4 || i === 8 || i === 12) {
-        const springX = isRightDown ? 660 : 200;
-        const springY = yStart + (springX - x1) * ((yEnd - yStart) / (x2 - x1)) - 14;
+        const springX = isRightDown ? 620 : 240;
+        const springY = yStart + (springX - x1) * ((yEnd - yStart) / (x2 - x1));
         reverseSprings.push({
           x: springX,
           y: springY,
-          r: 22,
+          r: 24,
           text: '⚡ 역주행'
         });
       }
 
       if (i % 3 === 0) {
         const boostX = 430;
-        const boostY = yStart + (boostX - x1) * ((yEnd - yStart) / (x2 - x1)) - 12;
+        const boostY = yStart + (boostX - x1) * ((yEnd - yStart) / (x2 - x1));
         speedBoosters.push({
           x: boostX,
           y: boostY,
-          r: 24,
+          r: 26,
           text: '⏩ SPEED'
         });
       }
@@ -4013,7 +4027,7 @@
         swirlFunnels.push({
           x: 430,
           y: yStart + 110,
-          r: 44,
+          r: 45,
           text: '🌀 360° 루프'
         });
       }
@@ -4076,50 +4090,71 @@
         ctx.stroke();
       }
 
-      // Draw Coaster Rails (GraviTrax Dual Metallic Rails)
-      rails.forEach(r => {
-        if (r.y2 - cameraY > -50 && r.y1 - cameraY < height + 50) {
-          ctx.strokeStyle = '#0284c7';
-          ctx.lineWidth = 14;
+      // Draw Continuous Racing Road Lanes
+      roadStraights.forEach(st => {
+        if (st.y2 - cameraY > -100 && st.y1 - cameraY < height + 100) {
+          // Asphalt Track Surface
+          ctx.strokeStyle = '#1e293b';
+          ctx.lineWidth = ROAD_WIDTH;
           ctx.beginPath();
-          ctx.moveTo(r.x1, r.y1 - cameraY);
-          ctx.lineTo(r.x2, r.y2 - cameraY);
+          ctx.moveTo(st.x1, st.y1 - cameraY);
+          ctx.lineTo(st.x2, st.y2 - cameraY);
           ctx.stroke();
 
+          // Outer Neon Guardrails
+          const angle = Math.atan2(st.dy, st.dx);
+          const nx = -Math.sin(angle) * (ROAD_WIDTH / 2);
+          const ny = Math.cos(angle) * (ROAD_WIDTH / 2);
+
           ctx.strokeStyle = '#38bdf8';
-          ctx.lineWidth = 4;
+          ctx.lineWidth = 5;
+          ctx.shadowColor = '#38bdf8';
+          ctx.shadowBlur = 8;
           ctx.beginPath();
-          ctx.moveTo(r.x1, r.y1 - cameraY);
-          ctx.lineTo(r.x2, r.y2 - cameraY);
+          ctx.moveTo(st.x1 + nx, st.y1 + ny - cameraY);
+          ctx.lineTo(st.x2 + nx, st.y2 + ny - cameraY);
+          ctx.moveTo(st.x1 - nx, st.y1 - ny - cameraY);
+          ctx.lineTo(st.x2 - nx, st.y2 - ny - cameraY);
           ctx.stroke();
+          ctx.shadowBlur = 0;
 
-          ctx.fillStyle = '#f59e0b';
-          ctx.beginPath();
-          ctx.arc(r.x2, r.y2 - cameraY, 10, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      });
-
-      // Draw Corner Guide Bumpers
-      cornerGuides.forEach(cg => {
-        if (cg.y + cg.r - cameraY > 0 && cg.y - cg.r - cameraY < height) {
-          ctx.fillStyle = '#0f172a';
-          ctx.strokeStyle = '#38bdf8';
+          // Center Dash Line
+          ctx.strokeStyle = 'rgba(203, 213, 225, 0.4)';
           ctx.lineWidth = 3;
+          ctx.setLineDash([15, 15]);
           ctx.beginPath();
-          ctx.arc(cg.x, cg.y - cameraY, cg.r, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.moveTo(st.x1, st.y1 - cameraY);
+          ctx.lineTo(st.x2, st.y2 - cameraY);
           ctx.stroke();
-
-          ctx.fillStyle = '#38bdf8';
-          ctx.font = 'bold 16px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(cg.label, cg.x, cg.y - cameraY);
+          ctx.setLineDash([]);
         }
       });
 
-      // Draw Reverse Springs
+      // Draw U-Turn Elbow Curved Roads
+      uTurnElbows.forEach(ut => {
+        if (ut.centerY + 100 - cameraY > 0 && ut.centerY - 100 - cameraY < height) {
+          ctx.strokeStyle = '#1e293b';
+          ctx.lineWidth = ROAD_WIDTH;
+          ctx.beginPath();
+          const startAngle = ut.isRight ? -Math.PI / 2 : Math.PI / 2;
+          const endAngle = ut.isRight ? Math.PI / 2 : 3 * Math.PI / 2;
+          ctx.arc(ut.centerX, ut.centerY - cameraY, ut.radius, startAngle, endAngle);
+          ctx.stroke();
+
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 5;
+          ctx.shadowColor = '#38bdf8';
+          ctx.shadowBlur = 8;
+          ctx.beginPath();
+          ctx.arc(ut.centerX, ut.centerY - cameraY, ut.radius + ROAD_WIDTH / 2, startAngle, endAngle);
+          ctx.moveTo(ut.centerX + (ut.radius - ROAD_WIDTH / 2) * Math.cos(startAngle), ut.centerY + (ut.radius - ROAD_WIDTH / 2) * Math.sin(startAngle) - cameraY);
+          ctx.arc(ut.centerX, ut.centerY - cameraY, Math.max(10, ut.radius - ROAD_WIDTH / 2), startAngle, endAngle);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+        }
+      });
+
+      // Draw Reverse Springs ON ROAD
       reverseSprings.forEach(sp => {
         if (sp.y + sp.r - cameraY > 0 && sp.y - sp.r - cameraY < height) {
           ctx.fillStyle = '#ec4899';
@@ -4141,7 +4176,7 @@
         }
       });
 
-      // Draw Speed Boosters
+      // Draw Speed Boosters ON ROAD
       speedBoosters.forEach(sb => {
         if (sb.y + sb.r - cameraY > 0 && sb.y - sb.r - cameraY < height) {
           ctx.fillStyle = '#10b981';
@@ -4163,7 +4198,7 @@
         }
       });
 
-      // Draw Swirl Funnel Bowls
+      // Draw Swirl Funnel Bowls ON ROAD
       swirlFunnels.forEach(sf => {
         if (sf.y + sf.r - cameraY > 0 && sf.y - sf.r - cameraY < height) {
           ctx.fillStyle = 'rgba(168, 85, 247, 0.4)';
@@ -4182,7 +4217,7 @@
         }
       });
 
-      // Finish Line
+      // Finish Line (Checkered Circuit Finish Banner)
       if (finishY - cameraY < height && finishY + 60 - cameraY > 0) {
         ctx.fillStyle = 'rgba(56, 189, 248, 0.25)';
         ctx.fillRect(50, finishY - cameraY, width - 100, 50);
@@ -4194,60 +4229,90 @@
         ctx.fillStyle = '#38bdf8';
         ctx.font = 'bold 18px Cafe24Surround, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('🔮 FINISH LINE (구슬 도착선) 🔮', width / 2, finishY - cameraY + 32);
+        ctx.fillText('🔮 FINISH LINE (구슬 레이싱 결승선) 🔮', width / 2, finishY - cameraY + 32);
       }
 
       if (countdown <= 0) {
         marbles.forEach(m => {
           if (m.arrived) return;
 
-          let onAnyRail = false;
-          rails.forEach(r => {
-            const minX = Math.min(r.x1, r.x2) - 15;
-            const maxX = Math.max(r.x1, r.x2) + 15;
-            if (m.x >= minX && m.x <= maxX) {
-              const targetY = r.y1 + (m.x - r.x1) * r.slope;
-              if (m.y >= targetY - m.radius - 12 && m.y <= targetY + 28) {
-                m.y = targetY - m.radius;
-                onAnyRail = true;
+          let onRoad = false;
 
-                const dirX = r.isRightDown ? 1 : -1;
-                m.vx += dirX * 0.38;
-                m.vy = Math.abs(m.vx) * Math.abs(r.slope);
+          for (let st of roadStraights) {
+            const minX = Math.min(st.x1, st.x2) - 30;
+            const maxX = Math.max(st.x1, st.x2) + 30;
+            const minY = st.y1 - 30;
+            const maxY = st.y2 + 30;
+
+            if (m.x >= minX && m.x <= maxX && m.y >= minY && m.y <= maxY) {
+              const targetY = st.y1 + (m.x - st.x1) * st.slope;
+              const distFromCenter = Math.abs(m.y - targetY);
+
+              if (distFromCenter <= ROAD_WIDTH / 2) {
+                onRoad = true;
+                const dirX = st.isRightDown ? 1 : -1;
+                m.vx += dirX * 0.42;
+                m.vy = Math.abs(m.vx) * Math.abs(st.slope) + 0.2;
+
+                if (distFromCenter > ROAD_WIDTH / 2 - m.radius) {
+                  m.y = targetY + (m.y > targetY ? (ROAD_WIDTH / 2 - m.radius) : -(ROAD_WIDTH / 2 - m.radius));
+                  m.vy *= 0.5;
+                }
+                break;
               }
             }
-          });
+          }
 
-          if (!onAnyRail) {
+          if (!onRoad) {
+            for (let ut of uTurnElbows) {
+              const dx = m.x - ut.centerX;
+              const dy = m.y - ut.centerY;
+              const dist = Math.hypot(dx, dy);
+
+              if (dist >= 10 && dist <= ut.radius + ROAD_WIDTH / 2 + 20) {
+                onRoad = true;
+                const angle = Math.atan2(dy, dx);
+                const speed = Math.max(4.0, Math.hypot(m.vx, m.vy));
+
+                if (ut.isRight) {
+                  m.vx = -speed * Math.sin(angle);
+                  m.vy = speed * Math.cos(angle);
+                } else {
+                  m.vx = speed * Math.sin(angle);
+                  m.vy = -speed * Math.cos(angle);
+                }
+
+                if (dist > ut.radius + ROAD_WIDTH / 2 - m.radius) {
+                  const targetDist = ut.radius + ROAD_WIDTH / 2 - m.radius;
+                  m.x = ut.centerX + (dx / dist) * targetDist;
+                  m.y = ut.centerY + (dy / dist) * targetDist;
+                }
+                break;
+              }
+            }
+          }
+
+          if (!onRoad) {
             m.vy += 0.35;
           }
 
           m.vx *= 0.985;
-          m.vy = Math.min(m.vy, 9.0);
+          m.vy = Math.min(Math.max(m.vy, -10.0), 10.0);
           m.x += m.vx;
           m.y += m.vy;
 
-          cornerGuides.forEach(cg => {
-            const dx = m.x - cg.x;
-            const dy = m.y - cg.y;
-            const dist = Math.hypot(dx, dy);
-            if (dist < m.radius + cg.r && dist > 0) {
-              const pushX = cg.isRight ? -4.5 : 4.5;
-              m.vx = pushX;
-              m.vy = 2.0;
-              m.x = cg.x + (dx / dist) * (m.radius + cg.r + 2);
-              m.y = cg.y + (dy / dist) * (m.radius + cg.r + 2);
-              AudioEngine.playTick();
-            }
-          });
+          if (Math.hypot(m.vx, m.vy) < 1.2) {
+            m.vy += 0.8;
+            m.vx += (m.x < 430 ? 0.5 : -0.5);
+          }
 
           if (m.x < 35 + m.radius) {
             m.x = 35 + m.radius;
-            m.vx = Math.abs(m.vx) * 0.6 + 1.0;
+            m.vx = Math.abs(m.vx) + 1.0;
           }
           if (m.x > width - 35 - m.radius) {
             m.x = width - 35 - m.radius;
-            m.vx = -Math.abs(m.vx) * 0.6 - 1.0;
+            m.vx = -Math.abs(m.vx) - 1.0;
           }
 
           reverseSprings.forEach(sp => {
@@ -4255,8 +4320,8 @@
             const dy = m.y - sp.y;
             const dist = Math.hypot(dx, dy);
             if (dist < m.radius + sp.r && dist > 0) {
-              m.vx = -m.vx * 2.2;
-              m.vy = -Math.abs(m.vy) * 0.8 - 4.5;
+              m.vx = -m.vx * 2.5;
+              m.vy = -Math.abs(m.vy) * 0.9 - 5.0;
               AudioEngine.playCorrect();
             }
           });
@@ -4267,7 +4332,7 @@
             const dist = Math.hypot(dx, dy);
             if (dist < m.radius + sb.r && dist > 0) {
               m.vx *= 1.8;
-              m.vy += 2.0;
+              m.vy *= 1.8;
               AudioEngine.playTick();
             }
           });
@@ -4277,8 +4342,8 @@
             const dy = m.y - sf.y;
             const dist = Math.hypot(dx, dy);
             if (dist < m.radius + sf.r && dist > 0) {
-              m.vx = -dy * 0.12;
-              m.vy = dx * 0.12 + 1.2;
+              m.vx = -dy * 0.15;
+              m.vy = dx * 0.15 + 1.5;
             }
           });
 
