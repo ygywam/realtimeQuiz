@@ -833,7 +833,7 @@
     const modalHtml = `
       <div id="standalone-race-modal" class="modal-overlay">
         <div class="modal-box" style="max-width: 580px; text-align: left;">
-          <h2 style="font-size: 1.6rem; color: #f59e0b; margin-bottom: 8px;">🎰 핑퐁 코인 낙하 레이스 단독 시작</h2>
+          <h2 style="font-size: 1.6rem; color: #f59e0b; margin-bottom: 8px;">🎰 선착순 게임 (단독 모드 시작)</h2>
           <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 16px;">
             퀴즈 진행 없이 바로 참가자 명단 및 코인을 생성하여 핑퐁 낙하 레이스를 즐깁니다.
           </p>
@@ -897,7 +897,7 @@
 
       const roomData = {
         meta: {
-          title: '🎰 핑퐁 낙하 레이스 (단독 모드)',
+          title: '🎰 선착순 게임 (단독 모드)',
           createdAt: Date.now(),
           status: 'COIN_RACE_LOBBY',
           enableCoinRace: true,
@@ -908,7 +908,7 @@
         responses: {}
       };
 
-      saveMyLocalQuizRoom({ roomId: pin, title: '🎰 핑퐁 낙하 레이스 (단독 모드)', questionCount: 0, createdAt: Date.now() });
+      saveMyLocalQuizRoom({ roomId: pin, title: '🎰 선착순 게임 (단독 모드)', questionCount: 0, createdAt: Date.now() });
 
       if (db) {
         try { await db.ref(`rooms/${pin}`).set(roomData); } catch (e) {}
@@ -947,7 +947,7 @@
             <h3>교사 모드</h3>
             <p>새로운 퀴즈 방을 만들고, 문항을 출제/수정하거나 진행을 제어합니다.</p>
             <button class="btn btn-primary" id="btn-create-room" style="width: 100%;">새 퀴즈 방 만들기</button>
-            <button class="btn btn-primary" id="btn-standalone-coin-race" style="width: 100%; margin-top: 10px; background: linear-gradient(135deg, #f59e0b, #ec4899); border: none; font-size: 0.95rem; font-weight: 900; box-shadow: 0 4px 14px rgba(245, 158, 11, 0.4);">🎰 핑퐁 낙하 레이스 바로하기 (단독 모드)</button>
+            <button class="btn btn-primary" id="btn-standalone-coin-race" style="width: 100%; margin-top: 10px; background: linear-gradient(135deg, #f59e0b, #ec4899); border: none; font-size: 0.95rem; font-weight: 900; box-shadow: 0 4px 14px rgba(245, 158, 11, 0.4);">🎰 선착순 게임</button>
           </div>
 
           <div class="mode-card">
@@ -3034,6 +3034,8 @@
   // ============================================================
   // COIN RACE PHYSICS GAME & ALLOCATION
   // ============================================================
+  let playedFanfareStateKey = null;
+
   function getCoinAllocation(rank, total) {
     if (rank === 1) return 5;
     if (rank === 2) return 4;
@@ -3042,7 +3044,15 @@
     return 1;
   }
 
+  function getCoinAllocationForParticipant(p, rankIdx, total) {
+    if (p && typeof p.coins === 'number' && p.coins > 0) {
+      return p.coins;
+    }
+    return getCoinAllocation(rankIdx + 1, total);
+  }
+
   function renderCoinRaceLobbyView(container, roomData, roomId, isTeacherControl) {
+    const isStandalone = !!roomData.meta?.isStandaloneRace;
     const participants = Object.values(roomData.participants || {});
     participants.sort((a, b) => (b.score || 0) - (a.score || 0));
 
@@ -3050,24 +3060,24 @@
       <div class="quiz-display-container" style="padding: 30px; max-width: 1000px; margin: 0 auto; text-align: center;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 10px;">
           <h2 style="font-size: 2rem; color: #f59e0b; font-weight: 800; margin: 0;">
-            🎰 [최종 선착순 코인 핑퐁 낙하 레이스 대기실]
+            🎰 [선착순 코인 핑퐁 낙하 레이스 대기실]
           </h2>
           ${renderBgmVolumeControlHtml('coin-lobby')}
         </div>
 
         <p style="font-size: 1.15rem; color: var(--text-muted); margin-bottom: 30px; line-height: 1.6;">
-          퀴즈 등수에 따라 부여된 🪙 <strong>코인 개수</strong>를 가지고 출발선에 집결했습니다!<br>
+          지정된 🪙 <strong>코인 개수</strong>를 가지고 출발선에 집결했습니다!<br>
           핑퐁 핀볼 장애물과 서로 부딪히며 가장 먼저 도착선(Bottom)을 통과하는 선착순 우승자가 가려집니다!
         </p>
 
         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-bottom: 36px; max-height: 50vh; overflow-y: auto; padding: 8px;">
           ${participants.map((p, idx) => {
-            const coins = getCoinAllocation(idx + 1, participants.length);
+            const coins = getCoinAllocationForParticipant(p, idx, participants.length);
             return `
               <div style="background: #0f172a; border: 2px solid ${idx === 0 ? '#f59e0b' : 'var(--border)'}; border-radius: 14px; padding: 16px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
                 <div style="font-size: 2.2rem; margin-bottom: 6px;">${p.avatar || '🐶'}</div>
                 <div style="font-size: 1.15rem; font-weight: bold; color: #fff;">${escapeHtml(p.nickname)}</div>
-                <div style="font-size: 0.9rem; color: #38bdf8; margin: 4px 0 10px 0;">퀴즈 ${idx + 1}위 (${p.score || 0}점)</div>
+                <div style="font-size: 0.9rem; color: #38bdf8; margin: 4px 0 10px 0;">${isStandalone ? '참가자' : `퀴즈 ${idx + 1}위 (${p.score || 0}점)`}</div>
                 <div style="background: #1e293b; border-radius: 8px; padding: 8px; font-size: 1.2rem; font-weight: bold; color: #fbbf24;">
                   ${'🪙'.repeat(coins)} <span style="font-size: 0.95rem; color: #fff;">(${coins}개)</span>
                 </div>
@@ -3083,7 +3093,7 @@
             </button>
           ` : `<div style="font-size: 1.2rem; color: #38bdf8; font-weight: bold;">선생님이 출발 버튼을 누르면 레이스가 시작됩니다!</div>`}
           <button id="btn-back-to-finished" class="btn btn-secondary" style="font-size: 1.1rem; padding: 14px 24px;">
-            🔙 퀴즈 시상식 결과로 돌아가기
+            ${isStandalone ? '🏠 대시보드 메인으로 돌아가기' : '🔙 퀴즈 시상식 결과로 돌아가기'}
           </button>
         </div>
       </div>
@@ -3096,7 +3106,11 @@
     });
 
     document.getElementById('btn-back-to-finished')?.addEventListener('click', async () => {
-      await updateRoomMeta(state.roomId, { status: 'FINISHED' });
+      if (isStandalone) {
+        window.location.search = '';
+      } else {
+        await updateRoomMeta(state.roomId, { status: 'FINISHED' });
+      }
     });
   }
 
@@ -3115,7 +3129,7 @@
       <div class="quiz-display-container" style="padding: 16px; text-align: center; max-width: 1220px; margin: 0 auto;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
           <h2 style="font-size: 1.6rem; color: #f59e0b; font-weight: 900; margin: 0; display: flex; align-items: center; gap: 8px;">
-            🎰 핑퐁 코인 낙하 레이스 (5,500px 대장정 액션 트랙!)
+            🎰 선착순 핑퐁 코인 낙하 레이스 (5,500px 대장정 익스트림 트랙!)
           </h2>
           <div style="display: flex; gap: 10px; align-items: center;">
             ${renderBgmVolumeControlHtml('coin-run')}
@@ -3203,7 +3217,7 @@
 
     const coins = [];
     participants.forEach((p, rankIdx) => {
-      const coinCount = getCoinAllocation(rankIdx + 1, participants.length);
+      const coinCount = getCoinAllocationForParticipant(p, rankIdx, participants.length);
       const color = PALETTE[rankIdx % PALETTE.length];
       for (let c = 0; c < coinCount; c++) {
         coins.push({
@@ -3221,10 +3235,10 @@
       }
     });
 
-    // 1. Plinko Peg Matrix (Zone 1: y=130..800)
+    // 1. Plinko Peg Matrix (Zone 1: y=130..500)
     const pegs = [];
-    for (let r = 0; r < 9; r++) {
-      const py = 130 + r * 75;
+    for (let r = 0; r < 6; r++) {
+      const py = 130 + r * 70;
       const isEven = r % 2 === 0;
       const count = isEven ? 8 : 9;
       const margin = isEven ? 90 : 60;
@@ -3234,28 +3248,48 @@
       }
     }
 
-    // 2. Rotating Gears (Zone 2: y=900..1700)
+    // 2. Rotating Gears (8 gears down course)
     const gears = [
       { x: 260, y: 1050, r: 65, teeth: 10, omega: 0.04, angle: 0 },
       { x: 580, y: 1180, r: 70, teeth: 12, omega: -0.045, angle: 0 },
-      { x: 300, y: 1450, r: 60, teeth: 9, omega: -0.035, angle: 0 },
-      { x: 540, y: 1600, r: 65, teeth: 10, omega: 0.04, angle: 0 }
+      { x: 300, y: 1950, r: 60, teeth: 9, omega: -0.035, angle: 0 },
+      { x: 560, y: 2100, r: 65, teeth: 10, omega: 0.04, angle: 0 },
+      { x: 320, y: 2950, r: 65, teeth: 10, omega: 0.04, angle: 0 },
+      { x: 580, y: 3300, r: 70, teeth: 12, omega: -0.045, angle: 0 },
+      { x: 280, y: 4050, r: 60, teeth: 9, omega: -0.04, angle: 0 },
+      { x: 580, y: 4650, r: 65, teeth: 10, omega: 0.045, angle: 0 }
     ];
 
-    // 3. Spring Bumpers across course
+    // 3. Spring Bumpers (15 bouncy bumpers across course)
     const bumpers = [
-      { x: 220, y: 2050, r: 18, pulse: 0 },
-      { x: 640, y: 2050, r: 18, pulse: 0 },
-      { x: 430, y: 2500, r: 20, pulse: 0 },
-      { x: 200, y: 3200, r: 18, pulse: 0 },
-      { x: 660, y: 3200, r: 18, pulse: 0 },
-      { x: 300, y: 4100, r: 18, pulse: 0 },
-      { x: 560, y: 4100, r: 18, pulse: 0 }
+      { x: 430, y: 350, r: 20, pulse: 0 },
+      { x: 250, y: 850, r: 18, pulse: 0 },
+      { x: 610, y: 850, r: 18, pulse: 0 },
+      { x: 430, y: 1300, r: 22, pulse: 0 },
+      { x: 200, y: 1750, r: 18, pulse: 0 },
+      { x: 660, y: 1750, r: 18, pulse: 0 },
+      { x: 320, y: 2200, r: 20, pulse: 0 },
+      { x: 540, y: 2200, r: 20, pulse: 0 },
+      { x: 430, y: 2700, r: 22, pulse: 0 },
+      { x: 200, y: 3150, r: 18, pulse: 0 },
+      { x: 660, y: 3150, r: 18, pulse: 0 },
+      { x: 300, y: 3750, r: 20, pulse: 0 },
+      { x: 560, y: 3750, r: 20, pulse: 0 },
+      { x: 250, y: 4400, r: 18, pulse: 0 },
+      { x: 610, y: 4400, r: 18, pulse: 0 }
     ];
 
-    // Additional pegs down lower (y=3700..4600)
-    for (let r = 0; r < 8; r++) {
-      const py = 3700 + r * 80;
+    // 4. Galimgil Split Islands (4 island wedges)
+    const islands = [
+      { yStart: 1450, yEnd: 1700, centerX: 430, label: '⚡ 1차 갈림길' },
+      { yStart: 2450, yEnd: 2700, centerX: 430, label: '⚡ 2차 갈림길' },
+      { yStart: 3450, yEnd: 3700, centerX: 430, label: '⚡ 3차 갈림길' },
+      { yStart: 4350, yEnd: 4600, centerX: 430, label: '⚡ 4차 갈림길' }
+    ];
+
+    // Additional pegs down lower
+    for (let r = 0; r < 6; r++) {
+      const py = 3700 + r * 75;
       const isEven = r % 2 === 0;
       const count = isEven ? 7 : 8;
       const margin = isEven ? 120 : 80;
@@ -3265,7 +3299,7 @@
       }
     }
 
-    // 4. Speed Boosters (Accelerators) (y=4400..4700)
+    // Speed Boosters
     const boosters = [
       { x: 250, y: 4500, w: 120, h: 40, vy: 2.2 },
       { x: 610, y: 4500, w: 120, h: 40, vy: 2.2 }
@@ -3307,19 +3341,24 @@
       let left = 50;
       let right = width - 50;
 
-      if (y >= 1900 && y <= 2300) {
-        const ratio = (y - 1900) / 400;
-        const pinch = Math.sin(ratio * Math.PI) * 180;
-        left = 50 + pinch;
-        right = width - 50 - pinch;
-      } else if (y >= 2400 && y <= 2650) {
-        const shift = Math.sin((y - 2400) / 250 * Math.PI) * 140;
-        left = 50 + shift;
-        right = width - 50 + shift;
-      } else if (y >= 2700 && y <= 2950) {
-        const shift = -Math.sin((y - 2700) / 250 * Math.PI) * 140;
-        left = 50 + shift;
-        right = width - 50 + shift;
+      if (y >= 500 && y <= 750) {
+        const pinch = Math.sin((y - 500) / 250 * Math.PI) * 140;
+        left = 50 + pinch; right = width - 50 - pinch;
+      } else if (y >= 1150 && y <= 1400) {
+        const shift = -Math.sin((y - 1150) / 250 * Math.PI) * 150;
+        left = 50 + shift; right = width - 50 + shift;
+      } else if (y >= 1850 && y <= 2150) {
+        const pinch = Math.sin((y - 1850) / 300 * Math.PI) * 150;
+        left = 50 + pinch; right = width - 50 - pinch;
+      } else if (y >= 2800 && y <= 3100) {
+        const shift = Math.sin((y - 2800) / 300 * Math.PI) * 150;
+        left = 50 + shift; right = width - 50 + shift;
+      } else if (y >= 3800 && y <= 4100) {
+        const pinch = Math.sin((y - 3800) / 300 * Math.PI) * 160;
+        left = 50 + pinch; right = width - 50 - pinch;
+      } else if (y >= 4850 && y <= 5080) {
+        const pinch = Math.sin((y - 4850) / 230 * Math.PI) * 150;
+        left = 50 + pinch; right = width - 50 - pinch;
       }
 
       return { left, right };
@@ -3371,22 +3410,62 @@
       ctx.lineTo(width, VIRTUAL_HEIGHT - cameraY);
       ctx.fill(); ctx.stroke();
 
-      if (3050 - cameraY < height && 3400 - cameraY > 0) {
-        ctx.fillStyle = '#0f172a';
-        ctx.strokeStyle = '#ec4899';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(380, 3050 - cameraY);
-        ctx.lineTo(480, 3220 - cameraY);
-        ctx.lineTo(380, 3400 - cameraY);
-        ctx.lineTo(280, 3220 - cameraY);
-        ctx.closePath();
-        ctx.fill(); ctx.stroke();
+      // Render 4 Galimgil Islands
+      islands.forEach(isl => {
+        const topY = isl.yStart;
+        const midY = (isl.yStart + isl.yEnd) / 2;
+        const botY = isl.yEnd;
+        if (botY - cameraY > 0 && topY - cameraY < height) {
+          ctx.fillStyle = '#0f172a';
+          ctx.strokeStyle = '#ec4899';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(isl.centerX, topY - cameraY);
+          ctx.lineTo(isl.centerX + 90, midY - cameraY);
+          ctx.lineTo(isl.centerX, botY - cameraY);
+          ctx.lineTo(isl.centerX - 90, midY - cameraY);
+          ctx.closePath();
+          ctx.fill(); ctx.stroke();
 
-        ctx.fillStyle = '#ec4899';
-        ctx.font = 'bold 16px Cafe24Surround, sans-serif';
+          ctx.fillStyle = '#ec4899';
+          ctx.font = 'bold 15px Cafe24Surround, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(isl.label, isl.centerX, midY - cameraY + 4);
+        }
+      });
+
+      // Render Pingpong Flippers near Finish Line
+      const flipperY = 5120;
+      const flipperAngle = Math.sin(Date.now() * 0.005) * 0.45;
+
+      if (flipperY - 40 - cameraY < height && flipperY + 40 - cameraY > 0) {
+        ctx.save();
+        ctx.lineWidth = 10;
+        ctx.strokeStyle = '#f43f5e';
+        ctx.lineCap = 'round';
+
+        // Left Flipper
+        ctx.beginPath();
+        ctx.moveTo(130, flipperY - cameraY);
+        const leftX2 = 130 + Math.cos(flipperAngle) * 140;
+        const leftY2 = flipperY + Math.sin(flipperAngle) * 140;
+        ctx.lineTo(leftX2, leftY2 - cameraY);
+        ctx.stroke();
+
+        // Right Flipper
+        ctx.beginPath();
+        ctx.moveTo(730, flipperY - cameraY);
+        const rightX2 = 730 - Math.cos(-flipperAngle) * 140;
+        const rightY2 = flipperY + Math.sin(-flipperAngle) * 140;
+        ctx.lineTo(rightX2, rightY2 - cameraY);
+        ctx.stroke();
+
+        ctx.fillStyle = '#f43f5e';
+        ctx.font = 'bold 14px Cafe24Surround, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('⚡ 갈림길 섬 ⚡', 380, 3225 - cameraY);
+        ctx.fillText('🏓 핑퐁 리바운드 날개 🏓', width / 2, flipperY - cameraY - 15);
+
+        ctx.restore();
       }
 
       if (finishY - cameraY < height && finishY + 60 - cameraY > 0) {
@@ -3509,16 +3588,30 @@
             c.vx = -Math.abs(c.vx) * 0.7 - 0.5;
           }
 
-          if (c.y >= 3050 && c.y <= 3400) {
-            if (c.x > 280 && c.x < 480) {
-              const islandCenterX = 380;
-              if (c.x < islandCenterX) {
-                c.x = 280 - c.radius;
-                c.vx = -Math.abs(c.vx) * 0.8 - 1.0;
-              } else {
-                c.x = 480 + c.radius;
-                c.vx = Math.abs(c.vx) * 0.8 + 1.0;
+          // Galimgil Islands Collision
+          islands.forEach(isl => {
+            if (c.y >= isl.yStart && c.y <= isl.yEnd) {
+              if (c.x > isl.centerX - 90 && c.x < isl.centerX + 90) {
+                if (c.x < isl.centerX) {
+                  c.x = isl.centerX - 90 - c.radius;
+                  c.vx = -Math.abs(c.vx) * 0.8 - 1.2;
+                } else {
+                  c.x = isl.centerX + 90 + c.radius;
+                  c.vx = Math.abs(c.vx) * 0.8 + 1.2;
+                }
+                AudioEngine.playTick();
               }
+            }
+          });
+
+          // Flipper Paddles Bounce Collision
+          if (c.y >= 5080 && c.y <= 5160) {
+            const leftX2 = 130 + Math.cos(flipperAngle) * 140;
+            const rightX2 = 730 - Math.cos(-flipperAngle) * 140;
+            if ((c.x >= 120 && c.x <= leftX2 + 20) || (c.x <= 740 && c.x >= rightX2 - 20)) {
+              c.vy = -Math.abs(c.vy) * 1.6 - 4.5;
+              c.vx += (Math.random() - 0.5) * 6.0;
+              AudioEngine.playCorrect();
             }
           }
 
@@ -3702,18 +3795,22 @@
       coinRaceAnimId = null;
     }
 
+    const isStandalone = !!roomData.meta?.isStandaloneRace;
     const raceResults = roomData.meta?.coinRaceResults || [];
     const first = raceResults[0] || {};
     const second = raceResults[1] || {};
     const third = raceResults[2] || {};
 
-    AudioEngine.playFanfare();
+    if (playedFanfareStateKey !== 'COIN_RACE_RESULT_' + roomId) {
+      playedFanfareStateKey = 'COIN_RACE_RESULT_' + roomId;
+      AudioEngine.playFanfare();
+    }
 
     container.innerHTML = `
       <div class="quiz-display-container" style="padding: 30px; max-width: 1000px; margin: 0 auto; text-align: center;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 10px;">
           <h2 style="font-size: 2.2rem; color: #fbbf24; font-weight: 900; margin: 0; text-shadow: 0 0 20px rgba(251, 191, 36, 0.5);">
-            🏆 핑퐁 낙하 레이스 최종 명예의 전당!
+            🏆 선착순 핑퐁 낙하 레이스 최종 명예의 전당!
           </h2>
           ${renderBgmVolumeControlHtml('coin-result')}
         </div>
@@ -3759,12 +3856,18 @@
               🔄 레이스 재경기 (대기실로)
             </button>
             <button id="btn-finish-race-to-lobby" class="btn btn-danger" style="font-size: 1.15rem; padding: 12px 24px;">
-              🏁 퀴즈 완료 및 대기실로 방 초기화
+              ${isStandalone ? '🏠 선착순 게임 마감 & 메인으로' : '🏁 퀴즈 완료 및 대기실로 방 초기화'}
             </button>
           ` : ''}
-          <button id="btn-back-to-quiz-podium" class="btn btn-secondary" style="font-size: 1.1rem; padding: 12px 20px;">
-            📊 퀴즈 점수 시상식 보기
-          </button>
+          ${isStandalone ? `
+            <button id="btn-exit-standalone-main" class="btn btn-secondary" style="font-size: 1.1rem; padding: 12px 20px;">
+              🏠 메인 화면으로 이동
+            </button>
+          ` : `
+            <button id="btn-back-to-quiz-podium" class="btn btn-secondary" style="font-size: 1.1rem; padding: 12px 20px;">
+              📊 퀴즈 점수 시상식 보기
+            </button>
+          `}
         </div>
       </div>
     `;
@@ -3775,17 +3878,27 @@
       await updateRoomMeta(state.roomId, { status: 'COIN_RACE_LOBBY' });
     });
 
+    document.getElementById('btn-exit-standalone-main')?.addEventListener('click', () => {
+      window.location.search = '';
+    });
+
     document.getElementById('btn-finish-race-to-lobby')?.addEventListener('click', async () => {
-      if (confirm('대기실(LOBBY) 상태로 방을 초기화하시겠습니까?')) {
-        await updateRoomMeta(state.roomId, { status: 'LOBBY', currentQuestionIndex: 0 });
-        if (db) {
-          try {
-            await db.ref(`rooms/${state.roomId}/participants`).remove();
-            await db.ref(`rooms/${state.roomId}/responses`).remove();
-          } catch (e) {}
-        } else {
-          await putFirebaseRest(`rooms/${state.roomId}/participants`, {});
-          await putFirebaseRest(`rooms/${state.roomId}/responses`, {});
+      if (isStandalone) {
+        if (confirm('선착순 게임을 완료하고 메인 화면으로 이동하시겠습니까?')) {
+          window.location.search = '';
+        }
+      } else {
+        if (confirm('대기실(LOBBY) 상태로 방을 초기화하시겠습니까?')) {
+          await updateRoomMeta(state.roomId, { status: 'LOBBY', currentQuestionIndex: 0 });
+          if (db) {
+            try {
+              await db.ref(`rooms/${state.roomId}/participants`).remove();
+              await db.ref(`rooms/${state.roomId}/responses`).remove();
+            } catch (e) {}
+          } else {
+            await putFirebaseRest(`rooms/${state.roomId}/participants`, {});
+            await putFirebaseRest(`rooms/${state.roomId}/responses`, {});
+          }
         }
       }
     });
