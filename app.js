@@ -121,6 +121,7 @@
       } catch (e) {}
     },
     currentTrackKey: null,
+    activeAudioInstances: [],
     getBgmUrls(trackKey) {
       if (trackKey === 'bgm1' || trackKey === 'lobby') {
         return ['./src/assets/bgm1.mp3', './assets/bgm1.mp3', 'assets/bgm1.mp3', 'bgm1.mp3'];
@@ -150,7 +151,7 @@
       let candidateIdx = 0;
 
       const tryPlayCandidate = () => {
-        if (!this.bgmPlaying) return;
+        if (!this.bgmPlaying || this.currentTrackKey !== trackKey) return;
         if (candidateIdx >= candidates.length) {
           console.warn('MP3 BGM 재생 후보 경로 모두 실효, 오디오 합성 BGM으로 전환');
           this.startSynthBGM();
@@ -162,6 +163,7 @@
           const audio = new Audio(url);
           audio.loop = true;
           audio.volume = this.volume;
+          this.activeAudioInstances.push(audio);
 
           audio.onerror = () => {
             console.warn(`BGM URL 로드 실패 (${url}), 다음 경로 시도...`);
@@ -172,6 +174,10 @@
           const playPromise = audio.play();
           if (playPromise !== undefined) {
             playPromise.then(() => {
+              if (!this.bgmPlaying || this.currentTrackKey !== trackKey) {
+                try { audio.pause(); audio.currentTime = 0; } catch (e) {}
+                return;
+              }
               this.bgmAudio = audio;
             }).catch(e => {
               console.warn(`BGM 재생 제한/오류 (${url}):`, e);
@@ -249,10 +255,17 @@
     stopBGM() {
       this.bgmPlaying = false;
       this.currentTrackKey = null;
-      if (this.bgmAudio) {
-        try { this.bgmAudio.pause(); this.bgmAudio.currentTime = 0; } catch (e) {}
-        this.bgmAudio = null;
+      if (Array.isArray(this.activeAudioInstances)) {
+        this.activeAudioInstances.forEach(audio => {
+          try {
+            audio.pause();
+            audio.currentTime = 0;
+            audio.src = '';
+          } catch (e) {}
+        });
+        this.activeAudioInstances = [];
       }
+      this.bgmAudio = null;
       if (this.bgmSynthInterval) {
         clearInterval(this.bgmSynthInterval);
         this.bgmSynthInterval = null;
@@ -816,6 +829,98 @@
     }
   }
 
+  function openStandaloneCoinRaceModal() {
+    const modalHtml = `
+      <div id="standalone-race-modal" class="modal-overlay">
+        <div class="modal-box" style="max-width: 580px; text-align: left;">
+          <h2 style="font-size: 1.6rem; color: #f59e0b; margin-bottom: 8px;">🎰 핑퐁 코인 낙하 레이스 단독 시작</h2>
+          <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 16px;">
+            퀴즈 진행 없이 바로 참가자 명단 및 코인을 생성하여 핑퐁 낙하 레이스를 즐깁니다.
+          </p>
+
+          <div style="margin-bottom: 14px;">
+            <label style="font-weight: bold; font-size: 0.9rem; color: #38bdf8;">👥 참가자 목록 (쉼표 또는 줄바꿈으로 구분):</label>
+            <textarea id="input-race-participants" rows="4" style="width: 100%; margin-top: 6px; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: #1e293b; color: #fff; font-size: 0.95rem; font-weight: bold; resize: vertical;" placeholder="예: 1조, 2조, 3조, 4조, 5조, 6조&#10;또는 학생 이름: 김철수, 이영희, 박지성">1조, 2조, 3조, 4조, 5조, 6조</textarea>
+          </div>
+
+          <div style="margin-bottom: 18px;">
+            <label style="font-weight: bold; font-size: 0.9rem; color: #fbbf24;">🪙 인당 코인 지급 방식:</label>
+            <select id="select-race-coin-mode" style="width: 100%; margin-top: 6px; padding: 8px 12px; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid var(--border); font-weight: bold; font-size: 0.95rem;">
+              <option value="ranked">등수 순서대로 (1등 5개, 2등 4개, 3등 3개, 4~5등 2개, 6등+ 1개)</option>
+              <option value="equal">모두 동일하게 (인당 3개씩)</option>
+              <option value="random">랜덤 보너스 (인당 1~5개 무작위)</option>
+            </select>
+          </div>
+
+          <div class="modal-actions" style="display: flex; gap: 10px; justify-content: flex-end;">
+            <button type="button" class="btn btn-secondary" id="btn-cancel-standalone-race">취소</button>
+            <button type="button" class="btn btn-primary" id="btn-start-standalone-race-exec" style="background: linear-gradient(135deg, #f59e0b, #ec4899); border: none; font-weight: 900; cursor: pointer;">🚀 레이스 시작!</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    document.getElementById('btn-cancel-standalone-race')?.addEventListener('click', () => {
+      document.getElementById('standalone-race-modal')?.remove();
+    });
+
+    document.getElementById('btn-start-standalone-race-exec')?.addEventListener('click', async () => {
+      const rawNames = document.getElementById('input-race-participants')?.value || '';
+      const coinMode = document.getElementById('select-race-coin-mode')?.value || 'ranked';
+      
+      const names = rawNames.split(/[\n,]/).map(n => n.trim()).filter(n => n.length > 0);
+      if (names.length < 2) {
+        alert('최소 2명 이상의 참가자 이름을 입력해 주세요.');
+        return;
+      }
+
+      const pin = Math.floor(100000 + Math.random() * 900000).toString();
+      const participants = {};
+
+      names.forEach((name, idx) => {
+        const pId = 'p_' + idx + '_' + Date.now();
+        let coins = 1;
+        if (coinMode === 'ranked') coins = getCoinAllocation(idx + 1, names.length);
+        else if (coinMode === 'equal') coins = 3;
+        else if (coinMode === 'random') coins = Math.floor(1 + Math.random() * 5);
+
+        participants[pId] = {
+          studentId: pId,
+          nickname: name,
+          avatar: AVATARS[idx % AVATARS.length],
+          score: (names.length - idx) * 100,
+          coins: coins
+        };
+      });
+
+      const roomData = {
+        meta: {
+          title: '🎰 핑퐁 낙하 레이스 (단독 모드)',
+          createdAt: Date.now(),
+          status: 'COIN_RACE_LOBBY',
+          enableCoinRace: true,
+          isStandaloneRace: true
+        },
+        questions: [],
+        participants: participants,
+        responses: {}
+      };
+
+      saveMyLocalQuizRoom({ roomId: pin, title: '🎰 핑퐁 낙하 레이스 (단독 모드)', questionCount: 0, createdAt: Date.now() });
+
+      if (db) {
+        try { await db.ref(`rooms/${pin}`).set(roomData); } catch (e) {}
+      } else {
+        await putFirebaseRest(`rooms/${pin}`, roomData);
+      }
+
+      document.getElementById('standalone-race-modal')?.remove();
+      window.location.search = `?room=${pin}&role=teacher`;
+    });
+  }
+
   function renderHomeView(app) {
     const isFbConnected = !state.isDemo;
     const localRooms = getMyLocalQuizRooms();
@@ -842,6 +947,7 @@
             <h3>교사 모드</h3>
             <p>새로운 퀴즈 방을 만들고, 문항을 출제/수정하거나 진행을 제어합니다.</p>
             <button class="btn btn-primary" id="btn-create-room" style="width: 100%;">새 퀴즈 방 만들기</button>
+            <button class="btn btn-primary" id="btn-standalone-coin-race" style="width: 100%; margin-top: 10px; background: linear-gradient(135deg, #f59e0b, #ec4899); border: none; font-size: 0.95rem; font-weight: 900; box-shadow: 0 4px 14px rgba(245, 158, 11, 0.4);">🎰 핑퐁 낙하 레이스 바로하기 (단독 모드)</button>
           </div>
 
           <div class="mode-card">
@@ -886,7 +992,10 @@
                   <div style="background: #0f172a; border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; justify-content: space-between;">
                     <div>
                       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <span class="room-badge" style="font-size: 0.9rem;">PIN: ${room.roomId}</span>
+                        <div>
+                          <span class="room-badge" style="font-size: 0.9rem;">PIN: ${room.roomId}</span>
+                          ${room.keepPermanent ? '<span style="font-size: 0.78rem; background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid #38bdf8; padding: 2px 6px; border-radius: 4px; font-weight: bold; margin-left: 6px;">📌 영구 보존</span>' : ''}
+                        </div>
                         <span style="font-size: 0.8rem; color: var(--text-muted);">${dateStr}</span>
                       </div>
                       <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 6px;">
@@ -1100,6 +1209,7 @@
     `;
 
     document.getElementById('btn-create-room')?.addEventListener('click', handleCreateRoom);
+    document.getElementById('btn-standalone-coin-race')?.addEventListener('click', () => openStandaloneCoinRaceModal());
     document.getElementById('btn-open-fb-info')?.addEventListener('click', openFirebaseInfoModal);
     document.getElementById('select-theme-home')?.addEventListener('change', (e) => setTheme(e.target.value));
     document.getElementById('btn-enter-display')?.addEventListener('click', () => {
@@ -1571,10 +1681,14 @@
               <label style="font-weight: bold; font-size: 0.9rem; color: #38bdf8;">🏷️ 퀴즈 방 제목/이름:</label>
               <input type="text" id="input-admin-room-title" value="${escapeHtml(currentTitle)}" placeholder="퀴즈 방 제목을 입력하세요" style="width: 100%; margin-top: 4px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: #fff; font-weight: bold; font-size: 1rem;">
             </div>
-            <div style="display: flex; align-items: center; margin-top: 14px;">
-              <label style="font-weight: bold; font-size: 0.95rem; color: #f59e0b; cursor: pointer; display: flex; align-items: center; gap: 6px; background: rgba(245, 158, 11, 0.12); padding: 8px 12px; border-radius: 8px; border: 1px solid #f59e0b;">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px;">
+              <label style="font-weight: bold; font-size: 0.9rem; color: #f59e0b; cursor: pointer; display: flex; align-items: center; gap: 6px; background: rgba(245, 158, 11, 0.12); padding: 8px 12px; border-radius: 8px; border: 1px solid #f59e0b;">
                 <input type="checkbox" id="input-admin-enable-coin-race" ${roomMeta.enableCoinRace ? 'checked' : ''}>
                 🎰 최종 선착순 핑퐁 낙하 레이스 포함
+              </label>
+              <label style="font-weight: bold; font-size: 0.9rem; color: #38bdf8; cursor: pointer; display: flex; align-items: center; gap: 6px; background: rgba(56, 189, 248, 0.12); padding: 8px 12px; border-radius: 8px; border: 1px solid #38bdf8;">
+                <input type="checkbox" id="input-admin-keep-permanent" ${roomMeta.keepPermanent ? 'checked' : ''}>
+                📌 3일 후 자동 삭제 방지 (영구 보존)
               </label>
             </div>
           </div>
@@ -1858,12 +1972,15 @@
       const newTitleInput = document.getElementById('input-admin-room-title');
       const enableCoinRaceCb = document.getElementById('input-admin-enable-coin-race');
       const enableCoinRace = enableCoinRaceCb ? enableCoinRaceCb.checked : false;
+      const keepPermanentCb = document.getElementById('input-admin-keep-permanent');
+      const keepPermanent = keepPermanentCb ? keepPermanentCb.checked : false;
+
       if (newTitleInput) {
         const title = newTitleInput.value.trim() || '실시간 수업 퀴즈';
-        saveMyLocalQuizRoom({ roomId, title, questionCount: questions.length });
-        await updateRoomMeta(roomId, { title, enableCoinRace });
+        saveMyLocalQuizRoom({ roomId, title, questionCount: questions.length, keepPermanent });
+        await updateRoomMeta(roomId, { title, enableCoinRace, keepPermanent });
       } else {
-        await updateRoomMeta(roomId, { enableCoinRace });
+        await updateRoomMeta(roomId, { enableCoinRace, keepPermanent });
       }
       await updateQuestions(roomId, questions);
       document.getElementById('admin-modal').remove();
@@ -2290,6 +2407,7 @@
     if (status === 'COIN_RACE_RUNNING') {
       if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
       activeTimerQIndex = -1;
+      if (document.getElementById('coin-race-canvas')) return;
       renderCoinRaceRunningView(container, roomData, roomId, isTeacherControl);
       return;
     }
@@ -2994,10 +3112,10 @@
     participants.sort((a, b) => (b.score || 0) - (a.score || 0));
 
     container.innerHTML = `
-      <div class="quiz-display-container" style="padding: 20px; text-align: center; max-width: 1200px; margin: 0 auto;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
-          <h2 style="font-size: 1.6rem; color: #f59e0b; font-weight: bold; margin: 0; display: flex; align-items: center; gap: 8px;">
-            🎰 선착순 코인 핑퐁 낙하 레이스!
+      <div class="quiz-display-container" style="padding: 16px; text-align: center; max-width: 1220px; margin: 0 auto;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+          <h2 style="font-size: 1.6rem; color: #f59e0b; font-weight: 900; margin: 0; display: flex; align-items: center; gap: 8px;">
+            🎰 핑퐁 코인 낙하 레이스 (5,500px 대장정 액션 트랙!)
           </h2>
           <div style="display: flex; gap: 10px; align-items: center;">
             ${renderBgmVolumeControlHtml('coin-run')}
@@ -3009,13 +3127,19 @@
           </div>
         </div>
 
-        <div style="display: flex; gap: 20px; justify-content: center; align-items: flex-start; flex-wrap: wrap;">
+        <div style="display: flex; gap: 16px; justify-content: center; align-items: flex-start; flex-wrap: wrap;">
           <div style="position: relative; background: #090d16; border: 3px solid #f59e0b; border-radius: 16px; overflow: hidden; box-shadow: 0 8px 32px rgba(245, 158, 11, 0.4);">
-            <canvas id="coin-race-canvas" width="840" height="620" style="display: block; background: radial-gradient(circle at center, #1e1b4b 0%, #090d16 100%);"></canvas>
+            <canvas id="coin-race-canvas" width="860" height="640" style="display: block; background: radial-gradient(circle at center, #1e1b4b 0%, #090d16 100%); cursor: grab;"></canvas>
+            <button id="btn-reset-camera" class="btn btn-outline-sm" style="position: absolute; top: 12px; right: 12px; z-index: 10; background: rgba(15, 23, 42, 0.85); border-color: #38bdf8; color: #38bdf8; font-weight: bold; cursor: pointer; backdrop-filter: blur(4px);">
+              🎥 1등 코인 자동 추적
+            </button>
+            <div style="position: absolute; bottom: 12px; left: 12px; z-index: 10; background: rgba(15, 23, 42, 0.75); padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; color: #94a3b8; pointer-events: none;">
+              💡 마우스 드래그/휠 스크롤로 트랙 위치 자율 조작 가능
+            </div>
           </div>
 
-          <div style="width: 280px; background: #0f172a; border: 1px solid var(--border); border-radius: 16px; padding: 16px; min-height: 620px; display: flex; flex-direction: column;">
-            <h3 style="font-size: 1.2rem; color: #fbbf24; margin: 0 0 12px 0; border-bottom: 2px solid var(--border); padding-bottom: 8px; text-align: center;">
+          <div style="width: 290px; background: #0f172a; border: 1px solid var(--border); border-radius: 16px; padding: 16px; min-height: 640px; display: flex; flex-direction: column;">
+            <h3 style="font-size: 1.2rem; color: #fbbf24; margin: 0 0 10px 0; border-bottom: 2px solid var(--border); padding-bottom: 8px; text-align: center;">
               🚩 실시간 순위 도착 현황
             </h3>
             <div id="race-live-arrivals-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
@@ -3036,6 +3160,44 @@
 
     const width = canvas.width;
     const height = canvas.height;
+    const VIRTUAL_HEIGHT = 5500;
+    const finishY = 5250;
+
+    let cameraY = 0;
+    let isManualCamera = false;
+    let isDragging = false;
+    let dragStartY = 0;
+    let startCamY = 0;
+
+    canvas.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      dragStartY = e.clientY;
+      startCamY = cameraY;
+      canvas.style.cursor = 'grabbing';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        isManualCamera = true;
+        const dy = e.clientY - dragStartY;
+        cameraY = Math.max(0, Math.min(VIRTUAL_HEIGHT - height, startCamY - dy));
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
+      if (canvas) canvas.style.cursor = 'grab';
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      isManualCamera = true;
+      cameraY = Math.max(0, Math.min(VIRTUAL_HEIGHT - height, cameraY + e.deltaY * 0.8));
+    }, { passive: false });
+
+    document.getElementById('btn-reset-camera')?.addEventListener('click', () => {
+      isManualCamera = false;
+    });
 
     const PALETTE = ['#f59e0b', '#ec4899', '#38bdf8', '#10b981', '#a855f7', '#ef4444', '#84cc16', '#06b6d4', '#f97316', '#e11d48'];
 
@@ -3050,7 +3212,7 @@
           avatar: p.avatar || '🐶',
           color: color,
           x: 90 + Math.random() * (width - 180),
-          y: 40 + Math.random() * 25,
+          y: 40 + Math.random() * 30,
           vx: (Math.random() - 0.5) * 1.5,
           vy: 0.2 + Math.random() * 0.4,
           radius: 13,
@@ -3059,32 +3221,54 @@
       }
     });
 
+    // 1. Plinko Peg Matrix (Zone 1: y=130..800)
     const pegs = [];
-    const startY = 130;
-    const endY = 490;
-    const rowCount = 8;
-    const rowSpacing = (endY - startY) / (rowCount - 1);
-
-    for (let r = 0; r < rowCount; r++) {
-      const py = startY + r * rowSpacing;
+    for (let r = 0; r < 9; r++) {
+      const py = 130 + r * 75;
       const isEven = r % 2 === 0;
       const count = isEven ? 8 : 9;
       const margin = isEven ? 90 : 60;
       const spacing = (width - margin * 2) / (count - 1);
       for (let i = 0; i < count; i++) {
-        pegs.push({
-          x: margin + i * spacing,
-          y: py,
-          r: 7
-        });
+        pegs.push({ x: margin + i * spacing, y: py, r: 7 });
       }
     }
 
+    // 2. Rotating Gears (Zone 2: y=900..1700)
+    const gears = [
+      { x: 260, y: 1050, r: 65, teeth: 10, omega: 0.04, angle: 0 },
+      { x: 580, y: 1180, r: 70, teeth: 12, omega: -0.045, angle: 0 },
+      { x: 300, y: 1450, r: 60, teeth: 9, omega: -0.035, angle: 0 },
+      { x: 540, y: 1600, r: 65, teeth: 10, omega: 0.04, angle: 0 }
+    ];
+
+    // 3. Spring Bumpers across course
     const bumpers = [
-      { x: width * 0.25, y: 250, r: 18, pulse: 0 },
-      { x: width * 0.75, y: 250, r: 18, pulse: 0 },
-      { x: width * 0.38, y: 410, r: 18, pulse: 0 },
-      { x: width * 0.62, y: 410, r: 18, pulse: 0 }
+      { x: 220, y: 2050, r: 18, pulse: 0 },
+      { x: 640, y: 2050, r: 18, pulse: 0 },
+      { x: 430, y: 2500, r: 20, pulse: 0 },
+      { x: 200, y: 3200, r: 18, pulse: 0 },
+      { x: 660, y: 3200, r: 18, pulse: 0 },
+      { x: 300, y: 4100, r: 18, pulse: 0 },
+      { x: 560, y: 4100, r: 18, pulse: 0 }
+    ];
+
+    // Additional pegs down lower (y=3700..4600)
+    for (let r = 0; r < 8; r++) {
+      const py = 3700 + r * 80;
+      const isEven = r % 2 === 0;
+      const count = isEven ? 7 : 8;
+      const margin = isEven ? 120 : 80;
+      const spacing = (width - margin * 2) / (count - 1);
+      for (let i = 0; i < count; i++) {
+        pegs.push({ x: margin + i * spacing, y: py, r: 7 });
+      }
+    }
+
+    // 4. Speed Boosters (Accelerators) (y=4400..4700)
+    const boosters = [
+      { x: 250, y: 4500, w: 120, h: 40, vy: 2.2 },
+      { x: 610, y: 4500, w: 120, h: 40, vy: 2.2 }
     ];
 
     let countdown = 3;
@@ -3119,69 +3303,188 @@
       `).join('');
     }
 
-    const finishY = 560;
+    function getTrackBoundsAtY(y) {
+      let left = 50;
+      let right = width - 50;
+
+      if (y >= 1900 && y <= 2300) {
+        const ratio = (y - 1900) / 400;
+        const pinch = Math.sin(ratio * Math.PI) * 180;
+        left = 50 + pinch;
+        right = width - 50 - pinch;
+      } else if (y >= 2400 && y <= 2650) {
+        const shift = Math.sin((y - 2400) / 250 * Math.PI) * 140;
+        left = 50 + shift;
+        right = width - 50 + shift;
+      } else if (y >= 2700 && y <= 2950) {
+        const shift = -Math.sin((y - 2700) / 250 * Math.PI) * 140;
+        left = 50 + shift;
+        right = width - 50 + shift;
+      }
+
+      return { left, right };
+    }
 
     function loop() {
+      if (!isManualCamera) {
+        let maxCoinY = 0;
+        coins.forEach(c => {
+          if (!c.arrived && c.y > maxCoinY) maxCoinY = c.y;
+        });
+        if (maxCoinY > 0) {
+          const targetCamY = Math.max(0, Math.min(VIRTUAL_HEIGHT - height, maxCoinY - 220));
+          cameraY += (targetCamY - cameraY) * 0.12;
+        }
+      }
+
       ctx.clearRect(0, 0, width, height);
 
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.08)';
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.06)';
       ctx.lineWidth = 1;
-      for (let x = 0; x < width; x += 40) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+      const startGridY = Math.floor(cameraY / 40) * 40;
+      for (let y = startGridY; y < cameraY + height; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(0, y - cameraY);
+        ctx.lineTo(width, y - cameraY);
+        ctx.stroke();
       }
 
       ctx.fillStyle = '#1e293b';
-      ctx.beginPath();
-      ctx.moveTo(0, 0); ctx.lineTo(50, 100); ctx.lineTo(50, 560); ctx.lineTo(0, 620);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(width, 0); ctx.lineTo(width - 50, 100); ctx.lineTo(width - 50, 560); ctx.lineTo(width, 620);
-      ctx.fill();
-
-      ctx.fillStyle = 'rgba(245, 158, 11, 0.2)';
-      ctx.fillRect(50, finishY, width - 100, 40);
       ctx.strokeStyle = '#f59e0b';
       ctx.lineWidth = 3;
-      ctx.setLineDash([8, 8]);
-      ctx.beginPath(); ctx.moveTo(50, finishY); ctx.lineTo(width - 50, finishY); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = '#fbbf24';
-      ctx.font = 'bold 14px Cafe24Surround, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('🏁 FINISH LINE (도착선) 🏁', width / 2, finishY + 26);
+
+      ctx.beginPath();
+      ctx.moveTo(0, 0 - cameraY);
+      for (let y = 0; y <= VIRTUAL_HEIGHT; y += 50) {
+        const b = getTrackBoundsAtY(y);
+        ctx.lineTo(b.left, y - cameraY);
+      }
+      ctx.lineTo(0, VIRTUAL_HEIGHT - cameraY);
+      ctx.fill(); ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(width, 0 - cameraY);
+      for (let y = 0; y <= VIRTUAL_HEIGHT; y += 50) {
+        const b = getTrackBoundsAtY(y);
+        ctx.lineTo(b.right, y - cameraY);
+      }
+      ctx.lineTo(width, VIRTUAL_HEIGHT - cameraY);
+      ctx.fill(); ctx.stroke();
+
+      if (3050 - cameraY < height && 3400 - cameraY > 0) {
+        ctx.fillStyle = '#0f172a';
+        ctx.strokeStyle = '#ec4899';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(380, 3050 - cameraY);
+        ctx.lineTo(480, 3220 - cameraY);
+        ctx.lineTo(380, 3400 - cameraY);
+        ctx.lineTo(280, 3220 - cameraY);
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+
+        ctx.fillStyle = '#ec4899';
+        ctx.font = 'bold 16px Cafe24Surround, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('⚡ 갈림길 섬 ⚡', 380, 3225 - cameraY);
+      }
+
+      if (finishY - cameraY < height && finishY + 60 - cameraY > 0) {
+        ctx.fillStyle = 'rgba(245, 158, 11, 0.25)';
+        ctx.fillRect(50, finishY - cameraY, width - 100, 50);
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 4;
+        ctx.setLineDash([10, 10]);
+        ctx.beginPath(); ctx.moveTo(50, finishY - cameraY); ctx.lineTo(width - 50, finishY - cameraY); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#fbbf24';
+        ctx.font = 'bold 18px Cafe24Surround, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🏁 FINISH LINE (도착선) 🏁', width / 2, finishY - cameraY + 32);
+      }
+
+      gears.forEach(g => {
+        g.angle += g.omega;
+        if (g.y + g.r - cameraY > 0 && g.y - g.r - cameraY < height) {
+          ctx.save();
+          ctx.translate(g.x, g.y - cameraY);
+          ctx.rotate(g.angle);
+
+          ctx.fillStyle = '#a855f7';
+          for (let i = 0; i < g.teeth; i++) {
+            const rot = (i / g.teeth) * Math.PI * 2;
+            ctx.save();
+            ctx.rotate(rot);
+            ctx.fillRect(-6, -g.r - 8, 12, 16);
+            ctx.restore();
+          }
+
+          ctx.beginPath();
+          ctx.arc(0, 0, g.r, 0, Math.PI * 2);
+          ctx.fillStyle = '#6b21a8';
+          ctx.fill();
+          ctx.strokeStyle = '#e9d5ff';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.arc(0, 0, 14, 0, Math.PI * 2);
+          ctx.fillStyle = '#a855f7';
+          ctx.fill();
+          ctx.restore();
+        }
+      });
 
       pegs.forEach(p => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = '#38bdf8';
-        ctx.shadowColor = '#38bdf8';
-        ctx.shadowBlur = 8;
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+        if (p.y + p.r - cameraY > 0 && p.y - p.r - cameraY < height) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y - cameraY, p.r, 0, Math.PI * 2);
+          ctx.fillStyle = '#38bdf8';
+          ctx.shadowColor = '#38bdf8';
+          ctx.shadowBlur = 8;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
       });
 
       bumpers.forEach(b => {
         if (b.pulse > 0) b.pulse -= 0.05;
-        const rCurrent = b.r + Math.max(0, b.pulse) * 8;
-        ctx.beginPath();
-        ctx.arc(b.x, b.y, rCurrent, 0, Math.PI * 2);
-        ctx.fillStyle = '#ec4899';
-        ctx.shadowColor = '#ec4899';
-        ctx.shadowBlur = 12;
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.stroke();
+        if (b.y + b.r - cameraY > 0 && b.y - b.r - cameraY < height) {
+          const rCurr = b.r + Math.max(0, b.pulse) * 8;
+          ctx.beginPath();
+          ctx.arc(b.x, b.y - cameraY, rCurr, 0, Math.PI * 2);
+          ctx.fillStyle = '#ec4899';
+          ctx.shadowColor = '#ec4899';
+          ctx.shadowBlur = 12;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
 
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 12px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('💥', b.x, b.y);
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 12px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('💥', b.x, b.y - cameraY);
+        }
+      });
+
+      boosters.forEach(bst => {
+        if (bst.y + bst.h - cameraY > 0 && bst.y - cameraY < height) {
+          ctx.fillStyle = 'rgba(16, 185, 129, 0.3)';
+          ctx.strokeStyle = '#10b981';
+          ctx.lineWidth = 2;
+          ctx.fillRect(bst.x, bst.y - cameraY, bst.w, bst.h);
+          ctx.strokeRect(bst.x, bst.y - cameraY, bst.w, bst.h);
+          ctx.fillStyle = '#10b981';
+          ctx.font = 'bold 14px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('⏩ SPEED BOOST ⏩', bst.x + bst.w / 2, bst.y - cameraY + 25);
+        }
       });
 
       if (countdown <= 0) {
@@ -3190,20 +3493,52 @@
 
           c.vy += 0.22;
           c.vx *= 0.99;
-          c.vy = Math.min(c.vy, 6.2);
-          c.vx = Math.max(-4.5, Math.min(4.5, c.vx));
+          c.vy = Math.min(c.vy, 6.5);
+          c.vx = Math.max(-5.0, Math.min(5.0, c.vx));
 
           c.x += c.vx;
           c.y += c.vy;
 
-          if (c.x < 50 + c.radius) {
-            c.x = 50 + c.radius;
-            c.vx = Math.abs(c.vx) * 0.7;
+          const bounds = getTrackBoundsAtY(c.y);
+          if (c.x < bounds.left + c.radius) {
+            c.x = bounds.left + c.radius;
+            c.vx = Math.abs(c.vx) * 0.7 + 0.5;
           }
-          if (c.x > width - 50 - c.radius) {
-            c.x = width - 50 - c.radius;
-            c.vx = -Math.abs(c.vx) * 0.7;
+          if (c.x > bounds.right - c.radius) {
+            c.x = bounds.right - c.radius;
+            c.vx = -Math.abs(c.vx) * 0.7 - 0.5;
           }
+
+          if (c.y >= 3050 && c.y <= 3400) {
+            if (c.x > 280 && c.x < 480) {
+              const islandCenterX = 380;
+              if (c.x < islandCenterX) {
+                c.x = 280 - c.radius;
+                c.vx = -Math.abs(c.vx) * 0.8 - 1.0;
+              } else {
+                c.x = 480 + c.radius;
+                c.vx = Math.abs(c.vx) * 0.8 + 1.0;
+              }
+            }
+          }
+
+          gears.forEach(g => {
+            const dx = c.x - g.x;
+            const dy = c.y - g.y;
+            const dist = Math.hypot(dx, dy);
+            const minDist = c.radius + g.r;
+            if (dist < minDist && dist > 0) {
+              const nx = dx / dist;
+              const ny = dy / dist;
+              c.x = g.x + nx * minDist;
+              c.y = g.y + ny * minDist;
+              const tangVx = -ny * (g.omega * g.r * 1.5);
+              const tangVy = nx * (g.omega * g.r * 1.5);
+              c.vx = c.vx * -0.5 + tangVx + nx * 2.5;
+              c.vy = c.vy * -0.5 + tangVy + ny * 2.5;
+              AudioEngine.playTick();
+            }
+          });
 
           pegs.forEach(p => {
             const dx = c.x - p.x;
@@ -3239,6 +3574,12 @@
               c.vy -= (1 + 1.4) * dot * ny;
               b.pulse = 1.0;
               AudioEngine.playCorrect();
+            }
+          });
+
+          boosters.forEach(bst => {
+            if (c.x >= bst.x && c.x <= bst.x + bst.w && c.y >= bst.y && c.y <= bst.y + bst.h) {
+              c.vy += bst.vy;
             }
           });
 
@@ -3292,34 +3633,36 @@
           if (isTeacherControl) {
             setTimeout(async () => {
               await updateRoomMeta(roomId, { status: 'COIN_RACE_RESULT', coinRaceResults: arrivedParticipants });
-            }, 1500);
+            }, 1800);
           }
         }
       }
 
       coins.forEach(c => {
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(c.x, c.y, c.radius, 0, Math.PI * 2);
-        ctx.fillStyle = c.color;
-        ctx.shadowColor = c.color;
-        ctx.shadowBlur = 6;
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
-        ctx.stroke();
+        if (c.y + c.radius - cameraY > 0 && c.y - c.radius - cameraY < height) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(c.x, c.y - cameraY, c.radius, 0, Math.PI * 2);
+          ctx.fillStyle = c.color;
+          ctx.shadowColor = c.color;
+          ctx.shadowBlur = 6;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
 
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '11px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(c.avatar, c.x, c.y);
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '11px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(c.avatar, c.x, c.y - cameraY);
 
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 10px Cafe24Surround, sans-serif';
-        ctx.fillText(c.nickname.slice(0, 4), c.x, c.y - c.radius - 3);
-        ctx.restore();
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 10px Cafe24Surround, sans-serif';
+          ctx.fillText(c.nickname.slice(0, 4), c.x, c.y - cameraY - c.radius - 3);
+          ctx.restore();
+        }
       });
 
       if (countdown > 0) {
