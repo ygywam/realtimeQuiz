@@ -1655,7 +1655,7 @@
 
     container.innerHTML = list.map(p => `
       <div class="student-tag">
-        <span>${p.avatar || '🐶'}</span>
+        ${renderAvatarBadgeHtml(p.avatar || '🐶', 30, 'margin-right: 6px;')}
         <span>${escapeHtml(p.nickname)}</span>
       </div>
     `).join('');
@@ -2720,7 +2720,7 @@
             <div class="leaderboard-row ${rank === 0 ? 'rank-1' : ''}">
               <div style="display: flex; align-items: center; gap: 16px;">
                 <div class="rank-badge">${rank === 0 ? '🥇' : rank === 1 ? '🥈' : rank === 2 ? '🥉' : rank + 1}</div>
-                <span style="font-size: 1.8rem; margin-right: 4px;">${p.avatar || '🐶'}</span>
+                ${renderAvatarBadgeHtml(p.avatar || '🐶', 32, 'margin-right: 8px;')}
                 <span>${escapeHtml(p.nickname)}</span>
               </div>
               <span style="color: #38bdf8;">${p.score || 0}점</span>
@@ -3065,20 +3065,20 @@
           
           <div class="podium-wrapper">
             <div class="podium-step podium-2">
-              <div style="font-size: 2.5rem;">${second.avatar || '🥈'}</div>
+              <div style="display: flex; justify-content: center; margin-bottom: 6px;">${renderAvatarBadgeHtml(second.avatar || '🥈', 64)}</div>
               <div style="font-size: 1.2rem;">${escapeHtml(second.nickname)}</div>
               <div style="font-size: 1rem; color: #e2e8f0; margin-top: 4px;">🥈 2위 (${second.score || 0}점)</div>
             </div>
 
             <div class="podium-step podium-1">
               <div style="font-size: 1.2rem; color: #fef08a;">👑 챔피언 👑</div>
-              <div style="font-size: 3.2rem;">${first.avatar || '🥇'}</div>
+              <div style="display: flex; justify-content: center; margin-bottom: 6px;">${renderAvatarBadgeHtml(first.avatar || '🥇', 84)}</div>
               <div style="font-size: 1.4rem; color: #fff;">${escapeHtml(first.nickname)}</div>
               <div style="font-size: 1.2rem; color: #fef08a; margin-top: 4px;">🥇 1위 (${first.score || 0}점)</div>
             </div>
 
             <div class="podium-step podium-3">
-              <div style="font-size: 2.5rem;">${third.avatar || '🥉'}</div>
+              <div style="display: flex; justify-content: center; margin-bottom: 6px;">${renderAvatarBadgeHtml(third.avatar || '🥉', 64)}</div>
               <div style="font-size: 1.2rem;">${escapeHtml(third.nickname)}</div>
               <div style="font-size: 1rem; color: #fde68a; margin-top: 4px;">🥉 3위 (${third.score || 0}점)</div>
             </div>
@@ -3196,7 +3196,7 @@
             const coins = getCoinAllocationForParticipant(p, idx, participants.length);
             return `
               <div style="background: #0f172a; border: 2px solid ${idx === 0 ? (isMarble ? '#38bdf8' : '#f59e0b') : 'var(--border)'}; border-radius: 14px; padding: 16px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-                <div style="font-size: 2.2rem; margin-bottom: 6px;">${p.avatar || '🐶'}</div>
+                <div style="display: flex; justify-content: center; margin-bottom: 8px;">${renderAvatarBadgeHtml(p.avatar || '🐶', 60)}</div>
                 <div style="font-size: 1.15rem; font-weight: bold; color: #fff;">${escapeHtml(p.nickname)}</div>
                 <div style="font-size: 0.9rem; color: #38bdf8; margin: 4px 0 10px 0;">${isStandalone ? '참가자' : `퀴즈 ${idx + 1}위 (${p.score || 0}점)`}</div>
                 <div style="background: #1e293b; border-radius: 8px; padding: 8px; font-size: 1.2rem; font-weight: bold; color: ${isMarble ? '#38bdf8' : '#fbbf24'};">
@@ -3299,8 +3299,8 @@
 
     const width = canvas.width;
     const height = canvas.height;
-    const VIRTUAL_HEIGHT = 5500;
-    const finishY = 5250;
+    const VIRTUAL_HEIGHT = 5700;
+    const finishY = 5350;
 
     let cameraY = 0;
     let isManualCamera = false;
@@ -3450,7 +3450,7 @@
         <div style="background: #1e293b; border-left: 4px solid ${idx === 0 ? '#f59e0b' : idx === 1 ? '#94a3b8' : idx === 2 ? '#b45309' : '#38bdf8'}; border-radius: 8px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between;">
           <div style="display: flex; align-items: center; gap: 8px;">
             <span style="font-weight: 800; font-size: 1rem; color: #fbbf24;">${idx === 0 ? '🥇 1위' : idx === 1 ? '🥈 2위' : idx === 2 ? '🥉 3위' : (idx + 1) + '위'}</span>
-            <span style="font-size: 1.3rem;">${p.avatar}</span>
+            ${renderAvatarBadgeHtml(p.avatar || '🐶', 30)}
             <span style="font-size: 0.95rem; font-weight: bold; color: #fff;">${escapeHtml(p.nickname)}</span>
           </div>
         </div>
@@ -4061,7 +4061,7 @@
     const speedBoosters = [];
     const swirlFunnels = [];
     const propellers = [];
-    const railNum = 16;
+    const railNum = 17;
     const ROAD_WIDTH = 110;
 
     for (let i = 0; i < railNum; i++) {
@@ -4178,7 +4178,7 @@
         <div style="background: #1e293b; border-left: 4px solid ${idx === 0 ? '#fbbf24' : idx === 1 ? '#94a3b8' : idx === 2 ? '#b45309' : '#38bdf8'}; border-radius: 8px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between;">
           <div style="display: flex; align-items: center; gap: 8px;">
             <span style="font-weight: 800; font-size: 1rem; color: #fbbf24;">${idx === 0 ? '🥇 1위' : idx === 1 ? '🥈 2위' : idx === 2 ? '🥉 3위' : (idx + 1) + '위'}</span>
-            <span style="font-size: 1.3rem;">${p.avatar}</span>
+            ${renderAvatarBadgeHtml(p.avatar || '🐶', 30)}
             <span style="font-size: 0.95rem; font-weight: bold; color: #fff;">${escapeHtml(p.nickname)}</span>
           </div>
         </div>
@@ -4274,9 +4274,17 @@
         }
       });
 
-      // Draw Reverse Springs ON ROAD
+      // Draw Reverse Springs ON ROAD (펄스 링 연출 포함)
       reverseSprings.forEach(sp => {
         if (sp.y + sp.r - cameraY > 0 && sp.y - sp.r - cameraY < height) {
+          if (sp.pulse && sp.pulse > 0) {
+            ctx.fillStyle = `rgba(236, 72, 153, ${sp.pulse * 0.65})`;
+            ctx.beginPath();
+            ctx.arc(sp.x, sp.y - cameraY, sp.r + (1 - sp.pulse) * 35, 0, Math.PI * 2);
+            ctx.fill();
+            sp.pulse -= 0.06;
+          }
+
           ctx.fillStyle = '#ec4899';
           ctx.shadowColor = '#ec4899';
           ctx.shadowBlur = 12;
@@ -4511,14 +4519,27 @@
             m.vx += (m.x < 430 ? 0.5 : -0.5);
           }
 
-          // Reverse Springs ON ROAD (⚡ 역주행)
+          // Reverse Springs ON ROAD (⚡ 역주행 - 연속 궤적 감지 & 강력 폭발 반발)
           reverseSprings.forEach(sp => {
             const dx = m.x - sp.x;
             const dy = m.y - sp.y;
             const dist = Math.hypot(dx, dy);
-            if (dist < m.radius + sp.r && dist > 0) {
-              m.vx = -m.vx * 2.5;
-              m.vy = -Math.abs(m.vy) * 0.9 - 5.0;
+
+            // 궤적 충돌 감지 (고속 구슬의 터널링 완전 차단)
+            const prevX = m.x - m.vx;
+            const prevY = m.y - m.vy;
+            const segDx = m.x - prevX;
+            const segDy = m.y - prevY;
+            const segLenSq = segDx * segDx + segDy * segDy || 1;
+            const t = Math.max(0, Math.min(1, ((sp.x - prevX) * segDx + (sp.y - prevY) * segDy) / segLenSq));
+            const projX = prevX + t * segDx;
+            const projY = prevY + t * segDy;
+            const trajDist = Math.hypot(sp.x - projX, sp.y - projY);
+
+            if (dist < m.radius + sp.r || trajDist < m.radius + sp.r) {
+              sp.pulse = 1.0;
+              m.vy = -12.0 - Math.random() * 4.0; // 강렬한 역주행 튕김!
+              m.vx = (m.x < sp.x ? -6.0 : 6.0) + (Math.random() - 0.5) * 4.0;
               AudioEngine.playCorrect();
             }
           });
@@ -4729,20 +4750,20 @@
 
         <div class="podium-wrapper" style="margin: 30px 0;">
           <div class="podium-step podium-2">
-            <div style="font-size: 2.5rem;">${second.avatar || '🥈'}</div>
+            <div style="display: flex; justify-content: center; margin-bottom: 6px;">${renderAvatarBadgeHtml(second.avatar || '🥈', 64)}</div>
             <div style="font-size: 1.2rem;">${escapeHtml(second.nickname || '-')}</div>
             <div style="font-size: 1rem; color: #e2e8f0; margin-top: 4px;">🥈 레이스 2위</div>
           </div>
 
           <div class="podium-step podium-1">
             <div style="font-size: 1.2rem; color: #fef08a;">👑 레이스 챔피언 👑</div>
-            <div style="font-size: 3.2rem;">${first.avatar || '🥇'}</div>
+            <div style="display: flex; justify-content: center; margin-bottom: 6px;">${renderAvatarBadgeHtml(first.avatar || '🥇', 84)}</div>
             <div style="font-size: 1.4rem; color: #fff;">${escapeHtml(first.nickname || '-')}</div>
             <div style="font-size: 1.2rem; color: #fef08a; margin-top: 4px;">🥇 레이스 1위 우승!</div>
           </div>
 
           <div class="podium-step podium-3">
-            <div style="font-size: 2.5rem;">${third.avatar || '🥉'}</div>
+            <div style="display: flex; justify-content: center; margin-bottom: 6px;">${renderAvatarBadgeHtml(third.avatar || '🥉', 64)}</div>
             <div style="font-size: 1.2rem;">${escapeHtml(third.nickname || '-')}</div>
             <div style="font-size: 1rem; color: #fde68a; margin-top: 4px;">🥉 레이스 3위</div>
           </div>
@@ -4754,7 +4775,7 @@
             <div class="leaderboard-row ${idx === 0 ? 'rank-1' : ''}">
               <div style="display: flex; align-items: center; gap: 14px;">
                 <div class="rank-badge">${idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : (idx + 1)}</div>
-                <span style="font-size: 1.6rem;">${r.avatar || '🐶'}</span>
+                ${renderAvatarBadgeHtml(r.avatar || '🐶', 32, 'margin-right: 8px;')}
                 <span style="font-size: 1.1rem; font-weight: bold;">${escapeHtml(r.nickname)}</span>
               </div>
               <span style="color: #fbbf24; font-weight: bold; font-size: 1.05rem;">최종 ${idx + 1}위 도착</span>
@@ -4899,7 +4920,7 @@
       container.innerHTML = `
         <div class="mobile-view" id="student-lobby-card">
           <div class="mobile-card">
-            <div style="font-size: 3.5rem; margin-bottom: 12px;">${avatar}</div>
+            <div style="display: flex; justify-content: center; margin-bottom: 12px;">${renderAvatarBadgeHtml(avatar, 84)}</div>
             <h2 style="font-size: 1.6rem; color: #38bdf8;">${avatar} ${escapeHtml(nickname)} 님, 대기 중!</h2>
             <p style="color: var(--text-muted); margin-top: 10px; font-size: 1.1rem; line-height: 1.5;">
               입장이 완료되었습니다!<br>선생님이 퀴즈를 시작할 때까지 잠시 기다려 주세요.
