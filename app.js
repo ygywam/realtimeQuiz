@@ -3953,35 +3953,71 @@
       }
     });
 
-    // Generate 15 slanted Coaster Rails
+    // Generate 16 GraviTrax Coaster Track Tiers & Rails
     const rails = [];
-    const railNum = 15;
+    const cornerGuides = [];
+    const reverseSprings = [];
+    const speedBoosters = [];
+    const swirlFunnels = [];
+    const railNum = 16;
+
     for (let i = 0; i < railNum; i++) {
-      const yStart = 150 + i * 330;
-      const yEnd = yStart + 220;
+      const yStart = 160 + i * 320;
+      const yEnd = yStart + 210;
       const isRightDown = i % 2 === 0;
+
+      const x1 = isRightDown ? 80 : 780;
+      const x2 = isRightDown ? 740 : 120;
+
       rails.push({
         id: i,
-        x1: isRightDown ? 60 : width - 60,
-        y1: yStart,
-        x2: isRightDown ? width - 60 : 60,
-        y2: yEnd,
-        isRightDown: isRightDown,
-        slope: (yEnd - yStart) / ((isRightDown ? width - 60 : 60) - (isRightDown ? 60 : width - 60))
+        x1, y1: yStart,
+        x2, y2: yEnd,
+        isRightDown,
+        slope: (yEnd - yStart) / (x2 - x1)
       });
-    }
 
-    // Reverse Boosters / Springs on Rails
-    const reverseSprings = [
-      { x: 500, y: 350, r: 22, text: '⚡ 역주행' },
-      { x: 300, y: 1000, r: 22, text: '⚡ 역주행' },
-      { x: 550, y: 1650, r: 22, text: '⚡ 역주행' },
-      { x: 320, y: 2300, r: 22, text: '⚡ 역주행' },
-      { x: 580, y: 2950, r: 22, text: '⚡ 역주행' },
-      { x: 280, y: 3600, r: 22, text: '⚡ 역주행' },
-      { x: 520, y: 4250, r: 22, text: '⚡ 역주행' },
-      { x: 350, y: 4900, r: 22, text: '⚡ 역주행' }
-    ];
+      if (isRightDown) {
+        cornerGuides.push({
+          x: 800, y: yEnd + 35, r: 35, isRight: true, label: '↩️'
+        });
+      } else {
+        cornerGuides.push({
+          x: 60, y: yEnd + 35, r: 35, isRight: false, label: '↪️'
+        });
+      }
+
+      if (i % 2 === 1 || i === 4 || i === 8 || i === 12) {
+        const springX = isRightDown ? 660 : 200;
+        const springY = yStart + (springX - x1) * ((yEnd - yStart) / (x2 - x1)) - 14;
+        reverseSprings.push({
+          x: springX,
+          y: springY,
+          r: 22,
+          text: '⚡ 역주행'
+        });
+      }
+
+      if (i % 3 === 0) {
+        const boostX = 430;
+        const boostY = yStart + (boostX - x1) * ((yEnd - yStart) / (x2 - x1)) - 12;
+        speedBoosters.push({
+          x: boostX,
+          y: boostY,
+          r: 24,
+          text: '⏩ SPEED'
+        });
+      }
+
+      if (i === 3 || i === 7 || i === 11) {
+        swirlFunnels.push({
+          x: 430,
+          y: yStart + 110,
+          r: 44,
+          text: '🌀 360° 루프'
+        });
+      }
+    }
 
     let countdown = 3;
     let countdownTimer = setInterval(() => {
@@ -4040,9 +4076,9 @@
         ctx.stroke();
       }
 
-      // Draw Coaster Rails
+      // Draw Coaster Rails (GraviTrax Dual Metallic Rails)
       rails.forEach(r => {
-        if (r.y2 - cameraY > 0 && r.y1 - cameraY < height) {
+        if (r.y2 - cameraY > -50 && r.y1 - cameraY < height + 50) {
           ctx.strokeStyle = '#0284c7';
           ctx.lineWidth = 14;
           ctx.beginPath();
@@ -4059,8 +4095,27 @@
 
           ctx.fillStyle = '#f59e0b';
           ctx.beginPath();
-          ctx.arc(r.x2, r.y2 - cameraY, 12, 0, Math.PI * 2);
+          ctx.arc(r.x2, r.y2 - cameraY, 10, 0, Math.PI * 2);
           ctx.fill();
+        }
+      });
+
+      // Draw Corner Guide Bumpers
+      cornerGuides.forEach(cg => {
+        if (cg.y + cg.r - cameraY > 0 && cg.y - cg.r - cameraY < height) {
+          ctx.fillStyle = '#0f172a';
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(cg.x, cg.y - cameraY, cg.r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = '#38bdf8';
+          ctx.font = 'bold 16px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(cg.label, cg.x, cg.y - cameraY);
         }
       });
 
@@ -4079,10 +4134,51 @@
           ctx.stroke();
 
           ctx.fillStyle = '#fff';
-          ctx.font = 'bold 11px Cafe24Surround, sans-serif';
+          ctx.font = 'bold 10px Cafe24Surround, sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText(sp.text, sp.x, sp.y - cameraY);
+        }
+      });
+
+      // Draw Speed Boosters
+      speedBoosters.forEach(sb => {
+        if (sb.y + sb.r - cameraY > 0 && sb.y - sb.r - cameraY < height) {
+          ctx.fillStyle = '#10b981';
+          ctx.shadowColor = '#10b981';
+          ctx.shadowBlur = 10;
+          ctx.beginPath();
+          ctx.arc(sb.x, sb.y - cameraY, sb.r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 10px Cafe24Surround, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(sb.text, sb.x, sb.y - cameraY);
+        }
+      });
+
+      // Draw Swirl Funnel Bowls
+      swirlFunnels.forEach(sf => {
+        if (sf.y + sf.r - cameraY > 0 && sf.y - sf.r - cameraY < height) {
+          ctx.fillStyle = 'rgba(168, 85, 247, 0.4)';
+          ctx.strokeStyle = '#a855f7';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(sf.x, sf.y - cameraY, sf.r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 11px Cafe24Surround, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(sf.text, sf.x, sf.y - cameraY);
         }
       });
 
@@ -4105,39 +4201,53 @@
         marbles.forEach(m => {
           if (m.arrived) return;
 
-          let currentRail = null;
-          for (let r of rails) {
-            const minY = Math.min(r.y1, r.y2) - 30;
-            const maxY = Math.max(r.y1, r.y2) + 30;
-            if (m.y >= minY && m.y <= maxY) {
-              currentRail = r;
-              break;
-            }
-          }
+          let onAnyRail = false;
+          rails.forEach(r => {
+            const minX = Math.min(r.x1, r.x2) - 15;
+            const maxX = Math.max(r.x1, r.x2) + 15;
+            if (m.x >= minX && m.x <= maxX) {
+              const targetY = r.y1 + (m.x - r.x1) * r.slope;
+              if (m.y >= targetY - m.radius - 12 && m.y <= targetY + 28) {
+                m.y = targetY - m.radius;
+                onAnyRail = true;
 
-          m.vy += 0.25;
-          if (currentRail) {
-            const dirX = currentRail.isRightDown ? 1 : -1;
-            m.vx += dirX * 0.22;
-            const targetY = currentRail.y1 + (m.x - currentRail.x1) * currentRail.slope;
-            if (m.y >= targetY - m.radius && m.y <= targetY + 25) {
-              m.y = targetY - m.radius;
-              m.vy *= 0.2;
+                const dirX = r.isRightDown ? 1 : -1;
+                m.vx += dirX * 0.38;
+                m.vy = Math.abs(m.vx) * Math.abs(r.slope);
+              }
             }
+          });
+
+          if (!onAnyRail) {
+            m.vy += 0.35;
           }
 
           m.vx *= 0.985;
-          m.vy = Math.min(m.vy, 7.0);
+          m.vy = Math.min(m.vy, 9.0);
           m.x += m.vx;
           m.y += m.vy;
 
-          if (m.x < 50 + m.radius) {
-            m.x = 50 + m.radius;
-            m.vx = Math.abs(m.vx) * 0.7 + 1.0;
+          cornerGuides.forEach(cg => {
+            const dx = m.x - cg.x;
+            const dy = m.y - cg.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < m.radius + cg.r && dist > 0) {
+              const pushX = cg.isRight ? -4.5 : 4.5;
+              m.vx = pushX;
+              m.vy = 2.0;
+              m.x = cg.x + (dx / dist) * (m.radius + cg.r + 2);
+              m.y = cg.y + (dy / dist) * (m.radius + cg.r + 2);
+              AudioEngine.playTick();
+            }
+          });
+
+          if (m.x < 35 + m.radius) {
+            m.x = 35 + m.radius;
+            m.vx = Math.abs(m.vx) * 0.6 + 1.0;
           }
-          if (m.x > width - 50 - m.radius) {
-            m.x = width - 50 - m.radius;
-            m.vx = -Math.abs(m.vx) * 0.7 - 1.0;
+          if (m.x > width - 35 - m.radius) {
+            m.x = width - 35 - m.radius;
+            m.vx = -Math.abs(m.vx) * 0.6 - 1.0;
           }
 
           reverseSprings.forEach(sp => {
@@ -4145,9 +4255,30 @@
             const dy = m.y - sp.y;
             const dist = Math.hypot(dx, dy);
             if (dist < m.radius + sp.r && dist > 0) {
-              m.vx = -m.vx * 1.8;
-              m.vy = -Math.abs(m.vy) * 0.8 - 3.0;
+              m.vx = -m.vx * 2.2;
+              m.vy = -Math.abs(m.vy) * 0.8 - 4.5;
               AudioEngine.playCorrect();
+            }
+          });
+
+          speedBoosters.forEach(sb => {
+            const dx = m.x - sb.x;
+            const dy = m.y - sb.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < m.radius + sb.r && dist > 0) {
+              m.vx *= 1.8;
+              m.vy += 2.0;
+              AudioEngine.playTick();
+            }
+          });
+
+          swirlFunnels.forEach(sf => {
+            const dx = m.x - sf.x;
+            const dy = m.y - sf.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < m.radius + sf.r && dist > 0) {
+              m.vx = -dy * 0.12;
+              m.vy = dx * 0.12 + 1.2;
             }
           });
 
