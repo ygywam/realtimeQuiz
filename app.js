@@ -365,6 +365,45 @@
 
   const AVATARS = ['🐶', '🐱', '🦊', '🐯', '🦁', '🐸', '🤖', '🚀', '🎃', '🦄', '🐥', '🐼'];
 
+  const AVATAR_DETAILS = {
+    '🐶': { name: '멍멍이', bg: 'linear-gradient(135deg, #fbbf24, #d97706)', border: '#fef08a' },
+    '🐱': { name: '야옹이', bg: 'linear-gradient(135deg, #f472b6, #db2777)', border: '#fbcfe8' },
+    '🦊': { name: '여우군', bg: 'linear-gradient(135deg, #fb923c, #ea580c)', border: '#ffedd5' },
+    '🐯': { name: '호랑이', bg: 'linear-gradient(135deg, #f59e0b, #b45309)', border: '#fef3c7' },
+    '🦁': { name: '사자왕', bg: 'linear-gradient(135deg, #eab308, #ca8a04)', border: '#fef9c3' },
+    '🐸': { name: '개구리', bg: 'linear-gradient(135deg, #4ade80, #15803d)', border: '#dcfce7' },
+    '🤖': { name: '로봇군', bg: 'linear-gradient(135deg, #38bdf8, #0284c7)', border: '#e0f2fe' },
+    '🚀': { name: '우주선', bg: 'linear-gradient(135deg, #818cf8, #4338ca)', border: '#e0e7ff' },
+    '🎃': { name: '호박군', bg: 'linear-gradient(135deg, #f97316, #c2410c)', border: '#ffedd5' },
+    '🦄': { name: '유니콘', bg: 'linear-gradient(135deg, #c084fc, #7e22ce)', border: '#f3e8ff' },
+    '🐥': { name: '병아리', bg: 'linear-gradient(135deg, #facc15, #a16207)', border: '#fef9c3' },
+    '🐼': { name: '판다군', bg: 'linear-gradient(135deg, #94a3b8, #334155)', border: '#f1f5f9' }
+  };
+
+  function renderAvatarBadgeHtml(symbol, sizePx = 36, extraStyle = '') {
+    const info = AVATAR_DETAILS[symbol] || { name: '친구', bg: 'linear-gradient(135deg, #38bdf8, #0284c7)', border: '#fff' };
+    return `
+      <div class="avatar-badge-3d" style="
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: ${sizePx}px;
+        height: ${sizePx}px;
+        border-radius: 50%;
+        background: ${info.bg};
+        border: 2px solid ${info.border};
+        box-shadow: 0 4px 10px rgba(0,0,0,0.35), inset 0 2px 4px rgba(255,255,255,0.6);
+        font-size: ${Math.round(sizePx * 0.55)}px;
+        line-height: 1;
+        flex-shrink: 0;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        ${extraStyle}
+      " title="${info.name}">
+        ${symbol}
+      </div>
+    `;
+  }
+
   const state = {
     mode: 'home',
     roomId: null,
@@ -806,9 +845,57 @@
     URL.revokeObjectURL(url);
   }
 
+  function showAppSplashScreen() {
+    if (sessionStorage.getItem('splash_shown_this_session')) return;
+    sessionStorage.setItem('splash_shown_this_session', 'true');
+
+    const overlay = document.createElement('div');
+    overlay.id = 'app-splash-screen';
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      z-index: 99999;
+      background: radial-gradient(circle at center, #0f172a 0%, #020617 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+      padding: 24px;
+      transition: opacity 0.8s ease, transform 0.8s ease;
+      box-shadow: inset 0 0 100px rgba(56, 189, 248, 0.25);
+    `;
+
+    overlay.innerHTML = `
+      <div style="max-width: 820px; width: 100%; text-align: center;">
+        <div style="position: relative; border-radius: 20px; overflow: hidden; border: 3px solid #38bdf8; box-shadow: 0 0 50px rgba(56, 189, 248, 0.6); margin-bottom: 24px; background: #090d16;">
+          <img src="./src/assets/splash_cover.jpg" onerror="this.onerror=null; this.src='splash_cover.jpg';" alt="Class Live Quiz" style="width: 100%; max-height: 440px; object-fit: cover; display: block;">
+        </div>
+        <h1 style="font-size: 2.3rem; color: #38bdf8; font-weight: 900; margin: 0 0 10px 0; text-shadow: 0 0 20px rgba(56, 189, 248, 0.8); font-family: Cafe24Surround, sans-serif;">
+          ⚡ CLASS LIVE QUIZ
+        </h1>
+        <p style="font-size: 1.15rem; color: #cbd5e1; font-weight: bold; margin: 0; line-height: 1.6;">
+          교실 전자칠판 · 교사 PC · 학생 스마트폰을 실시간 클라우드로 이어주는 참여형 퀴즈 플랫폼
+        </p>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    setTimeout(() => {
+      overlay.style.opacity = '0';
+      overlay.style.transform = 'scale(1.05)';
+      setTimeout(() => {
+        overlay.remove();
+      }, 800);
+    }, 2300);
+  }
+
   function initRouter() {
     const app = document.getElementById('app');
     if (!app) return;
+
+    showAppSplashScreen();
 
     setTheme(getSavedTheme());
 
@@ -1632,12 +1719,17 @@
           <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 16px;">닉네임과 캐릭터 아바타를 선택해 주세요.</p>
 
           <div style="font-size: 0.9rem; font-weight: bold; text-align: left; margin-bottom: 6px; color: var(--text-muted);">아바타 선택:</div>
-          <div id="avatar-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px;">
-            ${AVATARS.map((av, idx) => `
-              <div class="avatar-option ${idx === 0 ? 'selected' : ''}" data-avatar="${av}" style="font-size: 1.8rem; padding: 6px 2px; border-radius: 12px; cursor: pointer; background: #0f172a; border: 2px solid ${idx === 0 ? 'var(--primary)' : 'transparent'}; text-align: center; user-select: none;">
-                ${av}
-              </div>
-            `).join('')}
+          <div id="avatar-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;">
+            ${AVATARS.map((av, idx) => {
+              const info = AVATAR_DETAILS[av] || { name: '친구' };
+              const isSelected = idx === 0;
+              return `
+                <div class="avatar-option ${isSelected ? 'selected' : ''}" data-avatar="${av}" style="padding: 10px 4px; border-radius: 14px; cursor: pointer; background: #0f172a; border: 3px solid ${isSelected ? '#38bdf8' : 'rgba(56,189,248,0.2)'}; text-align: center; user-select: none; transition: all 0.2s ease; box-shadow: ${isSelected ? '0 0 16px rgba(56,189,248,0.6)' : 'none'};">
+                  ${renderAvatarBadgeHtml(av, 42, 'margin: 0 auto 4px auto;')}
+                  <div style="font-size: 0.78rem; font-weight: bold; color: ${isSelected ? '#38bdf8' : '#94a3b8'}; text-align: center;" class="avatar-label">${info.name}</div>
+                </div>
+              `;
+            }).join('')}
           </div>
           
           <input type="text" id="input-nickname" class="input-nickname" placeholder="닉네임 입력 (최대 8자)" maxlength="8" autofocus style="margin-top: 0;">
@@ -1649,9 +1741,18 @@
     const avatarGrid = document.getElementById('avatar-grid');
     avatarGrid.querySelectorAll('.avatar-option').forEach(item => {
       item.addEventListener('click', (e) => {
-        avatarGrid.querySelectorAll('.avatar-option').forEach(el => el.style.borderColor = 'transparent');
-        e.currentTarget.style.borderColor = 'var(--primary)';
-        selectedAvatar = e.currentTarget.dataset.avatar;
+        avatarGrid.querySelectorAll('.avatar-option').forEach(el => {
+          el.style.borderColor = 'rgba(56,189,248,0.2)';
+          el.style.boxShadow = 'none';
+          const lbl = el.querySelector('.avatar-label');
+          if (lbl) lbl.style.color = '#94a3b8';
+        });
+        const current = e.currentTarget;
+        current.style.borderColor = '#38bdf8';
+        current.style.boxShadow = '0 0 16px rgba(56,189,248,0.6)';
+        const activeLbl = current.querySelector('.avatar-label');
+        if (activeLbl) activeLbl.style.color = '#38bdf8';
+        selectedAvatar = current.dataset.avatar;
       });
     });
 
@@ -3959,6 +4060,7 @@
     const reverseSprings = [];
     const speedBoosters = [];
     const swirlFunnels = [];
+    const propellers = [];
     const railNum = 16;
     const ROAD_WIDTH = 110;
 
@@ -3977,6 +4079,7 @@
         isRightDown,
         dx: x2 - x1,
         dy: yEnd - yStart,
+        lengthSq: (x2 - x1) ** 2 + (yEnd - yStart) ** 2,
         length: Math.hypot(x2 - x1, yEnd - yStart),
         slope: (yEnd - yStart) / (x2 - x1)
       });
@@ -4001,6 +4104,7 @@
         }
       }
 
+      // Reverse Springs ON ROAD
       if (i % 2 === 1 || i === 4 || i === 8 || i === 12) {
         const springX = isRightDown ? 620 : 240;
         const springY = yStart + (springX - x1) * ((yEnd - yStart) / (x2 - x1));
@@ -4012,6 +4116,7 @@
         });
       }
 
+      // Speed Boosters ON ROAD
       if (i % 3 === 0) {
         const boostX = 430;
         const boostY = yStart + (boostX - x1) * ((yEnd - yStart) / (x2 - x1));
@@ -4023,6 +4128,21 @@
         });
       }
 
+      // Rotating Propellers ON ROAD (🛸 회전 윈드 프로펠러)
+      if (i === 1 || i === 5 || i === 9 || i === 13) {
+        const propX = isRightDown ? 480 : 380;
+        const propY = yStart + (propX - x1) * ((yEnd - yStart) / (x2 - x1));
+        propellers.push({
+          x: propX,
+          y: propY,
+          r: 38,
+          angle: Math.random() * Math.PI,
+          speed: (i % 2 === 0 ? 0.08 : -0.09),
+          text: '🛸 회전 윈드'
+        });
+      }
+
+      // 360° Loop Roundabout
       if (i === 3 || i === 7 || i === 11) {
         swirlFunnels.push({
           x: 430,
@@ -4198,6 +4318,40 @@
         }
       });
 
+      // Draw Rotating Propeller Gates ON ROAD (🛸 회전 윈드)
+      propellers.forEach(pr => {
+        pr.angle += pr.speed;
+        if (pr.y + pr.r - cameraY > 0 && pr.y - pr.r - cameraY < height) {
+          ctx.save();
+          ctx.translate(pr.x, pr.y - cameraY);
+          ctx.fillStyle = '#f59e0b';
+          ctx.shadowColor = '#f59e0b';
+          ctx.shadowBlur = 10;
+          for (let b = 0; b < 4; b++) {
+            ctx.rotate(Math.PI / 2);
+            ctx.beginPath();
+            ctx.ellipse(pr.r * 0.45, 0, pr.r * 0.4, 6, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.shadowBlur = 0;
+
+          ctx.fillStyle = '#0f172a';
+          ctx.strokeStyle = '#f59e0b';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(0, 0, 13, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 9px Cafe24Surround, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('🛸', 0, 0);
+          ctx.restore();
+        }
+      });
+
       // Draw Swirl Funnel Bowls ON ROAD
       swirlFunnels.forEach(sf => {
         if (sf.y + sf.r - cameraY > 0 && sf.y - sf.r - cameraY < height) {
@@ -4251,13 +4405,8 @@
               if (distFromCenter <= ROAD_WIDTH / 2) {
                 onRoad = true;
                 const dirX = st.isRightDown ? 1 : -1;
-                m.vx += dirX * 0.42;
+                m.vx += dirX * 0.45;
                 m.vy = Math.abs(m.vx) * Math.abs(st.slope) + 0.2;
-
-                if (distFromCenter > ROAD_WIDTH / 2 - m.radius) {
-                  m.y = targetY + (m.y > targetY ? (ROAD_WIDTH / 2 - m.radius) : -(ROAD_WIDTH / 2 - m.radius));
-                  m.vy *= 0.5;
-                }
                 break;
               }
             }
@@ -4269,10 +4418,10 @@
               const dy = m.y - ut.centerY;
               const dist = Math.hypot(dx, dy);
 
-              if (dist >= 10 && dist <= ut.radius + ROAD_WIDTH / 2 + 20) {
+              if (dist >= 10 && dist <= ut.radius + ROAD_WIDTH / 2 + 30) {
                 onRoad = true;
                 const angle = Math.atan2(dy, dx);
-                const speed = Math.max(4.0, Math.hypot(m.vx, m.vy));
+                const speed = Math.max(4.2, Math.hypot(m.vx, m.vy));
 
                 if (ut.isRight) {
                   m.vx = -speed * Math.sin(angle);
@@ -4280,12 +4429,6 @@
                 } else {
                   m.vx = speed * Math.sin(angle);
                   m.vy = -speed * Math.cos(angle);
-                }
-
-                if (dist > ut.radius + ROAD_WIDTH / 2 - m.radius) {
-                  const targetDist = ut.radius + ROAD_WIDTH / 2 - m.radius;
-                  m.x = ut.centerX + (dx / dist) * targetDist;
-                  m.y = ut.centerY + (dy / dist) * targetDist;
                 }
                 break;
               }
@@ -4301,20 +4444,74 @@
           m.x += m.vx;
           m.y += m.vy;
 
+          // ============================================================
+          // 100% STRICT ROAD CONTAINMENT & GUARDRAIL BOUNCE
+          // ============================================================
+          let nearestPoint = null;
+          let minCenterlineDist = 999999;
+
+          roadStraights.forEach(st => {
+            const minX = Math.min(st.x1, st.x2) - 80;
+            const maxX = Math.max(st.x1, st.x2) + 80;
+            const minY = st.y1 - 80;
+            const maxY = st.y2 + 80;
+
+            if (m.x >= minX && m.x <= maxX && m.y >= minY && m.y <= maxY) {
+              const dx = st.x2 - st.x1;
+              const dy = st.y2 - st.y1;
+              const t = Math.max(0, Math.min(1, ((m.x - st.x1) * dx + (m.y - st.y1) * dy) / st.lengthSq));
+              const projX = st.x1 + t * dx;
+              const projY = st.y1 + t * dy;
+              const d = Math.hypot(m.x - projX, m.y - projY);
+
+              if (d < minCenterlineDist) {
+                minCenterlineDist = d;
+                nearestPoint = { x: projX, y: projY };
+              }
+            }
+          });
+
+          uTurnElbows.forEach(ut => {
+            const dx = m.x - ut.centerX;
+            const dy = m.y - ut.centerY;
+            const distToCenter = Math.hypot(dx, dy);
+            const d = Math.abs(distToCenter - ut.radius);
+
+            if (d < minCenterlineDist && ((ut.isRight && m.x >= 640) || (!ut.isRight && m.x <= 220))) {
+              minCenterlineDist = d;
+              const angle = Math.atan2(dy, dx);
+              nearestPoint = { x: ut.centerX + ut.radius * Math.cos(angle), y: ut.centerY + ut.radius * Math.sin(angle) };
+            }
+          });
+
+          const MAX_ALLOWED_DIST = (ROAD_WIDTH / 2) - m.radius - 2;
+          if (nearestPoint && minCenterlineDist > MAX_ALLOWED_DIST) {
+            const dx = m.x - nearestPoint.x;
+            const dy = m.y - nearestPoint.y;
+            const normDist = Math.hypot(dx, dy) || 1;
+            const nx = dx / normDist;
+            const ny = dy / normDist;
+
+            // Clamp marble strictly back inside the road
+            m.x = nearestPoint.x + nx * MAX_ALLOWED_DIST;
+            m.y = nearestPoint.y + ny * MAX_ALLOWED_DIST;
+
+            // Bounce inward off neon guardrail wall
+            const vDotN = m.vx * nx + m.vy * ny;
+            if (vDotN > 0) {
+              m.vx -= 1.7 * vDotN * nx;
+              m.vy -= 1.7 * vDotN * ny;
+              AudioEngine.playTick();
+            }
+          }
+
+          // Anti-Sticking Auto Push
           if (Math.hypot(m.vx, m.vy) < 1.2) {
             m.vy += 0.8;
             m.vx += (m.x < 430 ? 0.5 : -0.5);
           }
 
-          if (m.x < 35 + m.radius) {
-            m.x = 35 + m.radius;
-            m.vx = Math.abs(m.vx) + 1.0;
-          }
-          if (m.x > width - 35 - m.radius) {
-            m.x = width - 35 - m.radius;
-            m.vx = -Math.abs(m.vx) - 1.0;
-          }
-
+          // Reverse Springs ON ROAD (⚡ 역주행)
           reverseSprings.forEach(sp => {
             const dx = m.x - sp.x;
             const dy = m.y - sp.y;
@@ -4326,6 +4523,7 @@
             }
           });
 
+          // Speed Boosters ON ROAD (⏩ SPEED)
           speedBoosters.forEach(sb => {
             const dx = m.x - sb.x;
             const dy = m.y - sb.y;
@@ -4337,6 +4535,21 @@
             }
           });
 
+          // Rotating Propellers ON ROAD (🛸 회전 윈드 - 아수라장 튕김)
+          propellers.forEach(pr => {
+            const dx = m.x - pr.x;
+            const dy = m.y - pr.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < m.radius + pr.r && dist > 0) {
+              const hitAngle = Math.atan2(dy, dx);
+              const pushSpeed = 7.5;
+              m.vx = Math.cos(pr.angle + hitAngle) * pushSpeed + (dx / dist) * 3;
+              m.vy = Math.sin(pr.angle + hitAngle) * pushSpeed + (dy / dist) * 3;
+              AudioEngine.playTick();
+            }
+          });
+
+          // 360° Loop Roundabout ON ROAD
           swirlFunnels.forEach(sf => {
             const dx = m.x - sf.x;
             const dy = m.y - sf.y;
@@ -4347,6 +4560,7 @@
             }
           });
 
+          // Finish Line Trigger
           if (m.y >= finishY && !m.arrived) {
             m.arrived = true;
             if (!arrivedNicknames.has(m.nickname)) {
