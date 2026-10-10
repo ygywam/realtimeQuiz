@@ -946,3 +946,33 @@ body.theme-woodlock h1, body.theme-woodlock h2, body.theme-woodlock h3 {
   font-family: var(--font-family);
   letter-spacing: 2px;
 }
+
+/* BGM 볼륨 조절 슬라이더 팝오버 */
+.bgm-control-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.bgm-volume-popover {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 6px;
+  background: #0f172a;
+  border: 1px solid #38bdf8;
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  z-index: 250;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+}
+
+.bgm-control-wrapper:hover .bgm-volume-popover,
+.bgm-control-wrapper:focus-within .bgm-volume-popover {
+  display: flex;
+}
+

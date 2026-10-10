@@ -8,6 +8,13 @@
     bgmAudio: null,
     bgmPlaying: false,
     bgmSynthInterval: null,
+    volume: 0.4,
+    setVolume(val) {
+      this.volume = Math.max(0, Math.min(1, val));
+      if (this.bgmAudio) {
+        try { this.bgmAudio.volume = this.volume; } catch (e) {}
+      }
+    },
     init() {
       if (!this.ctx) {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -113,19 +120,76 @@
         }
       } catch (e) {}
     },
-    playBGM(customUrl) {
+    currentTrackKey: null,
+    getBgmUrls(trackKey) {
+      if (trackKey === 'bgm1' || trackKey === 'lobby') {
+        return ['./src/assets/bgm1.mp3', './assets/bgm1.mp3', 'assets/bgm1.mp3', 'bgm1.mp3'];
+      }
+      if (trackKey === 'bgm2' || trackKey === 'quiz') {
+        return ['./src/assets/bgm2.mp3', './assets/bgm2.mp3', 'assets/bgm2.mp3', 'bgm2.mp3'];
+      }
+      if (typeof trackKey === 'string' && trackKey.length > 0) {
+        return [trackKey];
+      }
+      return ['./src/assets/bgm1.mp3', './assets/bgm1.mp3'];
+    },
+    playBGM(trackKey = 'bgm1') {
+      if (!this.enabled) return;
+
+      // 이미 같은 트랙이 재생 중이면 중복 처리 방지
+      if (this.bgmPlaying && this.currentTrackKey === trackKey && this.bgmAudio && !this.bgmAudio.paused) {
+        return;
+      }
+
       this.stopBGM();
       this.init();
-      if (customUrl) {
-        try {
-          this.bgmAudio = new Audio(customUrl);
-          this.bgmAudio.loop = true;
-          this.bgmAudio.volume = 0.4;
-          this.bgmAudio.play().catch(e => console.warn('BGM 재생 제한:', e));
-          this.bgmPlaying = true;
+      this.bgmPlaying = true;
+      this.currentTrackKey = trackKey;
+
+      const candidates = this.getBgmUrls(trackKey);
+      let candidateIdx = 0;
+
+      const tryPlayCandidate = () => {
+        if (!this.bgmPlaying) return;
+        if (candidateIdx >= candidates.length) {
+          console.warn('MP3 BGM 재생 후보 경로 모두 실효, 오디오 합성 BGM으로 전환');
+          this.startSynthBGM();
           return;
-        } catch (e) {}
-      }
+        }
+
+        const url = candidates[candidateIdx];
+        try {
+          const audio = new Audio(url);
+          audio.loop = true;
+          audio.volume = this.volume;
+
+          audio.onerror = () => {
+            console.warn(`BGM URL 로드 실패 (${url}), 다음 경로 시도...`);
+            candidateIdx++;
+            tryPlayCandidate();
+          };
+
+          const playPromise = audio.play();
+          if (playPromise !== undefined) {
+            playPromise.then(() => {
+              this.bgmAudio = audio;
+            }).catch(e => {
+              console.warn(`BGM 재생 제한/오류 (${url}):`, e);
+              candidateIdx++;
+              tryPlayCandidate();
+            });
+          } else {
+            this.bgmAudio = audio;
+          }
+        } catch (e) {
+          candidateIdx++;
+          tryPlayCandidate();
+        }
+      };
+
+      tryPlayCandidate();
+    },
+    startSynthBGM() {
       if (!this.ctx) return;
       this.bgmPlaying = true;
 
@@ -184,6 +248,7 @@
     },
     stopBGM() {
       this.bgmPlaying = false;
+      this.currentTrackKey = null;
       if (this.bgmAudio) {
         try { this.bgmAudio.pause(); this.bgmAudio.currentTime = 0; } catch (e) {}
         this.bgmAudio = null;
@@ -193,16 +258,74 @@
         this.bgmSynthInterval = null;
       }
     },
-    toggleBGM(customUrl) {
+    toggleBGM(trackKey = 'bgm1') {
       if (this.bgmPlaying) {
         this.stopBGM();
         return false;
       } else {
-        this.playBGM(customUrl);
+        this.playBGM(trackKey);
         return true;
       }
     }
   };
+
+  function renderBgmVolumeControlHtml(idSuffix = '') {
+    return `
+      <div class="bgm-control-wrapper" style="position: relative; display: inline-flex; align-items: center;">
+        <button id="btn-toggle-bgm${idSuffix ? '-' + idSuffix : ''}" class="btn btn-outline-sm btn-bgm-toggle" style="background: rgba(56, 189, 248, 0.2); border-color: #38bdf8; color: #fff; font-weight: bold; cursor: pointer;">
+          ${AudioEngine.bgmPlaying ? '🎵 BGM 끄기' : '🎵 BGM 켜기'}
+        </button>
+        <div class="bgm-volume-popover" style="position: absolute; top: 100%; right: 0; margin-top: 6px; background: #0f172a; border: 1px solid #38bdf8; border-radius: 8px; padding: 8px 12px; display: none; align-items: center; gap: 8px; z-index: 250; box-shadow: 0 6px 20px rgba(0,0,0,0.6); white-space: nowrap;">
+          <span style="font-size: 0.85rem; color: #38bdf8; font-weight: bold;">🔊</span>
+          <input type="range" class="bgm-volume-slider" min="0" max="1" step="0.05" value="${AudioEngine.volume}" style="width: 90px; cursor: pointer; accent-color: #38bdf8;">
+          <span class="bgm-volume-text" style="font-size: 0.8rem; color: #fff; font-weight: bold; width: 34px;">${Math.round(AudioEngine.volume * 100)}%</span>
+        </div>
+      </div>
+    `;
+  }
+
+  function bindBgmVolumeControlEvents(container = document) {
+    container.querySelectorAll('.bgm-control-wrapper').forEach(wrapper => {
+      const btn = wrapper.querySelector('.btn-bgm-toggle');
+      const popover = wrapper.querySelector('.bgm-volume-popover');
+      const slider = wrapper.querySelector('.bgm-volume-slider');
+      const label = wrapper.querySelector('.bgm-volume-text');
+
+      if (!btn || !popover) return;
+
+      let hideTimer = null;
+      const showPopover = () => {
+        if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+        popover.style.display = 'flex';
+      };
+      const hidePopoverDelay = () => {
+        hideTimer = setTimeout(() => {
+          popover.style.display = 'none';
+        }, 400);
+      };
+
+      wrapper.addEventListener('mouseenter', showPopover);
+      wrapper.addEventListener('mouseleave', hidePopoverDelay);
+
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const currentStatus = state.roomData?.meta?.status || 'LOBBY';
+        const trackKey = (currentStatus === 'LOBBY') ? 'bgm1' : 'bgm2';
+        const isPlaying = AudioEngine.toggleBGM(trackKey);
+        btn.textContent = isPlaying ? '🎵 BGM 끄기' : '🎵 BGM 켜기';
+      });
+
+      if (slider) {
+        slider.addEventListener('input', (e) => {
+          const val = parseFloat(e.target.value);
+          AudioEngine.setVolume(val);
+          if (label) label.textContent = Math.round(val * 100) + '%';
+          document.querySelectorAll('.bgm-volume-slider').forEach(s => s.value = val);
+          document.querySelectorAll('.bgm-volume-text').forEach(t => t.textContent = Math.round(val * 100) + '%');
+        });
+      }
+    });
+  }
 
   const DEFAULT_FIREBASE_CONFIG = {
     apiKey: "AIzaSyAt1jZhv7DlxRsKiMPBX0YNAI2iN7P8qFY",
@@ -556,6 +679,11 @@
   async function startCountdownToQuestion(roomId, targetQIndex) {
     if (countdownTimer) clearInterval(countdownTimer);
     state.hideResults = true;
+
+    // 퀴즈 시작 시 2번 진행 음악(bgm2.mp3)으로 전환
+    if (AudioEngine.bgmPlaying) {
+      AudioEngine.playBGM('bgm2');
+    }
 
     let currentNum = 3;
     AudioEngine.playCountdownTick(3);
@@ -1189,6 +1317,9 @@
               <option value="marble" ${getSavedTheme() === 'marble' ? 'selected' : ''}>🏛️ 깔끔 대리석</option>
               <option value="woodlock" ${getSavedTheme() === 'woodlock' ? 'selected' : ''}>🪵 우드락 보드</option>
             </select>
+            <div style="margin-left: 12px; display: inline-flex;">
+              ${renderBgmVolumeControlHtml('lobby')}
+            </div>
             ${!isTeacherControl ? '<span style="margin-left: 12px; color: #38bdf8; font-weight: bold;">[전자칠판 디스플레이 모드]</span>' : ''}
           </div>
           <div style="display: flex; gap: 12px;">
@@ -1251,7 +1382,6 @@
           btn.style.color = '#38bdf8';
         }, 2000);
       };
-
       if (navigator.clipboard && window.isSecureContext) {
         navigator.clipboard.writeText(studentJoinUrl).then(copySuccess).catch(() => {
           fallbackCopyText(studentJoinUrl, copySuccess);
@@ -1263,6 +1393,8 @@
 
     document.getElementById('btn-go-home-lobby')?.addEventListener('click', () => window.location.search = '');
     document.getElementById('select-theme-lobby')?.addEventListener('change', (e) => setTheme(e.target.value));
+
+    bindBgmVolumeControlEvents(app);
 
     document.getElementById('btn-open-edit')?.addEventListener('click', () => {
       if (!isRoomCreatorLocal(state.roomId)) {
@@ -1434,9 +1566,17 @@
               <span style="color: var(--text-muted);">방 PIN: <strong>${roomId}</strong></span>
             </div>
           </div>
-          <div style="margin-bottom: 16px; background: #0f172a; padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border);">
-            <label style="font-weight: bold; font-size: 0.9rem; color: #38bdf8;">🏷️ 퀴즈 방 제목/이름:</label>
-            <input type="text" id="input-admin-room-title" value="${escapeHtml(currentTitle)}" placeholder="퀴즈 방 제목을 입력하세요" style="width: 100%; margin-top: 6px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: #fff; font-weight: bold; font-size: 1rem;">
+          <div style="margin-bottom: 16px; background: #0f172a; padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div style="flex: 1; min-width: 260px;">
+              <label style="font-weight: bold; font-size: 0.9rem; color: #38bdf8;">🏷️ 퀴즈 방 제목/이름:</label>
+              <input type="text" id="input-admin-room-title" value="${escapeHtml(currentTitle)}" placeholder="퀴즈 방 제목을 입력하세요" style="width: 100%; margin-top: 4px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: #fff; font-weight: bold; font-size: 1rem;">
+            </div>
+            <div style="display: flex; align-items: center; margin-top: 14px;">
+              <label style="font-weight: bold; font-size: 0.95rem; color: #f59e0b; cursor: pointer; display: flex; align-items: center; gap: 6px; background: rgba(245, 158, 11, 0.12); padding: 8px 12px; border-radius: 8px; border: 1px solid #f59e0b;">
+                <input type="checkbox" id="input-admin-enable-coin-race" ${roomMeta.enableCoinRace ? 'checked' : ''}>
+                🎰 최종 선착순 핑퐁 낙하 레이스 포함
+              </label>
+            </div>
           </div>
           <div id="question-list-editor" style="margin-bottom: 20px; max-height: 50vh; overflow-y: auto;"></div>
           <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; background: #0f172a; padding: 16px; border-radius: 12px; justify-content: space-between; align-items: center;">
@@ -1716,10 +1856,14 @@
     });
     document.getElementById('btn-save-questions').addEventListener('click', async () => {
       const newTitleInput = document.getElementById('input-admin-room-title');
+      const enableCoinRaceCb = document.getElementById('input-admin-enable-coin-race');
+      const enableCoinRace = enableCoinRaceCb ? enableCoinRaceCb.checked : false;
       if (newTitleInput) {
         const title = newTitleInput.value.trim() || '실시간 수업 퀴즈';
         saveMyLocalQuizRoom({ roomId, title, questionCount: questions.length });
-        await updateRoomMeta(roomId, { title });
+        await updateRoomMeta(roomId, { title, enableCoinRace });
+      } else {
+        await updateRoomMeta(roomId, { enableCoinRace });
       }
       await updateQuestions(roomId, questions);
       document.getElementById('admin-modal').remove();
@@ -2136,6 +2280,27 @@
       return;
     }
 
+    if (status === 'COIN_RACE_LOBBY') {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      activeTimerQIndex = -1;
+      renderCoinRaceLobbyView(container, roomData, roomId, isTeacherControl);
+      return;
+    }
+
+    if (status === 'COIN_RACE_RUNNING') {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      activeTimerQIndex = -1;
+      renderCoinRaceRunningView(container, roomData, roomId, isTeacherControl);
+      return;
+    }
+
+    if (status === 'COIN_RACE_RESULT') {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      activeTimerQIndex = -1;
+      renderCoinRaceResultView(container, roomData, roomId, isTeacherControl);
+      return;
+    }
+
     const currentDisplayCard = document.getElementById('host-display-card');
     const renderedStatus = currentDisplayCard ? currentDisplayCard.dataset.status : '';
     const renderedQIdx = currentDisplayCard ? Number(currentDisplayCard.dataset.qindex) : -1;
@@ -2179,9 +2344,7 @@
               <button id="btn-toggle-results" class="btn btn-outline-sm" style="background: ${state.hideResults ? 'rgba(245, 158, 11, 0.4)' : 'rgba(245, 158, 11, 0.15)'}; border-color: #f59e0b; color: #fbbf24; font-weight: bold;">
                 ${state.hideResults ? '👁️ 결과 공개' : '🙈 결과 가리기'}
               </button>
-              <button id="btn-toggle-bgm" class="btn btn-outline-sm" style="background: rgba(56, 189, 248, 0.2); border-color: #38bdf8; color: #fff; font-weight: bold;">
-                ${AudioEngine.bgmPlaying ? '🎵 BGM 끄기' : '🎵 BGM 켜기'}
-              </button>
+              ${renderBgmVolumeControlHtml('host-display')}
             </div>
             <div style="font-size: 1.4rem; font-weight: bold; color: #38bdf8;">
               제출 인원: <span id="resp-count">${responseCount}</span> / ${participantCount}명
@@ -2243,10 +2406,7 @@
         renderHostDisplayView(container, roomData, roomId, isTeacherControl);
       });
 
-      document.getElementById('btn-toggle-bgm')?.addEventListener('click', (e) => {
-        const isPlaying = AudioEngine.toggleBGM();
-        e.currentTarget.textContent = isPlaying ? '🎵 BGM 끄기' : '🎵 BGM 켜기';
-      });
+      bindBgmVolumeControlEvents(container);
 
       document.getElementById('btn-force-finish')?.addEventListener('click', () => {
         if (timerInterval) clearInterval(timerInterval);
@@ -2699,6 +2859,11 @@
           `).join('')}
 
           <div style="display: flex; justify-content: center; gap: 14px; margin-top: 30px; flex-wrap: wrap;">
+            ${(roomData.meta?.enableCoinRace) ? `
+              <button class="btn btn-primary" id="btn-start-coin-race-setup" style="font-size: 1.15rem; padding: 12px 24px; background: linear-gradient(135deg, #f59e0b, #ec4899); border: none; font-weight: bold; box-shadow: 0 4px 18px rgba(245, 158, 11, 0.5);">
+                🎰 선착순 코인 핑퐁 낙하 레이스 시작! (1등 5코인 ~ 6등+ 1코인)
+              </button>
+            ` : ''}
             <button class="btn btn-success" id="btn-export-csv" style="font-size: 1.1rem; padding: 12px 20px;">📥 전체 결과 CSV 내보내기</button>
             <button class="btn btn-primary" id="btn-export-image" style="font-size: 1.1rem; padding: 12px 20px;">📸 결과 이미지 저장 (PNG)</button>
             <button class="btn btn-danger" id="btn-reset-finish-app" style="font-size: 1.1rem; padding: 12px 20px;">🏁 퀴즈 완료 & 방 초기화 (메인으로)</button>
@@ -2706,6 +2871,10 @@
         </div>
       </div>
     `;
+
+    document.getElementById('btn-start-coin-race-setup')?.addEventListener('click', async () => {
+      await updateRoomMeta(state.roomId, { status: 'COIN_RACE_LOBBY' });
+    });
 
     document.getElementById('btn-export-csv')?.addEventListener('click', () => exportResultsToCSV(roomData));
 
@@ -2744,6 +2913,545 @@
     });
   }
 
+  // ============================================================
+  // COIN RACE PHYSICS GAME & ALLOCATION
+  // ============================================================
+  function getCoinAllocation(rank, total) {
+    if (rank === 1) return 5;
+    if (rank === 2) return 4;
+    if (rank === 3) return 3;
+    if (rank === 4 || rank === 5) return 2;
+    return 1;
+  }
+
+  function renderCoinRaceLobbyView(container, roomData, roomId, isTeacherControl) {
+    const participants = Object.values(roomData.participants || {});
+    participants.sort((a, b) => (b.score || 0) - (a.score || 0));
+
+    container.innerHTML = `
+      <div class="quiz-display-container" style="padding: 30px; max-width: 1000px; margin: 0 auto; text-align: center;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 10px;">
+          <h2 style="font-size: 2rem; color: #f59e0b; font-weight: 800; margin: 0;">
+            🎰 [최종 선착순 코인 핑퐁 낙하 레이스 대기실]
+          </h2>
+          ${renderBgmVolumeControlHtml('coin-lobby')}
+        </div>
+
+        <p style="font-size: 1.15rem; color: var(--text-muted); margin-bottom: 30px; line-height: 1.6;">
+          퀴즈 등수에 따라 부여된 🪙 <strong>코인 개수</strong>를 가지고 출발선에 집결했습니다!<br>
+          핑퐁 핀볼 장애물과 서로 부딪히며 가장 먼저 도착선(Bottom)을 통과하는 선착순 우승자가 가려집니다!
+        </p>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-bottom: 36px; max-height: 50vh; overflow-y: auto; padding: 8px;">
+          ${participants.map((p, idx) => {
+            const coins = getCoinAllocation(idx + 1, participants.length);
+            return `
+              <div style="background: #0f172a; border: 2px solid ${idx === 0 ? '#f59e0b' : 'var(--border)'}; border-radius: 14px; padding: 16px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                <div style="font-size: 2.2rem; margin-bottom: 6px;">${p.avatar || '🐶'}</div>
+                <div style="font-size: 1.15rem; font-weight: bold; color: #fff;">${escapeHtml(p.nickname)}</div>
+                <div style="font-size: 0.9rem; color: #38bdf8; margin: 4px 0 10px 0;">퀴즈 ${idx + 1}위 (${p.score || 0}점)</div>
+                <div style="background: #1e293b; border-radius: 8px; padding: 8px; font-size: 1.2rem; font-weight: bold; color: #fbbf24;">
+                  ${'🪙'.repeat(coins)} <span style="font-size: 0.95rem; color: #fff;">(${coins}개)</span>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+
+        <div style="display: flex; justify-content: center; gap: 16px; flex-wrap: wrap;">
+          ${isTeacherControl ? `
+            <button id="btn-start-coin-race-run" class="btn btn-primary" style="font-size: 1.35rem; padding: 16px 40px; background: linear-gradient(135deg, #f59e0b, #ec4899); border: none; font-weight: 900; box-shadow: 0 6px 24px rgba(245, 158, 11, 0.6); cursor: pointer;">
+              🚀 낙하 레이스 출발! (3-2-1 카운트다운)
+            </button>
+          ` : `<div style="font-size: 1.2rem; color: #38bdf8; font-weight: bold;">선생님이 출발 버튼을 누르면 레이스가 시작됩니다!</div>`}
+          <button id="btn-back-to-finished" class="btn btn-secondary" style="font-size: 1.1rem; padding: 14px 24px;">
+            🔙 퀴즈 시상식 결과로 돌아가기
+          </button>
+        </div>
+      </div>
+    `;
+
+    bindBgmVolumeControlEvents(container);
+
+    document.getElementById('btn-start-coin-race-run')?.addEventListener('click', async () => {
+      await updateRoomMeta(state.roomId, { status: 'COIN_RACE_RUNNING', raceStartTime: Date.now() });
+    });
+
+    document.getElementById('btn-back-to-finished')?.addEventListener('click', async () => {
+      await updateRoomMeta(state.roomId, { status: 'FINISHED' });
+    });
+  }
+
+  let coinRaceAnimId = null;
+
+  function renderCoinRaceRunningView(container, roomData, roomId, isTeacherControl) {
+    if (coinRaceAnimId) {
+      cancelAnimationFrame(coinRaceAnimId);
+      coinRaceAnimId = null;
+    }
+
+    const participants = Object.values(roomData.participants || {});
+    participants.sort((a, b) => (b.score || 0) - (a.score || 0));
+
+    container.innerHTML = `
+      <div class="quiz-display-container" style="padding: 20px; text-align: center; max-width: 1200px; margin: 0 auto;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+          <h2 style="font-size: 1.6rem; color: #f59e0b; font-weight: bold; margin: 0; display: flex; align-items: center; gap: 8px;">
+            🎰 선착순 코인 핑퐁 낙하 레이스!
+          </h2>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            ${renderBgmVolumeControlHtml('coin-run')}
+            ${isTeacherControl ? `
+              <button id="btn-force-finish-coin-race" class="btn btn-primary" style="background: linear-gradient(135deg, #10b981, #059669); border: none; font-weight: bold;">
+                🏆 레이스 결과 발표
+              </button>
+            ` : ''}
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 20px; justify-content: center; align-items: flex-start; flex-wrap: wrap;">
+          <div style="position: relative; background: #090d16; border: 3px solid #f59e0b; border-radius: 16px; overflow: hidden; box-shadow: 0 8px 32px rgba(245, 158, 11, 0.4);">
+            <canvas id="coin-race-canvas" width="840" height="620" style="display: block; background: radial-gradient(circle at center, #1e1b4b 0%, #090d16 100%);"></canvas>
+          </div>
+
+          <div style="width: 280px; background: #0f172a; border: 1px solid var(--border); border-radius: 16px; padding: 16px; min-height: 620px; display: flex; flex-direction: column;">
+            <h3 style="font-size: 1.2rem; color: #fbbf24; margin: 0 0 12px 0; border-bottom: 2px solid var(--border); padding-bottom: 8px; text-align: center;">
+              🚩 실시간 순위 도착 현황
+            </h3>
+            <div id="race-live-arrivals-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+              <div style="color: var(--text-muted); font-size: 0.95rem; text-align: center; margin-top: 20px;">
+                3-2-1 출발 준비 중...
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    bindBgmVolumeControlEvents(container);
+
+    const canvas = document.getElementById('coin-race-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    const width = canvas.width;
+    const height = canvas.height;
+
+    const PALETTE = ['#f59e0b', '#ec4899', '#38bdf8', '#10b981', '#a855f7', '#ef4444', '#84cc16', '#06b6d4', '#f97316', '#e11d48'];
+
+    const coins = [];
+    participants.forEach((p, rankIdx) => {
+      const coinCount = getCoinAllocation(rankIdx + 1, participants.length);
+      const color = PALETTE[rankIdx % PALETTE.length];
+      for (let c = 0; c < coinCount; c++) {
+        coins.push({
+          id: p.nickname + '_' + c,
+          nickname: p.nickname,
+          avatar: p.avatar || '🐶',
+          color: color,
+          x: 90 + Math.random() * (width - 180),
+          y: 40 + Math.random() * 25,
+          vx: (Math.random() - 0.5) * 1.5,
+          vy: 0.2 + Math.random() * 0.4,
+          radius: 13,
+          arrived: false
+        });
+      }
+    });
+
+    const pegs = [];
+    const startY = 130;
+    const endY = 490;
+    const rowCount = 8;
+    const rowSpacing = (endY - startY) / (rowCount - 1);
+
+    for (let r = 0; r < rowCount; r++) {
+      const py = startY + r * rowSpacing;
+      const isEven = r % 2 === 0;
+      const count = isEven ? 8 : 9;
+      const margin = isEven ? 90 : 60;
+      const spacing = (width - margin * 2) / (count - 1);
+      for (let i = 0; i < count; i++) {
+        pegs.push({
+          x: margin + i * spacing,
+          y: py,
+          r: 7
+        });
+      }
+    }
+
+    const bumpers = [
+      { x: width * 0.25, y: 250, r: 18, pulse: 0 },
+      { x: width * 0.75, y: 250, r: 18, pulse: 0 },
+      { x: width * 0.38, y: 410, r: 18, pulse: 0 },
+      { x: width * 0.62, y: 410, r: 18, pulse: 0 }
+    ];
+
+    let countdown = 3;
+    let countdownTimer = setInterval(() => {
+      countdown--;
+      AudioEngine.playCountdownTick(countdown);
+      if (countdown <= 0) {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+      }
+    }, 1000);
+
+    const arrivedParticipants = [];
+    const arrivedNicknames = new Set();
+    let raceFinishedSent = false;
+
+    function updateArrivalsListDOM() {
+      const listEl = document.getElementById('race-live-arrivals-list');
+      if (!listEl) return;
+      if (arrivedParticipants.length === 0) {
+        listEl.innerHTML = `<div style="color: var(--text-muted); font-size: 0.95rem; text-align: center; margin-top: 20px;">낙하 레이스 진행 중...</div>`;
+        return;
+      }
+      listEl.innerHTML = arrivedParticipants.map((p, idx) => `
+        <div style="background: #1e293b; border-left: 4px solid ${idx === 0 ? '#f59e0b' : idx === 1 ? '#94a3b8' : idx === 2 ? '#b45309' : '#38bdf8'}; border-radius: 8px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-weight: 800; font-size: 1rem; color: #fbbf24;">${idx === 0 ? '🥇 1위' : idx === 1 ? '🥈 2위' : idx === 2 ? '🥉 3위' : (idx + 1) + '위'}</span>
+            <span style="font-size: 1.3rem;">${p.avatar}</span>
+            <span style="font-size: 0.95rem; font-weight: bold; color: #fff;">${escapeHtml(p.nickname)}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    const finishY = 560;
+
+    function loop() {
+      ctx.clearRect(0, 0, width, height);
+
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.08)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < width; x += 40) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+      }
+
+      ctx.fillStyle = '#1e293b';
+      ctx.beginPath();
+      ctx.moveTo(0, 0); ctx.lineTo(50, 100); ctx.lineTo(50, 560); ctx.lineTo(0, 620);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(width, 0); ctx.lineTo(width - 50, 100); ctx.lineTo(width - 50, 560); ctx.lineTo(width, 620);
+      ctx.fill();
+
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.2)';
+      ctx.fillRect(50, finishY, width - 100, 40);
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([8, 8]);
+      ctx.beginPath(); ctx.moveTo(50, finishY); ctx.lineTo(width - 50, finishY); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 14px Cafe24Surround, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('🏁 FINISH LINE (도착선) 🏁', width / 2, finishY + 26);
+
+      pegs.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = '#38bdf8';
+        ctx.shadowColor = '#38bdf8';
+        ctx.shadowBlur = 8;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      });
+
+      bumpers.forEach(b => {
+        if (b.pulse > 0) b.pulse -= 0.05;
+        const rCurrent = b.r + Math.max(0, b.pulse) * 8;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, rCurrent, 0, Math.PI * 2);
+        ctx.fillStyle = '#ec4899';
+        ctx.shadowColor = '#ec4899';
+        ctx.shadowBlur = 12;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('💥', b.x, b.y);
+      });
+
+      if (countdown <= 0) {
+        coins.forEach(c => {
+          if (c.arrived) return;
+
+          c.vy += 0.22;
+          c.vx *= 0.99;
+          c.vy = Math.min(c.vy, 6.2);
+          c.vx = Math.max(-4.5, Math.min(4.5, c.vx));
+
+          c.x += c.vx;
+          c.y += c.vy;
+
+          if (c.x < 50 + c.radius) {
+            c.x = 50 + c.radius;
+            c.vx = Math.abs(c.vx) * 0.7;
+          }
+          if (c.x > width - 50 - c.radius) {
+            c.x = width - 50 - c.radius;
+            c.vx = -Math.abs(c.vx) * 0.7;
+          }
+
+          pegs.forEach(p => {
+            const dx = c.x - p.x;
+            const dy = c.y - p.y;
+            const dist = Math.hypot(dx, dy);
+            const minDist = c.radius + p.r;
+            if (dist < minDist && dist > 0) {
+              const nx = dx / dist;
+              const ny = dy / dist;
+              const overlap = minDist - dist;
+              c.x += nx * overlap;
+              c.y += ny * overlap;
+              const dot = c.vx * nx + c.vy * ny;
+              c.vx -= (1 + 0.65) * dot * nx + (Math.random() - 0.5) * 0.5;
+              c.vy -= (1 + 0.65) * dot * ny;
+              AudioEngine.playTick();
+            }
+          });
+
+          bumpers.forEach(b => {
+            const dx = c.x - b.x;
+            const dy = c.y - b.y;
+            const dist = Math.hypot(dx, dy);
+            const minDist = c.radius + b.r;
+            if (dist < minDist && dist > 0) {
+              const nx = dx / dist;
+              const ny = dy / dist;
+              const overlap = minDist - dist;
+              c.x += nx * overlap;
+              c.y += ny * overlap;
+              const dot = c.vx * nx + c.vy * ny;
+              c.vx -= (1 + 1.4) * dot * nx;
+              c.vy -= (1 + 1.4) * dot * ny;
+              b.pulse = 1.0;
+              AudioEngine.playCorrect();
+            }
+          });
+
+          if (c.y >= finishY && !c.arrived) {
+            c.arrived = true;
+            if (!arrivedNicknames.has(c.nickname)) {
+              arrivedNicknames.add(c.nickname);
+              arrivedParticipants.push({
+                nickname: c.nickname,
+                avatar: c.avatar,
+                rank: arrivedParticipants.length + 1
+              });
+              updateArrivalsListDOM();
+              AudioEngine.playFanfare();
+            }
+          }
+        });
+
+        for (let i = 0; i < coins.length; i++) {
+          for (let j = i + 1; j < coins.length; j++) {
+            const c1 = coins[i];
+            const c2 = coins[j];
+            if (c1.arrived || c2.arrived) continue;
+
+            const dx = c2.x - c1.x;
+            const dy = c2.y - c1.y;
+            const dist = Math.hypot(dx, dy);
+            const minDist = c1.radius + c2.radius;
+            if (dist < minDist && dist > 0) {
+              const nx = dx / dist;
+              const ny = dy / dist;
+              const overlap = minDist - dist;
+              c1.x -= nx * overlap * 0.5;
+              c1.y -= ny * overlap * 0.5;
+              c2.x += nx * overlap * 0.5;
+              c2.y += ny * overlap * 0.5;
+
+              const kx = c1.vx - c2.vx;
+              const ky = c1.vy - c2.vy;
+              const pVal = 2 * (nx * kx + ny * ky) / 2;
+              c1.vx -= pVal * nx;
+              c1.vy -= pVal * ny;
+              c2.vx += pVal * nx;
+              c2.vy += pVal * ny;
+            }
+          }
+        }
+
+        if (arrivedParticipants.length === participants.length && !raceFinishedSent) {
+          raceFinishedSent = true;
+          if (isTeacherControl) {
+            setTimeout(async () => {
+              await updateRoomMeta(roomId, { status: 'COIN_RACE_RESULT', coinRaceResults: arrivedParticipants });
+            }, 1500);
+          }
+        }
+      }
+
+      coins.forEach(c => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, c.radius, 0, Math.PI * 2);
+        ctx.fillStyle = c.color;
+        ctx.shadowColor = c.color;
+        ctx.shadowBlur = 6;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(c.avatar, c.x, c.y);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 10px Cafe24Surround, sans-serif';
+        ctx.fillText(c.nickname.slice(0, 4), c.x, c.y - c.radius - 3);
+        ctx.restore();
+      });
+
+      if (countdown > 0) {
+        ctx.fillStyle = 'rgba(9, 13, 22, 0.65)';
+        ctx.fillRect(0, 0, width, height);
+        ctx.fillStyle = '#fbbf24';
+        ctx.font = '900 90px Cafe24Surround, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(countdown > 0 ? countdown : 'GO!', width / 2, height / 2);
+      }
+
+      coinRaceAnimId = requestAnimationFrame(loop);
+    }
+
+    loop();
+
+    document.getElementById('btn-force-finish-coin-race')?.addEventListener('click', async () => {
+      if (coinRaceAnimId) cancelAnimationFrame(coinRaceAnimId);
+      participants.forEach(p => {
+        if (!arrivedNicknames.has(p.nickname)) {
+          arrivedNicknames.add(p.nickname);
+          arrivedParticipants.push({
+            nickname: p.nickname,
+            avatar: p.avatar,
+            rank: arrivedParticipants.length + 1
+          });
+        }
+      });
+      await updateRoomMeta(roomId, { status: 'COIN_RACE_RESULT', coinRaceResults: arrivedParticipants });
+    });
+  }
+
+  function renderCoinRaceResultView(container, roomData, roomId, isTeacherControl) {
+    if (coinRaceAnimId) {
+      cancelAnimationFrame(coinRaceAnimId);
+      coinRaceAnimId = null;
+    }
+
+    const raceResults = roomData.meta?.coinRaceResults || [];
+    const first = raceResults[0] || {};
+    const second = raceResults[1] || {};
+    const third = raceResults[2] || {};
+
+    AudioEngine.playFanfare();
+
+    container.innerHTML = `
+      <div class="quiz-display-container" style="padding: 30px; max-width: 1000px; margin: 0 auto; text-align: center;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 10px;">
+          <h2 style="font-size: 2.2rem; color: #fbbf24; font-weight: 900; margin: 0; text-shadow: 0 0 20px rgba(251, 191, 36, 0.5);">
+            🏆 핑퐁 낙하 레이스 최종 명예의 전당!
+          </h2>
+          ${renderBgmVolumeControlHtml('coin-result')}
+        </div>
+
+        <div class="podium-wrapper" style="margin: 30px 0;">
+          <div class="podium-step podium-2">
+            <div style="font-size: 2.5rem;">${second.avatar || '🥈'}</div>
+            <div style="font-size: 1.2rem;">${escapeHtml(second.nickname || '-')}</div>
+            <div style="font-size: 1rem; color: #e2e8f0; margin-top: 4px;">🥈 레이스 2위</div>
+          </div>
+
+          <div class="podium-step podium-1">
+            <div style="font-size: 1.2rem; color: #fef08a;">👑 레이스 챔피언 👑</div>
+            <div style="font-size: 3.2rem;">${first.avatar || '🥇'}</div>
+            <div style="font-size: 1.4rem; color: #fff;">${escapeHtml(first.nickname || '-')}</div>
+            <div style="font-size: 1.2rem; color: #fef08a; margin-top: 4px;">🥇 레이스 1위 우승!</div>
+          </div>
+
+          <div class="podium-step podium-3">
+            <div style="font-size: 2.5rem;">${third.avatar || '🥉'}</div>
+            <div style="font-size: 1.2rem;">${escapeHtml(third.nickname || '-')}</div>
+            <div style="font-size: 1rem; color: #fde68a; margin-top: 4px;">🥉 레이스 3위</div>
+          </div>
+        </div>
+
+        <h3 style="font-size: 1.4rem; color: #38bdf8; margin: 24px 0 12px 0;">전체 레이스 순위</h3>
+        <div style="max-width: 600px; margin: 0 auto 30px auto; display: flex; flex-direction: column; gap: 8px;">
+          ${raceResults.map((r, idx) => `
+            <div class="leaderboard-row ${idx === 0 ? 'rank-1' : ''}">
+              <div style="display: flex; align-items: center; gap: 14px;">
+                <div class="rank-badge">${idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : (idx + 1)}</div>
+                <span style="font-size: 1.6rem;">${r.avatar || '🐶'}</span>
+                <span style="font-size: 1.1rem; font-weight: bold;">${escapeHtml(r.nickname)}</span>
+              </div>
+              <span style="color: #fbbf24; font-weight: bold; font-size: 1.05rem;">최종 ${idx + 1}위 도착</span>
+            </div>
+          `).join('')}
+        </div>
+
+        <div style="display: flex; justify-content: center; gap: 16px; flex-wrap: wrap;">
+          ${isTeacherControl ? `
+            <button id="btn-replay-coin-race" class="btn btn-primary" style="font-size: 1.15rem; padding: 12px 24px; background: linear-gradient(135deg, #f59e0b, #ec4899); border: none; font-weight: bold;">
+              🔄 레이스 재경기 (대기실로)
+            </button>
+            <button id="btn-finish-race-to-lobby" class="btn btn-danger" style="font-size: 1.15rem; padding: 12px 24px;">
+              🏁 퀴즈 완료 및 대기실로 방 초기화
+            </button>
+          ` : ''}
+          <button id="btn-back-to-quiz-podium" class="btn btn-secondary" style="font-size: 1.1rem; padding: 12px 20px;">
+            📊 퀴즈 점수 시상식 보기
+          </button>
+        </div>
+      </div>
+    `;
+
+    bindBgmVolumeControlEvents(container);
+
+    document.getElementById('btn-replay-coin-race')?.addEventListener('click', async () => {
+      await updateRoomMeta(state.roomId, { status: 'COIN_RACE_LOBBY' });
+    });
+
+    document.getElementById('btn-finish-race-to-lobby')?.addEventListener('click', async () => {
+      if (confirm('대기실(LOBBY) 상태로 방을 초기화하시겠습니까?')) {
+        await updateRoomMeta(state.roomId, { status: 'LOBBY', currentQuestionIndex: 0 });
+        if (db) {
+          try {
+            await db.ref(`rooms/${state.roomId}/participants`).remove();
+            await db.ref(`rooms/${state.roomId}/responses`).remove();
+          } catch (e) {}
+        } else {
+          await putFirebaseRest(`rooms/${state.roomId}/participants`, {});
+          await putFirebaseRest(`rooms/${state.roomId}/responses`, {});
+        }
+      }
+    });
+
+    document.getElementById('btn-back-to-quiz-podium')?.addEventListener('click', async () => {
+      await updateRoomMeta(state.roomId, { status: 'FINISHED' });
+    });
+  }
+
   function renderStudentPadView(container, roomData, roomId, studentId, nickname, avatar = '🐶') {
     const meta = roomData.meta || {};
     const status = meta.status || 'LOBBY';
@@ -2752,6 +3460,71 @@
     const currentQ = questions[qIndex] || {};
     const myResponse = (roomData.responses && roomData.responses[qIndex] && roomData.responses[qIndex][studentId]);
     const myParticipant = (roomData.participants && roomData.participants[studentId]) || {};
+
+    if (status === 'COIN_RACE_LOBBY') {
+      if (document.getElementById('student-coin-race-lobby-card')) return;
+      const allP = Object.values(roomData.participants || {});
+      allP.sort((a, b) => (b.score || 0) - (a.score || 0));
+      const myRank = allP.findIndex(p => p.nickname === nickname) + 1;
+      const coins = getCoinAllocation(myRank, allP.length);
+      container.innerHTML = `
+        <div class="mobile-view" id="student-coin-race-lobby-card">
+          <div class="mobile-card" style="text-align: center; border-color: #f59e0b;">
+            <div style="font-size: 3.5rem; margin-bottom: 10px;">🎰</div>
+            <h2 style="font-size: 1.5rem; color: #f59e0b;">선착순 코인 핑퐁 낙하 레이스 대기 중!</h2>
+            <div style="font-size: 2rem; margin: 16px 0;">${'🪙'.repeat(coins)}</div>
+            <p style="font-size: 1.2rem; font-weight: bold; color: #38bdf8;">
+              ${myRank > 0 ? myRank + '위 달성' : ''} → 코인 <span style="color: #fbbf24; font-size: 1.4rem;">${coins}개</span> 획득!
+            </p>
+            <p style="color: var(--text-muted); margin-top: 14px; font-size: 0.95rem;">
+              전자칠판/선생님 화면에서 레이스가 출발합니다.<br>본인의 코인 낙하를 응원하세요!
+            </p>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    if (status === 'COIN_RACE_RUNNING') {
+      if (document.getElementById('student-coin-race-running-card')) return;
+      container.innerHTML = `
+        <div class="mobile-view" id="student-coin-race-running-card">
+          <div class="mobile-card" style="text-align: center; border-color: #ec4899;">
+            <div style="font-size: 3.5rem; margin-bottom: 10px;" class="countdown-badge-pulse">🏎️💨</div>
+            <h2 style="font-size: 1.5rem; color: #ec4899;">핑퐁 낙하 레이스 진행 중!</h2>
+            <p style="color: #fff; font-size: 1.1rem; margin-top: 12px;">
+              ${avatar} <strong>${escapeHtml(nickname)}</strong> 님의 코인이 장애물을 튕기며 떨어지고 있습니다!
+            </p>
+            <p style="color: var(--text-muted); margin-top: 14px; font-size: 0.95rem;">
+              전자칠판 화면을 보며 실시간 낙하 순위를 확인해 보세요!
+            </p>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    if (status === 'COIN_RACE_RESULT') {
+      if (document.getElementById('student-coin-race-result-card')) return;
+      const raceResults = roomData.meta?.coinRaceResults || [];
+      const myRaceEntry = raceResults.find(r => r.nickname === nickname);
+      const myRaceRank = myRaceEntry ? myRaceEntry.rank : '집계 중';
+      container.innerHTML = `
+        <div class="mobile-view" id="student-coin-race-result-card">
+          <div class="mobile-card" style="text-align: center; border-color: #f59e0b;">
+            <div style="font-size: 3.5rem; margin-bottom: 10px;">🏆</div>
+            <h2 style="font-size: 1.6rem; color: #fbbf24;">핑퐁 낙하 레이스 종료!</h2>
+            <div style="font-size: 2.2rem; font-weight: 900; color: #38bdf8; margin: 16px 0;">
+              최종 ${typeof myRaceRank === 'number' ? myRaceRank + '위' : myRaceRank}!
+            </div>
+            <p style="color: var(--text-muted); font-size: 1rem;">
+              레이스에 열심히 참여해 주셔서 감사합니다! 👏
+            </p>
+          </div>
+        </div>
+      `;
+      return;
+    }
 
     if (status === 'LOBBY') {
       if (document.getElementById('student-lobby-card')) return;
