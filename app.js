@@ -33,7 +33,7 @@
         const gain = this.ctx.createGain();
         osc.type = 'sine';
         osc.frequency.value = 750;
-        gain.gain.setValueAtTime(0.04, this.ctx.currentTime);
+        gain.gain.setValueAtTime(0.02, this.ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.04);
         osc.connect(gain);
         gain.connect(this.ctx.destination);
@@ -52,7 +52,7 @@
           const gain = this.ctx.createGain();
           osc.type = 'triangle';
           osc.frequency.value = freq;
-          gain.gain.setValueAtTime(0.08, now + i * 0.07);
+          gain.gain.setValueAtTime(0.04, now + i * 0.07);
           gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.25);
           osc.connect(gain);
           gain.connect(this.ctx.destination);
@@ -78,7 +78,7 @@
           const gain = this.ctx.createGain();
           osc.type = 'square';
           osc.frequency.value = n.f;
-          gain.gain.setValueAtTime(0.1, now + n.t);
+          gain.gain.setValueAtTime(0.05, now + n.t);
           gain.gain.exponentialRampToValueAtTime(0.001, now + n.t + n.d);
           osc.connect(gain);
           gain.connect(this.ctx.destination);
@@ -98,7 +98,7 @@
           const gain = this.ctx.createGain();
           osc.type = 'sine';
           osc.frequency.value = count === 1 ? 987.77 : (count === 2 ? 880 : 783.99);
-          gain.gain.setValueAtTime(0.12, now);
+          gain.gain.setValueAtTime(0.06, now);
           gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
           osc.connect(gain);
           gain.connect(this.ctx.destination);
@@ -110,7 +110,7 @@
             const g = this.ctx.createGain();
             o.type = 'triangle';
             o.frequency.value = freq;
-            g.gain.setValueAtTime(0.15, now);
+            g.gain.setValueAtTime(0.075, now);
             g.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
             o.connect(g);
             g.connect(this.ctx.destination);
@@ -380,26 +380,32 @@
     '🐼': { name: '판다군', bg: 'linear-gradient(135deg, #94a3b8, #334155)', border: '#f1f5f9' }
   };
 
-  function renderAvatarBadgeHtml(symbol, sizePx = 36, extraStyle = '') {
+  function renderAvatarBadgeHtml(symbol, sizePx = 36, extraStyle = '', showTag = false) {
     const info = AVATAR_DETAILS[symbol] || { name: '친구', bg: 'linear-gradient(135deg, #38bdf8, #0284c7)', border: '#fff' };
+    const fontSize = Math.round(sizePx * 0.53);
     return `
-      <div class="avatar-badge-3d" style="
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: ${sizePx}px;
-        height: ${sizePx}px;
-        border-radius: 50%;
-        background: ${info.bg};
-        border: 2px solid ${info.border};
-        box-shadow: 0 4px 10px rgba(0,0,0,0.35), inset 0 2px 4px rgba(255,255,255,0.6);
-        font-size: ${Math.round(sizePx * 0.55)}px;
-        line-height: 1;
-        flex-shrink: 0;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-        ${extraStyle}
-      " title="${info.name}">
-        ${symbol}
+      <div class="avatar-badge-3d-container" style="display: inline-flex; flex-direction: column; align-items: center; flex-shrink: 0; ${extraStyle}">
+        <div class="avatar-badge-3d" style="
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: ${sizePx}px;
+          height: ${sizePx}px;
+          border-radius: 50%;
+          background: ${info.bg};
+          border: 3px solid ${info.border};
+          box-shadow: 0 8px 18px rgba(0,0,0,0.45), 0 0 14px ${info.border}, inset 0 4px 6px rgba(255,255,255,0.85), inset 0 -4px 8px rgba(0,0,0,0.4);
+          font-size: ${fontSize}px;
+          line-height: 1;
+          flex-shrink: 0;
+          overflow: hidden;
+          transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        " title="${info.name}">
+          <div style="position: absolute; top: 2px; left: 14%; width: 72%; height: 38%; background: linear-gradient(to bottom, rgba(255,255,255,0.85), rgba(255,255,255,0.05)); border-radius: 50%; pointer-events: none;"></div>
+          <span style="filter: drop-shadow(0 3px 4px rgba(0,0,0,0.5)); transform: scale(1.05);">${symbol}</span>
+        </div>
+        ${showTag ? `<div style="margin-top: 4px; font-size: 0.75rem; font-weight: bold; color: #fff; background: rgba(15, 23, 42, 0.85); padding: 2px 8px; border-radius: 8px; border: 1px solid ${info.border}; text-shadow: 0 1px 2px #000;">${info.name}</div>` : ''}
       </div>
     `;
   }
@@ -846,8 +852,6 @@
   }
 
   function showAppSplashScreen() {
-    if (sessionStorage.getItem('splash_shown_this_session')) return;
-    sessionStorage.setItem('splash_shown_this_session', 'true');
 
     const overlay = document.createElement('div');
     overlay.id = 'app-splash-screen';
@@ -3299,8 +3303,8 @@
 
     const width = canvas.width;
     const height = canvas.height;
-    const VIRTUAL_HEIGHT = 5700;
-    const finishY = 5350;
+    const VIRTUAL_HEIGHT = 5850;
+    const finishY = 5520;
 
     let cameraY = 0;
     let isManualCamera = false;
@@ -3952,11 +3956,9 @@
           </h2>
           <div style="display: flex; gap: 10px; align-items: center;">
             ${renderBgmVolumeControlHtml('marble-run')}
-            ${isTeacherControl ? `
-              <button id="btn-force-finish-marble-race" class="btn btn-primary" style="background: linear-gradient(135deg, #10b981, #059669); border: none; font-weight: bold;">
-                🏆 레이스 결과 발표
-              </button>
-            ` : ''}
+            <button id="btn-force-finish-marble-race" class="btn btn-primary" style="background: linear-gradient(135deg, #10b981, #059669); border: none; font-weight: bold;">
+              🏆 레이스 결과 발표
+            </button>
           </div>
         </div>
 
@@ -4638,11 +4640,9 @@
               <div style="font-size: 3rem; margin-bottom: 6px;">🔮</div>
               <h2 style="font-size: 1.6rem; color: #38bdf8; font-weight: 900; margin-bottom: 10px;">구슬 롤러코스터 전원 도착 완료!</h2>
               <p style="color: #cbd5e1; font-size: 1rem; margin-bottom: 20px; line-height: 1.5;">모든 구슬이 롤러코스터를 통과했습니다.<br>버튼을 누르면 최종 순위를 공개합니다!</p>
-              ${isTeacherControl ? `
-                <button id="btn-trigger-race-results-now" class="btn btn-primary" style="font-size: 1.25rem; padding: 14px 28px; background: linear-gradient(135deg, #0284c7, #ec4899); border: none; font-weight: 900; box-shadow: 0 4px 18px rgba(56, 189, 248, 0.6); cursor: pointer; width: 100%;">
-                  🏆 최종 순위 발표 & 명예의 전당 보기
-                </button>
-              ` : `<div style="font-size: 1.1rem; color: #38bdf8; font-weight: bold;">선생님이 순위를 발표할 때까지 잠시 기다려 주세요!</div>`}
+              <button id="btn-trigger-race-results-now" class="btn btn-primary" style="font-size: 1.25rem; padding: 14px 28px; background: linear-gradient(135deg, #0284c7, #ec4899); border: none; font-weight: 900; box-shadow: 0 4px 18px rgba(56, 189, 248, 0.6); cursor: pointer; width: 100%;">
+                🏆 최종 순위 발표 & 명예의 전당 보기
+              </button>
             `;
             canvasBox.appendChild(overlay);
 
@@ -4657,31 +4657,76 @@
       marbles.forEach(m => {
         if (m.y + m.radius - cameraY > 0 && m.y - m.radius - cameraY < height) {
           ctx.save();
-          const grad = ctx.createRadialGradient(m.x - 4, m.y - cameraY - 4, 2, m.x, m.y - cameraY, m.radius);
+          
+          // 1. Ambient Drop Shadow underneath 3D Marble
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+          ctx.beginPath();
+          ctx.ellipse(m.x, m.y - cameraY + 4, m.radius, m.radius * 0.4, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 2. Multi-stop 3D Sphere Radial Gradient
+          const grad = ctx.createRadialGradient(
+            m.x - m.radius * 0.35, m.y - cameraY - m.radius * 0.35, m.radius * 0.1,
+            m.x, m.y - cameraY, m.radius
+          );
           grad.addColorStop(0, '#ffffff');
-          grad.addColorStop(0.3, m.color);
-          grad.addColorStop(1, '#0f172a');
+          grad.addColorStop(0.25, m.color);
+          grad.addColorStop(0.75, m.color);
+          grad.addColorStop(1, '#090d16');
 
           ctx.beginPath();
           ctx.arc(m.x, m.y - cameraY, m.radius, 0, Math.PI * 2);
           ctx.fillStyle = grad;
           ctx.shadowColor = m.color;
-          ctx.shadowBlur = 8;
+          ctx.shadowBlur = 12;
           ctx.fill();
           ctx.shadowBlur = 0;
+
+          // 3. Top Specular Glossy Reflection Arc
+          ctx.save();
+          ctx.beginPath();
+          ctx.ellipse(m.x - m.radius * 0.25, m.y - cameraY - m.radius * 0.3, m.radius * 0.45, m.radius * 0.22, -Math.PI / 6, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+          ctx.fill();
+          ctx.restore();
+
+          // 4. Outer Metallic Glowing Rim
           ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 2;
+          ctx.lineWidth = 2.2;
+          ctx.stroke();
+
+          // 5. 3D Symbol inside Marble
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '12px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.shadowColor = 'rgba(0,0,0,0.8)';
+          ctx.shadowBlur = 4;
+          ctx.fillText(m.avatar, m.x, m.y - cameraY);
+          ctx.shadowBlur = 0;
+
+          // 6. Floating 3D Capsule Pill Name Tag
+          const nameStr = m.nickname.slice(0, 5);
+          ctx.font = 'bold 9px Cafe24Surround, sans-serif';
+          const tw = ctx.measureText(nameStr).width;
+          const pw = tw + 10;
+          const ph = 14;
+          const px = m.x - pw / 2;
+          const py = m.y - cameraY - m.radius - 16;
+
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.roundRect(px, py, pw, ph, 7);
+          ctx.fill();
           ctx.stroke();
 
           ctx.fillStyle = '#ffffff';
-          ctx.font = '11px sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(m.avatar, m.x, m.y - cameraY);
+          ctx.fillText(nameStr, m.x, py + ph / 2);
 
-          ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 10px Cafe24Surround, sans-serif';
-          ctx.fillText(m.nickname.slice(0, 4), m.x, m.y - cameraY - m.radius - 3);
           ctx.restore();
         }
       });
