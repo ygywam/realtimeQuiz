@@ -3088,27 +3088,27 @@
             </div>
           </div>
 
-          <h2 style="font-size: 1.4rem; color: #38bdf8; margin: 24px 0 12px 0; text-align: center;">전체 명예의 전당 랭킹</h2>
+          <h2 style="font-size: 1.5rem; color: #ea580c; margin: 24px 0 12px 0; text-align: center; font-weight: 900;">전체 명예의 전당 랭킹</h2>
           ${participants.slice(0, 10).map((p, rank) => `
             <div class="leaderboard-row ${rank === 0 ? 'rank-1' : ''}">
               <div style="display: flex; align-items: center; gap: 16px;">
                 <div class="rank-badge">${rank === 0 ? '🥇' : rank === 1 ? '🥈' : rank === 2 ? '🥉' : rank + 1}</div>
-                <span style="font-size: 1.8rem; margin-right: 4px;">${p.avatar || '🐶'}</span>
-                <span>${escapeHtml(p.nickname)}</span>
+                ${renderAvatarBadgeHtml(p.avatar || '🐶', 34, 'margin-right: 4px;')}
+                <span style="font-size: 1.15rem; font-weight: 800;">${escapeHtml(p.nickname)}</span>
               </div>
-              <span style="color: #38bdf8;">${p.score || 0}점</span>
+              <span style="color: var(--primary); font-weight: 900;">${p.score || 0}점</span>
             </div>
           `).join('')}
 
           <div style="display: flex; justify-content: center; gap: 14px; margin-top: 30px; flex-wrap: wrap;">
             ${(roomData.meta?.enableCoinRace) ? `
-              <button class="btn btn-primary" id="btn-start-coin-race-setup" style="font-size: 1.15rem; padding: 12px 24px; background: linear-gradient(135deg, #f59e0b, #ec4899); border: none; font-weight: bold; box-shadow: 0 4px 18px rgba(245, 158, 11, 0.5);">
+              <button class="btn btn-primary" id="btn-start-coin-race-setup" style="font-size: 1.15rem; padding: 14px 28px; background: linear-gradient(135deg, #f97316, #ea580c); border: none; font-weight: 900; box-shadow: 0 4px 0 #9a3412, 0 8px 20px rgba(234, 88, 12, 0.35);">
                 🎰 선착순 코인 핑퐁 낙하 레이스 시작! (1등 5코인 ~ 6등+ 1코인)
               </button>
             ` : ''}
-            <button class="btn btn-success" id="btn-export-csv" style="font-size: 1.1rem; padding: 12px 20px;">📥 전체 결과 CSV 내보내기</button>
-            <button class="btn btn-primary" id="btn-export-image" style="font-size: 1.1rem; padding: 12px 20px;">📸 결과 이미지 저장 (PNG)</button>
-            <button class="btn btn-danger" id="btn-reset-finish-app" style="font-size: 1.1rem; padding: 12px 20px;">🏁 퀴즈 완료 & 방 초기화 (메인으로)</button>
+            <button class="btn btn-success" id="btn-export-csv" style="font-size: 1.1rem; padding: 12px 22px;">📥 전체 결과 CSV 내보내기</button>
+            <button class="btn btn-primary" id="btn-export-image" style="font-size: 1.1rem; padding: 12px 22px;">📸 결과 이미지 저장 (PNG)</button>
+            <button class="btn btn-danger" id="btn-reset-finish-app" style="font-size: 1.1rem; padding: 12px 22px;">🏁 퀴즈 완료 & 방 초기화 (메인으로)</button>
           </div>
         </div>
       </div>
@@ -3125,7 +3125,7 @@
       if (!elem) return;
       if (window.html2canvas) {
         try {
-          const canvas = await window.html2canvas(elem, { backgroundColor: '#090d16', scale: 2 });
+          const canvas = await window.html2canvas(elem, { backgroundColor: '#fff9f2', scale: 2 });
           const a = document.createElement('a');
           a.download = `시상식_결과_PIN_${state.roomId}_${new Date().toISOString().slice(0, 10)}.png`;
           a.href = canvas.toDataURL('image/png');
@@ -3182,29 +3182,31 @@
     participants.sort((a, b) => (b.score || 0) - (a.score || 0));
 
     container.innerHTML = `
-      <div class="quiz-display-container" id="coin-race-lobby-card" style="padding: 30px; max-width: 1000px; margin: 0 auto; text-align: center;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 10px;">
-          <h2 style="font-size: 2rem; color: ${isMarble ? '#38bdf8' : '#f59e0b'}; font-weight: 800; margin: 0;">
-            ${isMarble ? '🔮 [선착순 구슬 롤러코스터 레이스 대기실]' : '🎰 [선착순 코인 핑퐁 낙하 레이스 대기실]'}
+      <div class="quiz-display-container" id="coin-race-lobby-card" style="padding: 36px 30px; max-width: 1080px; margin: 0 auto; text-align: center; background: #ffffff; border: 1.5px solid var(--border); border-radius: 24px; box-shadow: var(--shadow-lg);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+          <h2 style="font-size: 2.2rem; background: ${isMarble ? 'linear-gradient(135deg, #0284c7, #2563eb)' : 'linear-gradient(135deg, #ea580c, #d97706)'}; -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 900; margin: 0;">
+            ${isMarble ? '🔮 선착순 구슬 롤러코스터 대기실' : '🎰 선착순 코인 핑퐁 낙하 대기실'}
           </h2>
           ${renderBgmVolumeControlHtml('coin-lobby')}
         </div>
 
-        <p style="font-size: 1.15rem; color: var(--text-muted); margin-bottom: 30px; line-height: 1.6;">
+        <p style="font-size: 1.15rem; color: var(--text-muted); margin-bottom: 32px; line-height: 1.6; font-weight: 600;">
           지정된 🪙 <strong>${isMarble ? '구슬 개수' : '코인 개수'}</strong>를 가지고 출발선에 집결했습니다!<br>
           ${isMarble ? '지그재그 롤러코스터 트랙과 역주행 범퍼를 뚫고 가장 먼저 도착선을 통과하는 우승자가 가려집니다!' : '핑퐁 핀볼 장애물과 서로 부딪히며 가장 먼저 도착선(Bottom)을 통과하는 선착순 우승자가 가려집니다!'}
         </p>
 
-        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-bottom: 36px; max-height: 50vh; overflow-y: auto; padding: 8px;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px; margin-bottom: 38px; max-height: 52vh; overflow-y: auto; padding: 10px;">
           ${participants.map((p, idx) => {
             const coins = getCoinAllocationForParticipant(p, idx, participants.length);
+            const isFirst = idx === 0;
             return `
-              <div style="background: #0f172a; border: 2px solid ${idx === 0 ? (isMarble ? '#38bdf8' : '#f59e0b') : 'var(--border)'}; border-radius: 14px; padding: 16px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-                <div style="display: flex; justify-content: center; margin-bottom: 8px;">${renderAvatarBadgeHtml(p.avatar || '🐶', 60)}</div>
-                <div style="font-size: 1.15rem; font-weight: bold; color: #fff;">${escapeHtml(p.nickname)}</div>
-                <div style="font-size: 0.9rem; color: #38bdf8; margin: 4px 0 10px 0;">${isStandalone ? '참가자' : `퀴즈 ${idx + 1}위 (${p.score || 0}점)`}</div>
-                <div style="background: #1e293b; border-radius: 8px; padding: 8px; font-size: 1.2rem; font-weight: bold; color: ${isMarble ? '#38bdf8' : '#fbbf24'};">
-                  ${isMarble ? '🔮'.repeat(coins) : '🪙'.repeat(coins)} <span style="font-size: 0.95rem; color: #fff;">(${coins}개)</span>
+              <div style="background: ${isFirst ? 'linear-gradient(180deg, #fffdf5 0%, #ffffff 100%)' : '#ffffff'}; border: ${isFirst ? '2px solid #f59e0b' : '1.5px solid var(--border)'}; border-radius: 18px; padding: 18px 14px; text-align: center; box-shadow: ${isFirst ? '0 10px 25px -4px rgba(245, 158, 11, 0.25), 0 4px 10px rgba(0,0,0,0.04)' : 'var(--shadow-sm)'}; transition: transform 0.2s ease;">
+                <div style="display: flex; justify-content: center; margin-bottom: 10px;">${renderAvatarBadgeHtml(p.avatar || '🐶', 64)}</div>
+                <div style="font-size: 1.2rem; font-weight: 900; color: #1e293b; margin-bottom: 2px;">${escapeHtml(p.nickname)}</div>
+                <div style="font-size: 0.92rem; color: ${isFirst ? '#d97706' : '#7c5c46'}; font-weight: 700; margin-bottom: 12px;">${isStandalone ? '참가자' : `퀴즈 ${idx + 1}위 (${p.score || 0}점)`}</div>
+                <div style="background: ${isFirst ? '#fef3c7' : '#f8fafc'}; border: 1.5px solid ${isFirst ? '#fde68a' : '#e2e8f0'}; border-radius: 12px; padding: 8px; font-size: 1.25rem; font-weight: 900; color: ${isMarble ? '#0284c7' : '#b45309'}; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                  <span>${isMarble ? '🔮'.repeat(coins) : '🪙'.repeat(coins)}</span>
+                  <span style="font-size: 0.95rem; color: #334155; margin-left: 4px;">(${coins}개)</span>
                 </div>
               </div>
             `;
@@ -3213,11 +3215,11 @@
 
         <div style="display: flex; justify-content: center; gap: 16px; flex-wrap: wrap;">
           ${isTeacherControl ? `
-            <button id="btn-start-coin-race-run" class="btn btn-primary" style="font-size: 1.35rem; padding: 16px 40px; background: linear-gradient(135deg, ${isMarble ? '#0284c7, #ec4899' : '#f59e0b, #ec4899'}); border: none; font-weight: 900; box-shadow: 0 6px 24px rgba(245, 158, 11, 0.6); cursor: pointer;">
+            <button id="btn-start-coin-race-run" class="btn btn-primary" style="font-size: 1.35rem; padding: 16px 44px; background: linear-gradient(135deg, ${isMarble ? '#0284c7, #2563eb' : '#f97316, #ea580c'}); border: none; font-weight: 900; box-shadow: 0 6px 0 ${isMarble ? '#1d4ed8' : '#9a3412'}, 0 12px 28px ${isMarble ? 'rgba(2, 132, 199, 0.35)' : 'rgba(234, 88, 12, 0.35)'}; cursor: pointer;">
               🚀 ${isMarble ? '구슬 레이스 출발!' : '낙하 레이스 출발!'} (3-2-1 카운트다운)
             </button>
-          ` : `<div style="font-size: 1.2rem; color: #38bdf8; font-weight: bold;">선생님이 출발 버튼을 누르면 레이스가 시작됩니다!</div>`}
-          <button id="btn-back-to-finished" class="btn btn-secondary" style="font-size: 1.1rem; padding: 14px 24px;">
+          ` : `<div style="font-size: 1.25rem; color: var(--primary); font-weight: 800; background: #fff7ed; padding: 14px 28px; border-radius: 14px; border: 1.5px solid #ffedd5;">선생님이 출발 버튼을 누르면 레이스가 시작됩니다!</div>`}
+          <button id="btn-back-to-finished" class="btn btn-secondary" style="font-size: 1.1rem; padding: 14px 28px;">
             ${isStandalone ? '🏠 대시보드 메인으로 돌아가기' : '🔙 퀴즈 시상식 결과로 돌아가기'}
           </button>
         </div>
@@ -3271,22 +3273,22 @@
         </div>
 
         <div style="display: flex; gap: 16px; justify-content: center; align-items: flex-start; flex-wrap: wrap;">
-          <div style="position: relative; background: #090d16; border: 3px solid #f59e0b; border-radius: 16px; overflow: hidden; box-shadow: 0 8px 32px rgba(245, 158, 11, 0.4);">
-            <canvas id="coin-race-canvas" width="860" height="640" style="display: block; background: radial-gradient(circle at center, #1e1b4b 0%, #090d16 100%); cursor: grab;"></canvas>
-            <button id="btn-reset-camera" class="btn btn-outline-sm" style="position: absolute; top: 12px; right: 12px; z-index: 10; background: rgba(15, 23, 42, 0.85); border-color: #38bdf8; color: #38bdf8; font-weight: bold; cursor: pointer; backdrop-filter: blur(4px);">
+          <div style="position: relative; background: #ffffff; border: 2.5px solid #e2e8f0; border-radius: 20px; overflow: hidden; box-shadow: 0 16px 40px -8px rgba(0,0,0,0.1);">
+            <canvas id="coin-race-canvas" width="860" height="640" style="display: block; background: radial-gradient(circle at center, #f8fafc 0%, #edf2f7 100%); cursor: grab;"></canvas>
+            <button id="btn-reset-camera" class="btn btn-outline-sm" style="position: absolute; top: 12px; right: 12px; z-index: 10; background: #ffffff; border: 1.5px solid #f59e0b; color: #f59e0b; font-weight: 800; cursor: pointer; box-shadow: 0 4px 12px rgba(245, 158, 11, 0.15);">
               🎥 1등 코인 자동 추적
             </button>
-            <div style="position: absolute; bottom: 12px; left: 12px; z-index: 10; background: rgba(15, 23, 42, 0.75); padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; color: #94a3b8; pointer-events: none;">
-              💡 마우스 드래그/휠 스크롤로 트랙 위치 자율 조작 가능
+            <div style="position: absolute; bottom: 12px; left: 12px; z-index: 10; background: rgba(255, 255, 255, 0.92); padding: 6px 14px; border-radius: 10px; font-size: 0.85rem; color: #64748b; font-weight: 700; border: 1px solid #e2e8f0; pointer-events: none; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+              💡 마우스 드래그 / 휠 스크롤로 트랙 위치 자율 조작 가능
             </div>
           </div>
 
-          <div style="width: 290px; background: #0f172a; border: 1px solid var(--border); border-radius: 16px; padding: 16px; min-height: 640px; display: flex; flex-direction: column;">
-            <h3 style="font-size: 1.2rem; color: #fbbf24; margin: 0 0 10px 0; border-bottom: 2px solid var(--border); padding-bottom: 8px; text-align: center;">
-              🚩 실시간 순위 도착 현황
+          <div style="width: 300px; background: #ffffff; border: 1.5px solid var(--border); border-radius: 20px; padding: 20px; min-height: 640px; display: flex; flex-direction: column; box-shadow: var(--shadow-md);">
+            <h3 style="font-size: 1.25rem; color: #ea580c; margin: 0 0 12px 0; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; text-align: center; font-weight: 900;">
+              🚩 실시간 코인 도착 현황
             </h3>
             <div id="race-live-arrivals-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
-              <div style="color: var(--text-muted); font-size: 0.95rem; text-align: center; margin-top: 20px;">
+              <div style="color: var(--text-muted); font-size: 0.95rem; text-align: center; margin-top: 20px; font-weight: 600;">
                 3-2-1 출발 준비 중...
               </div>
             </div>
@@ -3592,17 +3594,17 @@
       }
 
       if (finishY - cameraY < height && finishY + 60 - cameraY > 0) {
-        ctx.fillStyle = 'rgba(245, 158, 11, 0.25)';
+        ctx.fillStyle = 'rgba(234, 88, 12, 0.12)';
         ctx.fillRect(50, finishY - cameraY, width - 100, 50);
-        ctx.strokeStyle = '#f59e0b';
+        ctx.strokeStyle = '#ea580c';
         ctx.lineWidth = 4;
         ctx.setLineDash([10, 10]);
         ctx.beginPath(); ctx.moveTo(50, finishY - cameraY); ctx.lineTo(width - 50, finishY - cameraY); ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillStyle = '#fbbf24';
-        ctx.font = 'bold 18px Cafe24Surround, sans-serif';
+        ctx.fillStyle = '#c2410c';
+        ctx.font = '900 18px Cafe24Surround, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('🏁 FINISH LINE (도착선) 🏁', width / 2, finishY - cameraY + 32);
+        ctx.fillText('🏁 FINISH LINE (코인 낙하 결승선) 🏁', width / 2, finishY - cameraY + 32);
       }
 
       gears.forEach(g => {
@@ -3963,22 +3965,22 @@
         </div>
 
         <div style="display: flex; gap: 16px; justify-content: center; align-items: flex-start; flex-wrap: wrap;">
-          <div style="position: relative; background: #090d16; border: 3px solid #38bdf8; border-radius: 16px; overflow: hidden; box-shadow: 0 8px 32px rgba(56, 189, 248, 0.4);">
-            <canvas id="coin-race-canvas" width="860" height="640" style="display: block; background: radial-gradient(circle at center, #0f172a 0%, #020617 100%); cursor: grab;"></canvas>
-            <button id="btn-reset-camera" class="btn btn-outline-sm" style="position: absolute; top: 12px; right: 12px; z-index: 10; background: rgba(15, 23, 42, 0.85); border-color: #38bdf8; color: #38bdf8; font-weight: bold; cursor: pointer; backdrop-filter: blur(4px);">
+          <div style="position: relative; background: #ffffff; border: 2.5px solid #e2e8f0; border-radius: 20px; overflow: hidden; box-shadow: 0 16px 40px -8px rgba(0,0,0,0.1);">
+            <canvas id="coin-race-canvas" width="860" height="640" style="display: block; background: radial-gradient(circle at center, #f8fafc 0%, #edf2f7 100%); cursor: grab;"></canvas>
+            <button id="btn-reset-camera" class="btn btn-outline-sm" style="position: absolute; top: 12px; right: 12px; z-index: 10; background: #ffffff; border: 1.5px solid #0284c7; color: #0284c7; font-weight: 800; cursor: pointer; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.15);">
               🎥 1등 구슬 자동 추적
             </button>
-            <div style="position: absolute; bottom: 12px; left: 12px; z-index: 10; background: rgba(15, 23, 42, 0.75); padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; color: #94a3b8; pointer-events: none;">
-              💡 마우스 드래그/휠 스크롤로 트랙 위치 자율 조작 가능
+            <div style="position: absolute; bottom: 12px; left: 12px; z-index: 10; background: rgba(255, 255, 255, 0.92); padding: 6px 14px; border-radius: 10px; font-size: 0.85rem; color: #64748b; font-weight: 700; border: 1px solid #e2e8f0; pointer-events: none; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+              💡 마우스 드래그 / 휠 스크롤로 트랙 위치 자율 조작 가능
             </div>
           </div>
 
-          <div style="width: 290px; background: #0f172a; border: 1px solid var(--border); border-radius: 16px; padding: 16px; min-height: 640px; display: flex; flex-direction: column;">
-            <h3 style="font-size: 1.2rem; color: #38bdf8; margin: 0 0 10px 0; border-bottom: 2px solid var(--border); padding-bottom: 8px; text-align: center;">
+          <div style="width: 300px; background: #ffffff; border: 1.5px solid var(--border); border-radius: 20px; padding: 20px; min-height: 640px; display: flex; flex-direction: column; box-shadow: var(--shadow-md);">
+            <h3 style="font-size: 1.25rem; color: #0284c7; margin: 0 0 12px 0; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; text-align: center; font-weight: 900;">
               🚩 실시간 구슬 도착 현황
             </h3>
             <div id="race-live-arrivals-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
-              <div style="color: var(--text-muted); font-size: 0.95rem; text-align: center; margin-top: 20px;">
+              <div style="color: var(--text-muted); font-size: 0.95rem; text-align: center; margin-top: 20px; font-weight: 600;">
                 3-2-1 출발 준비 중...
               </div>
             </div>
@@ -4177,11 +4179,11 @@
         return;
       }
       listEl.innerHTML = arrivedParticipants.map((p, idx) => `
-        <div style="background: #1e293b; border-left: 4px solid ${idx === 0 ? '#fbbf24' : idx === 1 ? '#94a3b8' : idx === 2 ? '#b45309' : '#38bdf8'}; border-radius: 8px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="font-weight: 800; font-size: 1rem; color: #fbbf24;">${idx === 0 ? '🥇 1위' : idx === 1 ? '🥈 2위' : idx === 2 ? '🥉 3위' : (idx + 1) + '위'}</span>
-            ${renderAvatarBadgeHtml(p.avatar || '🐶', 30)}
-            <span style="font-size: 0.95rem; font-weight: bold; color: #fff;">${escapeHtml(p.nickname)}</span>
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-left: 5px solid ${idx === 0 ? '#f59e0b' : idx === 1 ? '#94a3b8' : idx === 2 ? '#b45309' : '#0284c7'}; border-radius: 12px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 6px rgba(0,0,0,0.03);">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-weight: 900; font-size: 1.05rem; color: ${idx === 0 ? '#d97706' : idx === 1 ? '#475569' : idx === 2 ? '#92400e' : '#0284c7'};">${idx === 0 ? '🥇 1위' : idx === 1 ? '🥈 2위' : idx === 2 ? '🥉 3위' : (idx + 1) + '위'}</span>
+            ${renderAvatarBadgeHtml(p.avatar || '🐶', 32)}
+            <span style="font-size: 1rem; font-weight: 800; color: #1e293b;">${escapeHtml(p.nickname)}</span>
           </div>
         </div>
       `).join('');
@@ -4202,7 +4204,7 @@
       ctx.clearRect(0, 0, width, height);
 
       // Render Grid Lines
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.05)';
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.25)';
       ctx.lineWidth = 1;
       const startGridY = Math.floor(cameraY / 40) * 40;
       for (let y = startGridY; y < cameraY + height; y += 40) {
@@ -4383,17 +4385,17 @@
 
       // Finish Line (Checkered Circuit Finish Banner)
       if (finishY - cameraY < height && finishY + 60 - cameraY > 0) {
-        ctx.fillStyle = 'rgba(56, 189, 248, 0.25)';
+        ctx.fillStyle = 'rgba(234, 88, 12, 0.12)';
         ctx.fillRect(50, finishY - cameraY, width - 100, 50);
-        ctx.strokeStyle = '#38bdf8';
+        ctx.strokeStyle = '#ea580c';
         ctx.lineWidth = 4;
         ctx.setLineDash([10, 10]);
         ctx.beginPath(); ctx.moveTo(50, finishY - cameraY); ctx.lineTo(width - 50, finishY - cameraY); ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillStyle = '#38bdf8';
-        ctx.font = 'bold 18px Cafe24Surround, sans-serif';
+        ctx.fillStyle = '#c2410c';
+        ctx.font = '900 18px Cafe24Surround, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('🔮 FINISH LINE (구슬 레이싱 결승선) 🔮', width / 2, finishY - cameraY + 32);
+        ctx.fillText('🏁 FINISH LINE (구슬 롤러코스터 결승선) 🏁', width / 2, finishY - cameraY + 32);
       }
 
       if (countdown <= 0) {
@@ -4635,12 +4637,12 @@
           if (canvasBox && !document.getElementById('race-finish-announcement-overlay')) {
             const overlay = document.createElement('div');
             overlay.id = 'race-finish-announcement-overlay';
-            overlay.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 100; background: rgba(15, 23, 42, 0.95); border: 3px solid #38bdf8; border-radius: 20px; padding: 24px 32px; text-align: center; box-shadow: 0 0 40px rgba(56, 189, 248, 0.85); width: 85%; max-width: 480px; backdrop-filter: blur(8px);';
+            overlay.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 100; background: rgba(255, 255, 255, 0.98); border: 2.5px solid #0284c7; border-radius: 24px; padding: 30px 36px; text-align: center; box-shadow: 0 20px 60px rgba(2, 132, 199, 0.25); width: 85%; max-width: 480px; backdrop-filter: blur(8px);';
             overlay.innerHTML = `
-              <div style="font-size: 3rem; margin-bottom: 6px;">🔮</div>
-              <h2 style="font-size: 1.6rem; color: #38bdf8; font-weight: 900; margin-bottom: 10px;">구슬 롤러코스터 전원 도착 완료!</h2>
-              <p style="color: #cbd5e1; font-size: 1rem; margin-bottom: 20px; line-height: 1.5;">모든 구슬이 롤러코스터를 통과했습니다.<br>버튼을 누르면 최종 순위를 공개합니다!</p>
-              <button id="btn-trigger-race-results-now" class="btn btn-primary" style="font-size: 1.25rem; padding: 14px 28px; background: linear-gradient(135deg, #0284c7, #ec4899); border: none; font-weight: 900; box-shadow: 0 4px 18px rgba(56, 189, 248, 0.6); cursor: pointer; width: 100%;">
+              <div style="font-size: 3.2rem; margin-bottom: 8px;">🔮</div>
+              <h2 style="font-size: 1.7rem; color: #0284c7; font-weight: 900; margin-bottom: 10px;">구슬 롤러코스터 전원 도착 완료!</h2>
+              <p style="color: #64748b; font-size: 1.05rem; margin-bottom: 24px; line-height: 1.6; font-weight: 600;">모든 구슬이 결승선을 통과했습니다.<br>버튼을 누르면 최종 순위와 명예의 전당을 공개합니다!</p>
+              <button id="btn-trigger-race-results-now" class="btn btn-primary" style="font-size: 1.25rem; padding: 16px 30px; background: linear-gradient(135deg, #0284c7, #2563eb); border: none; font-weight: 900; box-shadow: 0 5px 0 #1d4ed8, 0 10px 24px rgba(2, 132, 199, 0.35); cursor: pointer; width: 100%; border-radius: 14px;">
                 🏆 최종 순위 발표 & 명예의 전당 보기
               </button>
             `;
@@ -4785,9 +4787,9 @@
     }
 
     container.innerHTML = `
-      <div class="quiz-display-container" id="coin-race-result-card" style="padding: 30px; max-width: 1000px; margin: 0 auto; text-align: center;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 10px;">
-          <h2 style="font-size: 2.2rem; color: #fbbf24; font-weight: 900; margin: 0; text-shadow: 0 0 20px rgba(251, 191, 36, 0.5);">
+      <div class="quiz-display-container" id="coin-race-result-card" style="padding: 36px 30px; max-width: 1000px; margin: 0 auto; text-align: center; background: #ffffff; border: 1.5px solid var(--border); border-radius: 24px; box-shadow: var(--shadow-lg);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+          <h2 style="font-size: 2.2rem; background: linear-gradient(135deg, #ea580c, #d97706); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 900; margin: 0;">
             🏆 ${isMarble ? '선착순 구슬 롤러코스터' : '선착순 핑퐁 낙하'} 레이스 최종 명예의 전당!
           </h2>
           ${renderBgmVolumeControlHtml('coin-result')}
@@ -4814,26 +4816,26 @@
           </div>
         </div>
 
-        <h3 style="font-size: 1.4rem; color: #38bdf8; margin: 24px 0 12px 0;">전체 레이스 순위</h3>
-        <div style="max-width: 600px; margin: 0 auto 30px auto; display: flex; flex-direction: column; gap: 8px;">
+        <h3 style="font-size: 1.5rem; color: #ea580c; font-weight: 900; margin: 28px 0 14px 0;">전체 레이스 순위</h3>
+        <div style="max-width: 620px; margin: 0 auto 32px auto; display: flex; flex-direction: column; gap: 10px;">
           ${raceResults.map((r, idx) => `
             <div class="leaderboard-row ${idx === 0 ? 'rank-1' : ''}">
               <div style="display: flex; align-items: center; gap: 14px;">
                 <div class="rank-badge">${idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : (idx + 1)}</div>
-                ${renderAvatarBadgeHtml(r.avatar || '🐶', 32, 'margin-right: 8px;')}
-                <span style="font-size: 1.1rem; font-weight: bold;">${escapeHtml(r.nickname)}</span>
+                ${renderAvatarBadgeHtml(r.avatar || '🐶', 34, 'margin-right: 4px;')}
+                <span style="font-size: 1.15rem; font-weight: 800;">${escapeHtml(r.nickname)}</span>
               </div>
-              <span style="color: #fbbf24; font-weight: bold; font-size: 1.05rem;">최종 ${idx + 1}위 도착</span>
+              <span style="color: #ea580c; font-weight: 900; font-size: 1.05rem;">최종 ${idx + 1}위 도착</span>
             </div>
           `).join('')}
         </div>
 
         <div style="display: flex; justify-content: center; gap: 16px; flex-wrap: wrap;">
           ${isTeacherControl ? `
-            <button id="btn-replay-coin-race" class="btn btn-primary" style="font-size: 1.15rem; padding: 12px 24px; background: linear-gradient(135deg, #f59e0b, #ec4899); border: none; font-weight: bold;">
+            <button id="btn-replay-coin-race" class="btn btn-primary" style="font-size: 1.15rem; padding: 14px 28px; background: linear-gradient(135deg, #f97316, #ea580c); border: none; font-weight: 900; box-shadow: 0 4px 0 #9a3412, 0 8px 20px rgba(234, 88, 12, 0.35);">
               🔄 레이스 재경기 (대기실로)
             </button>
-            <button id="btn-finish-race-to-lobby" class="btn btn-danger" style="font-size: 1.15rem; padding: 12px 24px;">
+            <button id="btn-finish-race-to-lobby" class="btn btn-danger" style="font-size: 1.15rem; padding: 14px 28px; box-shadow: 0 4px 0 #991b1b;">
               ${isStandalone ? '🏠 선착순 게임 마감 & 메인으로' : '🏁 퀴즈 완료 및 대기실로 방 초기화'}
             </button>
           ` : ''}
