@@ -291,7 +291,7 @@
         <div class="bgm-volume-popover" style="position: absolute; top: 100%; right: 0; margin-top: 6px; background: #0f172a; border: 1px solid #38bdf8; border-radius: 8px; padding: 8px 12px; display: none; align-items: center; gap: 8px; z-index: 250; box-shadow: 0 6px 20px rgba(0,0,0,0.6); white-space: nowrap;">
           <span style="font-size: 0.85rem; color: #38bdf8; font-weight: bold;">🔊</span>
           <input type="range" class="bgm-volume-slider" min="0" max="1" step="0.05" value="${AudioEngine.volume}" style="width: 90px; cursor: pointer; accent-color: #38bdf8;">
-          <span class="bgm-volume-text" style="font-size: 0.8rem; color: #fff; font-weight: bold; width: 34px;">${Math.round(AudioEngine.volume * 100)}%</span>
+          <span class="bgm-volume-text" style="font-size: 0.85rem; color: #1e293b; font-weight: 800; width: 34px;">${Math.round(AudioEngine.volume * 100)}%</span>
         </div>
       </div>
     `;
@@ -851,7 +851,19 @@
     URL.revokeObjectURL(url);
   }
 
-  function showAppSplashScreen() {
+  function showAppSplashScreen(force = false) {
+    const isFirstVisit = !sessionStorage.getItem('splash_shown_initial');
+    const isAfterGameFinish = sessionStorage.getItem('trigger_splash_after_game') === 'true';
+
+    // 처음 접속할 때랑 게임 종료 후 대시보드 들어갈 때만 표시
+    if (!force && !isFirstVisit && !isAfterGameFinish) return;
+
+    if (isFirstVisit) {
+      sessionStorage.setItem('splash_shown_initial', 'true');
+    }
+    if (isAfterGameFinish) {
+      sessionStorage.removeItem('trigger_splash_after_game');
+    }
 
     const overlay = document.createElement('div');
     overlay.id = 'app-splash-screen';
@@ -1145,7 +1157,7 @@
                     <div style="display: flex; align-items: center; gap: 12px;">
                       <span style="font-size: 1.8rem;">🖥️</span>
                       <div>
-                        <div style="font-size: 1rem; font-weight: bold; color: #fff;">전자칠판 (대형 화면)</div>
+                        <div style="font-size: 1.05rem; font-weight: 800; color: #1e293b;">전자칠판 (대형 화면)</div>
                         <div style="font-size: 0.85rem; color: #94a3b8;">실시간 QR & 선택지 차트 송출중</div>
                       </div>
                     </div>
@@ -1156,7 +1168,7 @@
                     <div style="display: flex; align-items: center; gap: 12px;">
                       <span style="font-size: 1.8rem;">👨‍🏫</span>
                       <div>
-                        <div style="font-size: 1rem; font-weight: bold; color: #fff;">교사 컨트롤러 (PC/태블릿)</div>
+                        <div style="font-size: 1.05rem; font-weight: 800; color: #1e293b;">교사 컨트롤러 (PC/태블릿)</div>
                         <div style="font-size: 0.85rem; color: #94a3b8;">문항 제어 & 결과 공개 관리</div>
                       </div>
                     </div>
@@ -1167,7 +1179,7 @@
                     <div style="display: flex; align-items: center; gap: 12px;">
                       <span style="font-size: 1.8rem;">📱</span>
                       <div>
-                        <div style="font-size: 1rem; font-weight: bold; color: #fff;">학생 모바일 패드</div>
+                        <div style="font-size: 1.05rem; font-weight: 800; color: #1e293b;">학생 모바일 패드</div>
                         <div style="font-size: 0.85rem; color: #94a3b8;">QR 1초 즉시 입력 (별도 앱 설치 0)</div>
                       </div>
                     </div>
@@ -1222,11 +1234,11 @@
                 </div>
                 <div id="landing-blind-demo" style="background: #0f172a; padding: 20px; border-radius: 12px; display: flex; flex-direction: column; gap: 12px; border: 1px solid var(--border);">
                   <div style="display: flex; justify-content: space-between; align-items: center; background: #1e293b; padding: 12px 16px; border-radius: 8px;">
-                    <span style="font-weight: bold; color: #fff;">1. 세종대왕 (한글 창제)</span>
+                    <span style="font-weight: 800; color: #1e293b;">1. 세종대왕 (한글 창제)</span>
                     <strong style="color: #fbbf24; font-size: 1.05rem;" id="demo-stat-1">🔒 가림</strong>
                   </div>
                   <div style="display: flex; justify-content: space-between; align-items: center; background: #1e293b; padding: 12px 16px; border-radius: 8px;">
-                    <span style="font-weight: bold; color: #fff;">2. 이순신 (한산도 대첩)</span>
+                    <span style="font-weight: 800; color: #1e293b;">2. 이순신 (한산도 대첩)</span>
                     <strong style="color: #fbbf24; font-size: 1.05rem;" id="demo-stat-2">🔒 가림</strong>
                   </div>
                 </div>
@@ -2488,7 +2500,7 @@
           <div style="font-size: 1.6rem; color: #38bdf8; font-weight: bold; margin-bottom: 16px;">
             Q${qIndex + 1} / ${questions.length} 문제 카운트다운!
           </div>
-          <h1 style="font-size: 2.2rem; color: #fff; margin-bottom: 24px; max-width: 800px; line-height: 1.4;">
+          <h1 style="font-size: 2.3rem; color: #1e293b; margin-bottom: 24px; max-width: 800px; line-height: 1.4; font-weight: 900;">
             ${parseMath(currentQ.question || '')}
           </h1>
           <div class="countdown-badge-pulse" style="font-size: 8rem; font-weight: 900; color: #fbbf24; text-shadow: 0 0 40px rgba(251, 191, 36, 0.8); margin: 20px 0;">
@@ -2617,7 +2629,36 @@
         </div>
       `;
 
-      document.getElementById('btn-go-home-display')?.addEventListener('click', () => window.location.search = '');
+      document.getElementById('btn-go-home-display')?.addEventListener('click', async () => {
+        if (confirm('게임을 중단하고 초기화하여 대시보드로 돌아가시겠습니까?\n(진행 중인 퀴즈가 중단되고 대기실 상태로 초기화됩니다)')) {
+          try {
+            await updateRoomMeta(state.roomId, {
+              status: 'LOBBY',
+              currentQuestionIndex: 0,
+              countdownNumber: 3
+            });
+            if (db) {
+              try {
+                await db.ref(`rooms/${state.roomId}/responses`).remove();
+                const snapshot = await db.ref(`rooms/${state.roomId}/participants`).once('value');
+                const parts = snapshot.val() || {};
+                const updates = {};
+                Object.keys(parts).forEach(pid => {
+                  updates[`rooms/${state.roomId}/participants/${pid}/score`] = 0;
+                });
+                if (Object.keys(updates).length > 0) {
+                  await db.ref().update(updates);
+                }
+              } catch (e) {}
+            } else {
+              await putFirebaseRest(`rooms/${state.roomId}/responses`, {});
+            }
+          } catch (e) {
+            console.error(e);
+          }
+          window.location.search = '';
+        }
+      });
       document.getElementById('select-theme-display')?.addEventListener('change', (e) => setTheme(e.target.value));
 
       document.getElementById('btn-toggle-results')?.addEventListener('click', () => {
@@ -2727,7 +2768,7 @@
                 ${renderAvatarBadgeHtml(p.avatar || '🐶', 32, 'margin-right: 8px;')}
                 <span>${escapeHtml(p.nickname)}</span>
               </div>
-              <span style="color: #38bdf8;">${p.score || 0}점</span>
+              <span style="color: var(--primary); font-weight: 900; font-size: 1.2rem;">${p.score || 0}점</span>
             </div>
           `).join('')}
           <div style="display: flex; justify-content: center; gap: 16px; margin-top: 30px; flex-wrap: wrap;">
@@ -2819,7 +2860,7 @@
         return `
           <div style="display: flex; align-items: center; justify-content: center; gap: 40px; padding: 20px; flex-wrap: wrap;">
             <div style="width: 240px; height: 240px; border-radius: 50%; background: ${isHidden || totalCount === 0 ? '#334155' : conicStyle}; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px rgba(0,0,0,0.4); position: relative; transition: background 0.5s ease;">
-              <div style="width: 130px; height: 130px; border-radius: 50%; background: #0f172a; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; font-weight: bold; border: 2px solid var(--border);">
+              <div style="width: 130px; height: 130px; border-radius: 50%; background: #ffffff; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #1e293b; font-weight: 900; border: 2px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.06);">
                 <span style="font-size: 1.5rem; color: #38bdf8;">${isHidden ? '🔒' : totalCount + '명'}</span>
                 <span style="font-size: 0.85rem; color: var(--text-muted);">${isHidden ? '가림 모드' : '총 응답'}</span>
               </div>
@@ -3038,6 +3079,7 @@
       });
 
       document.getElementById('btn-reset-finish-app')?.addEventListener('click', async () => {
+          sessionStorage.setItem('trigger_splash_after_game', 'true');
         if (confirm('의견 수렴을 마감하고 방을 대기실(LOBBY) 상태로 초기화하시겠습니까?')) {
           await updateRoomMeta(state.roomId, { status: 'LOBBY', currentQuestionIndex: 0 });
           if (db) {
@@ -3103,7 +3145,7 @@
           <div style="display: flex; justify-content: center; gap: 14px; margin-top: 30px; flex-wrap: wrap;">
             ${(roomData.meta?.enableCoinRace) ? `
               <button class="btn btn-primary" id="btn-start-coin-race-setup" style="font-size: 1.15rem; padding: 14px 28px; background: linear-gradient(135deg, #f97316, #ea580c); border: none; font-weight: 900; box-shadow: 0 4px 0 #9a3412, 0 8px 20px rgba(234, 88, 12, 0.35);">
-                🎰 선착순 코인 핑퐁 낙하 레이스 시작! (1등 5코인 ~ 6등+ 1코인)
+                🎰 선착순 코인 핑퐁 레이스 시작!
               </button>
             ` : ''}
             <button class="btn btn-success" id="btn-export-csv" style="font-size: 1.1rem; padding: 12px 22px;">📥 전체 결과 CSV 내보내기</button>
@@ -3260,7 +3302,7 @@
       <div class="quiz-display-container" style="padding: 16px; text-align: center; max-width: 1220px; margin: 0 auto;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
           <h2 style="font-size: 1.6rem; color: #f59e0b; font-weight: 900; margin: 0; display: flex; align-items: center; gap: 8px;">
-            🎰 선착순 핑퐁 코인 낙하 레이스 (5,500px 대장정 익스트림 트랙!)
+            🎰 선착순 핑퐁 코인 레이스
           </h2>
           <div style="display: flex; gap: 10px; align-items: center;">
             ${renderBgmVolumeControlHtml('coin-run')}
@@ -3360,7 +3402,7 @@
           y: 40 + Math.random() * 30,
           vx: (Math.random() - 0.5) * 1.5,
           vy: 0.2 + Math.random() * 0.4,
-          radius: 13,
+          radius: 20,
           arrived: false
         });
       }
@@ -3889,7 +3931,7 @@
           ctx.stroke();
 
           ctx.fillStyle = '#ffffff';
-          ctx.font = '11px sans-serif';
+          ctx.font = '17px sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText(c.avatar, c.x, c.y - cameraY);
@@ -3954,7 +3996,7 @@
       <div class="quiz-display-container" style="padding: 16px; text-align: center; max-width: 1220px; margin: 0 auto;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
           <h2 style="font-size: 1.6rem; color: #38bdf8; font-weight: 900; margin: 0; display: flex; align-items: center; gap: 8px;">
-            🔮 선착순 구슬 롤러코스터 레이스 (5,500px 지그재그 코스터!)
+            🔮 선착순 구슬 롤러코스터 레이스
           </h2>
           <div style="display: flex; gap: 10px; align-items: center;">
             ${renderBgmVolumeControlHtml('marble-run')}
@@ -4052,7 +4094,7 @@
           y: 80 + Math.random() * 20,
           vx: 1.5 + Math.random() * 1.5,
           vy: 0.5,
-          radius: 14,
+          radius: 20,
           arrived: false
         });
       }
@@ -4699,11 +4741,11 @@
 
           // 5. 3D Symbol inside Marble
           ctx.fillStyle = '#ffffff';
-          ctx.font = '12px sans-serif';
+          ctx.font = '18px sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.shadowColor = 'rgba(0,0,0,0.8)';
-          ctx.shadowBlur = 4;
+          ctx.shadowColor = 'rgba(0,0,0,0.5)';
+          ctx.shadowBlur = 3;
           ctx.fillText(m.avatar, m.x, m.y - cameraY);
           ctx.shadowBlur = 0;
 
@@ -4863,6 +4905,7 @@
     });
 
     document.getElementById('btn-finish-race-to-lobby')?.addEventListener('click', async () => {
+          sessionStorage.setItem('trigger_splash_after_game', 'true');
       if (isStandalone) {
         if (confirm('선착순 게임을 완료하고 메인 화면으로 이동하시겠습니까?')) {
           window.location.search = '';
@@ -4928,7 +4971,7 @@
           <div class="mobile-card" style="text-align: center; border-color: #ec4899;">
             <div style="font-size: 3.5rem; margin-bottom: 10px;" class="countdown-badge-pulse">🏎️💨</div>
             <h2 style="font-size: 1.5rem; color: #ec4899;">핑퐁 낙하 레이스 진행 중!</h2>
-            <p style="color: #fff; font-size: 1.1rem; margin-top: 12px;">
+            <p style="color: #475569; font-size: 1.1rem; margin-top: 12px; font-weight: 700;">
               ${avatar} <strong>${escapeHtml(nickname)}</strong> 님의 코인이 장애물을 튕기며 떨어지고 있습니다!
             </p>
             <p style="color: var(--text-muted); margin-top: 14px; font-size: 0.95rem;">
@@ -4984,7 +5027,7 @@
         <div class="mobile-view" id="student-countdown-card">
           <div class="mobile-card" style="text-align: center; border-color: #f59e0b; padding: 40px 20px;">
             <div style="font-size: 1.2rem; color: #38bdf8; font-weight: bold; margin-bottom: 10px;">Q${qIndex + 1} / ${questions.length} 문제 준비!</div>
-            <h3 style="font-size: 1.3rem; color: #fff; margin-bottom: 16px;">${parseMath(currentQ.question || '')}</h3>
+            <h3 style="font-size: 1.35rem; color: #1e293b; margin-bottom: 16px; font-weight: 800;">${parseMath(currentQ.question || '')}</h3>
             <div class="countdown-badge-pulse" style="font-size: 5.5rem; font-weight: 900; color: #fbbf24; text-shadow: 0 0 30px rgba(251, 191, 36, 0.7); margin: 15px 0;">
               ${countNum > 0 ? countNum : '🚀 START!'}
             </div>
@@ -5316,7 +5359,7 @@
         <div class="mobile-card" style="text-align: center;">
           <div style="font-size: 3.5rem; margin-bottom: 10px;">${avatar}</div>
           <h1 style="font-size: 2.2rem; color: #fbbf24; margin-bottom: 12px;">🏆 수고하셨습니다!</h1>
-          <h2 style="font-size: 1.4rem; color: #fff;">${avatar} ${escapeHtml(nickname)} 님의 최종 결과</h2>
+          <h2 style="font-size: 1.5rem; color: #1e293b; font-weight: 900;">${avatar} ${escapeHtml(nickname)} 님의 최종 결과</h2>
           <div style="font-size: 2rem; font-weight: 900; color: #38bdf8; margin: 16px 0;">
             ${myP.score || 0}점 (전체 ${myRank}위 / ${participants.length}명)
           </div>
