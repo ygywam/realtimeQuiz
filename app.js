@@ -464,7 +464,7 @@
       const raw = localStorage.getItem('my_created_quiz_rooms');
       const list = raw ? JSON.parse(raw) : [];
       const now = Date.now();
-      const valid = list.filter(r => (now - (r.lastAccessedAt || r.createdAt || now)) < THREE_DAYS_MS);
+      const valid = list.filter(r => r.keepPermanent || (now - (r.lastAccessedAt || r.createdAt || now)) < THREE_DAYS_MS);
       if (valid.length !== list.length) {
         localStorage.setItem('my_created_quiz_rooms', JSON.stringify(valid));
       }
@@ -475,18 +475,33 @@
   }
 
   function saveMyLocalQuizRoom(roomMeta) {
+    if (!roomMeta || !roomMeta.roomId) return;
     const list = getMyLocalQuizRooms();
     const idx = list.findIndex(r => r.roomId === roomMeta.roomId);
     const now = Date.now();
+    const existing = idx >= 0 ? list[idx] : null;
+
     const item = {
       roomId: roomMeta.roomId,
-      title: roomMeta.title || '실시간 수업 퀴즈',
-      questionCount: typeof roomMeta.questionCount === 'number' ? roomMeta.questionCount : 0,
-      createdAt: roomMeta.createdAt || (idx >= 0 ? list[idx].createdAt : now),
-      lastAccessedAt: now
+      title: (roomMeta.title !== undefined && roomMeta.title !== null && roomMeta.title !== '') 
+        ? roomMeta.title 
+        : (existing?.title || '실시간 수업 퀴즈'),
+      questionCount: typeof roomMeta.questionCount === 'number' 
+        ? roomMeta.questionCount 
+        : (existing?.questionCount || 0),
+      createdAt: roomMeta.createdAt || existing?.createdAt || now,
+      lastAccessedAt: now,
+      keepPermanent: typeof roomMeta.keepPermanent === 'boolean' 
+        ? roomMeta.keepPermanent 
+        : (existing?.keepPermanent || false),
+      enableCoinRace: typeof roomMeta.enableCoinRace === 'boolean' 
+        ? roomMeta.enableCoinRace 
+        : (existing?.enableCoinRace || false),
+      coinRaceMode: roomMeta.coinRaceMode || existing?.coinRaceMode || 'pinball'
     };
+
     if (idx >= 0) {
-      list[idx] = { ...list[idx], ...item };
+      list[idx] = item;
     } else {
       list.unshift(item);
     }
@@ -1106,12 +1121,14 @@
                 return `
                   <div style="background: #0f172a; border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; justify-content: space-between;">
                     <div>
-                      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <div>
-                          <span class="room-badge" style="font-size: 0.9rem;">PIN: ${room.roomId}</span>
-                          ${room.keepPermanent ? '<span style="font-size: 0.78rem; background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid #38bdf8; padding: 2px 6px; border-radius: 4px; font-weight: bold; margin-left: 6px;">📌 영구 보존</span>' : ''}
+                      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; flex-wrap: wrap;">
+                        <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                          <span class="room-badge" style="font-size: 0.88rem; padding: 4px 10px; white-space: nowrap; letter-spacing: 0.5px; display: inline-flex; align-items: center;">
+                            PIN: <span style="margin-left: 5px; color: #ffffff; font-weight: 900; letter-spacing: 1.5px;">${room.roomId}</span>
+                          </span>
+                          ${room.keepPermanent ? '<span style="font-size: 0.75rem; background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid #38bdf8; padding: 2px 6px; border-radius: 4px; font-weight: bold; white-space: nowrap;">📌 영구 보존</span>' : ''}
                         </div>
-                        <span style="font-size: 0.8rem; color: var(--text-muted);">${dateStr}</span>
+                        <span style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;">${dateStr}</span>
                       </div>
                       <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 6px;">
                         <h4 style="font-size: 1.05rem; color: #fff; margin: 0; flex: 1; word-break: break-all;">${escapeHtml(room.title)}</h4>
@@ -1463,12 +1480,14 @@
       btn.addEventListener('click', async (e) => {
         const pin = e.currentTarget.dataset.pin;
         const roomData = await fetchFirebaseRest(`rooms/${pin}`) || JSON.parse(localStorage.getItem(`demo_room_${pin}`) || '{}');
-        renderTeacherAdminModal(pin, roomData.questions || [], async () => {
-          const updated = await fetchFirebaseRest(`rooms/${pin}`) || roomData;
-          saveMyLocalQuizRoom({ roomId: pin, questionCount: (updated.questions || []).length });
+        const meta = roomData.meta || {};
+        renderTeacherAdminModal(pin, roomData.questions || [], async (savedMeta) => {
+          if (savedMeta) {
+            saveMyLocalQuizRoom({ roomId: pin, ...savedMeta });
+          }
           alert('문항이 성공적으로 저장되었습니다.');
           renderHomeView(app);
-        });
+        }, meta);
       });
     });
     document.querySelectorAll('.btn-del-room').forEach(btn => {
@@ -1626,10 +1645,12 @@
         alert('🔒 문제 편집 권한 안내\n\n이 퀴즈 방은 다른 컴퓨터/기기에서 작성된 방입니다.\n문제 수정 및 삭제는 처음 이 퀴즈를 출제하신 교사 PC(로컬)에서만 가능하며, 본 컴퓨터에서는 퀴즈 진행 및 송출만 실행하실 수 있습니다.');
         return;
       }
-      renderTeacherAdminModal(state.roomId, state.roomData?.questions, () => {
-        saveMyLocalQuizRoom({ roomId: state.roomId, questionCount: (state.roomData?.questions || []).length });
+      renderTeacherAdminModal(state.roomId, state.roomData?.questions, (savedMeta) => {
+        if (savedMeta) {
+          saveMyLocalQuizRoom({ roomId: state.roomId, ...savedMeta });
+        }
         alert('문항이 성공적으로 저장되었습니다.');
-      });
+      }, state.roomData?.meta);
     });
 
     document.getElementById('btn-start-quiz')?.addEventListener('click', async () => {
@@ -1786,14 +1807,22 @@
     inputNick.addEventListener('keydown', (e) => { if (e.key === 'Enter') doJoin(); });
   }
 
-  function renderTeacherAdminModal(roomId, currentQuestions, onSaveCallback) {
+  function renderTeacherAdminModal(roomId, currentQuestions, onSaveCallback, initialMeta) {
     let questions = Array.isArray(currentQuestions) 
       ? JSON.parse(JSON.stringify(currentQuestions)) 
       : [];
     currentEditingQuestions = questions;
 
-    const roomMeta = state.roomData?.meta || {};
-    const currentTitle = roomMeta.title || '실시간 수업 퀴즈';
+    const localRooms = getMyLocalQuizRooms();
+    const localRoom = localRooms.find(r => r.roomId === roomId) || {};
+    const roomMeta = state.roomData?.meta || initialMeta || localRoom || {};
+    const currentTitle = roomMeta.title || localRoom.title || '실시간 수업 퀴즈';
+    const isEnableCoinRace = typeof roomMeta.enableCoinRace === 'boolean' 
+      ? roomMeta.enableCoinRace 
+      : (typeof localRoom.enableCoinRace === 'boolean' ? localRoom.enableCoinRace : false);
+    const isKeepPermanent = typeof roomMeta.keepPermanent === 'boolean' 
+      ? roomMeta.keepPermanent 
+      : (typeof localRoom.keepPermanent === 'boolean' ? localRoom.keepPermanent : false);
 
     const modalHtml = `
       <div id="admin-modal" class="modal-overlay">
@@ -1812,11 +1841,11 @@
             </div>
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px;">
               <label style="font-weight: bold; font-size: 0.9rem; color: #f59e0b; cursor: pointer; display: flex; align-items: center; gap: 6px; background: rgba(245, 158, 11, 0.12); padding: 8px 12px; border-radius: 8px; border: 1px solid #f59e0b;">
-                <input type="checkbox" id="input-admin-enable-coin-race" ${roomMeta.enableCoinRace ? 'checked' : ''}>
+                <input type="checkbox" id="input-admin-enable-coin-race" ${isEnableCoinRace ? 'checked' : ''}>
                 🎰 최종 선착순 핑퐁 낙하 레이스 포함
               </label>
               <label style="font-weight: bold; font-size: 0.9rem; color: #38bdf8; cursor: pointer; display: flex; align-items: center; gap: 6px; background: rgba(56, 189, 248, 0.12); padding: 8px 12px; border-radius: 8px; border: 1px solid #38bdf8;">
-                <input type="checkbox" id="input-admin-keep-permanent" ${roomMeta.keepPermanent ? 'checked' : ''}>
+                <input type="checkbox" id="input-admin-keep-permanent" ${isKeepPermanent ? 'checked' : ''}>
                 📌 3일 후 자동 삭제 방지 (영구 보존)
               </label>
             </div>
@@ -2104,16 +2133,28 @@
       const keepPermanentCb = document.getElementById('input-admin-keep-permanent');
       const keepPermanent = keepPermanentCb ? keepPermanentCb.checked : false;
 
-      if (newTitleInput) {
-        const title = newTitleInput.value.trim() || '실시간 수업 퀴즈';
-        saveMyLocalQuizRoom({ roomId, title, questionCount: questions.length, keepPermanent });
-        await updateRoomMeta(roomId, { title, enableCoinRace, keepPermanent });
-      } else {
-        await updateRoomMeta(roomId, { enableCoinRace, keepPermanent });
+      const title = newTitleInput ? (newTitleInput.value.trim() || currentTitle || '실시간 수업 퀴즈') : (currentTitle || '실시간 수업 퀴즈');
+
+      const savedMeta = {
+        title,
+        enableCoinRace,
+        keepPermanent,
+        questionCount: questions.length
+      };
+
+      // 1. localStorage 동기화
+      saveMyLocalQuizRoom({ roomId, ...savedMeta });
+
+      // 2. 인메모리 및 Firebase DB 동기화
+      if (state.roomData) {
+        state.roomData.meta = { ...(state.roomData.meta || {}), ...savedMeta };
+        state.roomData.questions = questions;
       }
+      await updateRoomMeta(roomId, { title, enableCoinRace, keepPermanent });
       await updateQuestions(roomId, questions);
+
       document.getElementById('admin-modal').remove();
-      if (onSaveCallback) onSaveCallback();
+      if (onSaveCallback) onSaveCallback(savedMeta);
     });
   }
 
