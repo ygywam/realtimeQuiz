@@ -291,7 +291,7 @@
         <div class="bgm-volume-popover" style="position: absolute; top: 100%; right: 0; margin-top: 6px; background: #0f172a; border: 1px solid #38bdf8; border-radius: 8px; padding: 8px 12px; display: none; align-items: center; gap: 8px; z-index: 250; box-shadow: 0 6px 20px rgba(0,0,0,0.6); white-space: nowrap;">
           <span style="font-size: 0.85rem; color: #38bdf8; font-weight: bold;">🔊</span>
           <input type="range" class="bgm-volume-slider" min="0" max="1" step="0.05" value="${AudioEngine.volume}" style="width: 90px; cursor: pointer; accent-color: #38bdf8;">
-          <span class="bgm-volume-text" style="font-size: 0.85rem; color: #1e293b; font-weight: 800; width: 34px;">${Math.round(AudioEngine.volume * 100)}%</span>
+          <span class="bgm-volume-text" style="font-size: 0.85rem; color: #38bdf8; font-weight: 900; width: 34px;">${Math.round(AudioEngine.volume * 100)}%</span>
         </div>
       </div>
     `;
@@ -1157,7 +1157,7 @@
                     <div style="display: flex; align-items: center; gap: 12px;">
                       <span style="font-size: 1.8rem;">🖥️</span>
                       <div>
-                        <div style="font-size: 1.05rem; font-weight: 800; color: #1e293b;">전자칠판 (대형 화면)</div>
+                        <div style="font-size: 1.05rem; font-weight: 800; color: #ffffff;">전자칠판 (대형 화면)</div>
                         <div style="font-size: 0.85rem; color: #94a3b8;">실시간 QR & 선택지 차트 송출중</div>
                       </div>
                     </div>
@@ -1168,7 +1168,7 @@
                     <div style="display: flex; align-items: center; gap: 12px;">
                       <span style="font-size: 1.8rem;">👨‍🏫</span>
                       <div>
-                        <div style="font-size: 1.05rem; font-weight: 800; color: #1e293b;">교사 컨트롤러 (PC/태블릿)</div>
+                        <div style="font-size: 1.05rem; font-weight: 800; color: #ffffff;">교사 컨트롤러 (PC/태블릿)</div>
                         <div style="font-size: 0.85rem; color: #94a3b8;">문항 제어 & 결과 공개 관리</div>
                       </div>
                     </div>
@@ -1179,7 +1179,7 @@
                     <div style="display: flex; align-items: center; gap: 12px;">
                       <span style="font-size: 1.8rem;">📱</span>
                       <div>
-                        <div style="font-size: 1.05rem; font-weight: 800; color: #1e293b;">학생 모바일 패드</div>
+                        <div style="font-size: 1.05rem; font-weight: 800; color: #ffffff;">학생 모바일 패드</div>
                         <div style="font-size: 0.85rem; color: #94a3b8;">QR 1초 즉시 입력 (별도 앱 설치 0)</div>
                       </div>
                     </div>
@@ -1234,11 +1234,11 @@
                 </div>
                 <div id="landing-blind-demo" style="background: #0f172a; padding: 20px; border-radius: 12px; display: flex; flex-direction: column; gap: 12px; border: 1px solid var(--border);">
                   <div style="display: flex; justify-content: space-between; align-items: center; background: #1e293b; padding: 12px 16px; border-radius: 8px;">
-                    <span style="font-weight: 800; color: #1e293b;">1. 세종대왕 (한글 창제)</span>
+                    <span style="font-weight: 800; color: #ffffff; font-size: 1.15rem;">1. 세종대왕 (한글 창제)</span>
                     <strong style="color: #fbbf24; font-size: 1.05rem;" id="demo-stat-1">🔒 가림</strong>
                   </div>
                   <div style="display: flex; justify-content: space-between; align-items: center; background: #1e293b; padding: 12px 16px; border-radius: 8px;">
-                    <span style="font-weight: 800; color: #1e293b;">2. 이순신 (한산도 대첩)</span>
+                    <span style="font-weight: 800; color: #ffffff; font-size: 1.15rem;">2. 이순신 (한산도 대첩)</span>
                     <strong style="color: #fbbf24; font-size: 1.05rem;" id="demo-stat-2">🔒 가림</strong>
                   </div>
                 </div>
@@ -1350,12 +1350,12 @@
         demoBox.innerHTML = `
           <div style="width: 100%; display: flex; flex-direction: column; gap: 8px;">
             <div style="display: flex; justify-content: space-between; align-items: center; background: #1e293b; padding: 6px 12px; border-radius: 6px;">
-              <span>1. 세종대왕</span>
+              <span style="color: #ffffff; font-weight: 800;">1. 세종대왕</span>
               <div style="flex:1; margin: 0 12px; background: #0f172a; height: 16px; border-radius: 8px; overflow: hidden;"><div style="width: 75%; height: 100%; background: #38bdf8;"></div></div>
               <span style="color: #38bdf8; font-weight: bold;">75% (15명)</span>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; background: #1e293b; padding: 6px 12px; border-radius: 6px;">
-              <span>2. 이순신</span>
+              <span style="color: #ffffff; font-weight: 800;">2. 이순신</span>
               <div style="flex:1; margin: 0 12px; background: #0f172a; height: 16px; border-radius: 8px; overflow: hidden;"><div style="width: 25%; height: 100%; background: #f59e0b;"></div></div>
               <span style="color: #f59e0b; font-weight: bold;">25% (5명)</span>
             </div>
@@ -1377,11 +1377,11 @@
         demoBox.innerHTML = `
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%;">
             <div style="background: #1e293b; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #38bdf8;">
-              <span style="font-weight: bold;">1. 세종대왕</span>
+              <span style="font-weight: 800; color: #ffffff; font-size: 1.1rem;">1. 세종대왕</span>
               <div style="color: #38bdf8; font-weight: bold; margin-top: 4px;">15명 (75%)</div>
             </div>
             <div style="background: #1e293b; padding: 12px; border-radius: 8px; text-align: center;">
-              <span style="font-weight: bold;">2. 이순신</span>
+              <span style="font-weight: 800; color: #ffffff; font-size: 1.1rem;">2. 이순신</span>
               <div style="color: #f59e0b; font-weight: bold; margin-top: 4px;">5명 (25%)</div>
             </div>
           </div>
@@ -2500,7 +2500,7 @@
           <div style="font-size: 1.6rem; color: #38bdf8; font-weight: bold; margin-bottom: 16px;">
             Q${qIndex + 1} / ${questions.length} 문제 카운트다운!
           </div>
-          <h1 style="font-size: 2.3rem; color: #1e293b; margin-bottom: 24px; max-width: 800px; line-height: 1.4; font-weight: 900;">
+          <h1 style="font-size: 2.3rem; color: #ffffff; margin-bottom: 24px; max-width: 800px; line-height: 1.4; font-weight: 900; text-shadow: 0 2px 10px rgba(0,0,0,0.6);">
             ${parseMath(currentQ.question || '')}
           </h1>
           <div class="countdown-badge-pulse" style="font-size: 8rem; font-weight: 900; color: #fbbf24; text-shadow: 0 0 40px rgba(251, 191, 36, 0.8); margin: 20px 0;">
@@ -3224,7 +3224,7 @@
     participants.sort((a, b) => (b.score || 0) - (a.score || 0));
 
     container.innerHTML = `
-      <div class="quiz-display-container" id="coin-race-lobby-card" style="padding: 36px 30px; max-width: 1080px; margin: 0 auto; text-align: center; background: #ffffff; border: 1.5px solid var(--border); border-radius: 24px; box-shadow: var(--shadow-lg);">
+      <div class="quiz-display-container" id="coin-race-lobby-card" style="padding: 36px 30px; max-width: 1080px; margin: 0 auto; text-align: center; background: #0f172a; border: 2px solid rgba(56, 189, 248, 0.3); border-radius: 24px; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7), 0 0 40px rgba(56, 189, 248, 0.15);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
           <h2 style="font-size: 2.2rem; background: ${isMarble ? 'linear-gradient(135deg, #0284c7, #2563eb)' : 'linear-gradient(135deg, #ea580c, #d97706)'}; -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 900; margin: 0;">
             ${isMarble ? '🔮 선착순 구슬 롤러코스터 대기실' : '🎰 선착순 코인 핑퐁 낙하 대기실'}
@@ -3242,13 +3242,13 @@
             const coins = getCoinAllocationForParticipant(p, idx, participants.length);
             const isFirst = idx === 0;
             return `
-              <div style="background: ${isFirst ? 'linear-gradient(180deg, #fffdf5 0%, #ffffff 100%)' : '#ffffff'}; border: ${isFirst ? '2px solid #f59e0b' : '1.5px solid var(--border)'}; border-radius: 18px; padding: 18px 14px; text-align: center; box-shadow: ${isFirst ? '0 10px 25px -4px rgba(245, 158, 11, 0.25), 0 4px 10px rgba(0,0,0,0.04)' : 'var(--shadow-sm)'}; transition: transform 0.2s ease;">
+              <div style="background: #1e293b; border: ${isFirst ? '2px solid #f59e0b' : '1.5px solid rgba(255, 255, 255, 0.12)'}; border-radius: 18px; padding: 18px 14px; text-align: center; box-shadow: ${isFirst ? '0 0 25px rgba(245, 158, 11, 0.35)' : '0 4px 14px rgba(0,0,0,0.4)'}; transition: transform 0.2s ease;">
                 <div style="display: flex; justify-content: center; margin-bottom: 10px;">${renderAvatarBadgeHtml(p.avatar || '🐶', 64)}</div>
-                <div style="font-size: 1.2rem; font-weight: 900; color: #1e293b; margin-bottom: 2px;">${escapeHtml(p.nickname)}</div>
-                <div style="font-size: 0.92rem; color: ${isFirst ? '#d97706' : '#7c5c46'}; font-weight: 700; margin-bottom: 12px;">${isStandalone ? '참가자' : `퀴즈 ${idx + 1}위 (${p.score || 0}점)`}</div>
-                <div style="background: ${isFirst ? '#fef3c7' : '#f8fafc'}; border: 1.5px solid ${isFirst ? '#fde68a' : '#e2e8f0'}; border-radius: 12px; padding: 8px; font-size: 1.25rem; font-weight: 900; color: ${isMarble ? '#0284c7' : '#b45309'}; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                <div style="font-size: 1.25rem; font-weight: 900; color: #ffffff; margin-bottom: 2px; text-shadow: 0 1px 3px rgba(0,0,0,0.5);">${escapeHtml(p.nickname)}</div>
+                <div style="font-size: 0.92rem; color: ${isFirst ? '#fbbf24' : '#38bdf8'}; font-weight: 700; margin-bottom: 12px;">${isStandalone ? '참가자' : `퀴즈 ${idx + 1}위 (${p.score || 0}점)`}</div>
+                <div style="background: #090d16; border: 1px solid ${isFirst ? '#f59e0b' : 'rgba(56, 189, 248, 0.4)'}; border-radius: 12px; padding: 8px; font-size: 1.25rem; font-weight: 900; color: ${isMarble ? '#38bdf8' : '#fbbf24'}; display: flex; align-items: center; justify-content: center; gap: 4px;">
                   <span>${isMarble ? '🔮'.repeat(coins) : '🪙'.repeat(coins)}</span>
-                  <span style="font-size: 0.95rem; color: #334155; margin-left: 4px;">(${coins}개)</span>
+                  <span style="font-size: 0.95rem; color: #e2e8f0; margin-left: 4px;">(${coins}개)</span>
                 </div>
               </div>
             `;
@@ -3315,18 +3315,18 @@
         </div>
 
         <div style="display: flex; gap: 16px; justify-content: center; align-items: flex-start; flex-wrap: wrap;">
-          <div style="position: relative; background: #ffffff; border: 2.5px solid #e2e8f0; border-radius: 20px; overflow: hidden; box-shadow: 0 16px 40px -8px rgba(0,0,0,0.1);">
-            <canvas id="coin-race-canvas" width="860" height="640" style="display: block; background: radial-gradient(circle at center, #f8fafc 0%, #edf2f7 100%); cursor: grab;"></canvas>
-            <button id="btn-reset-camera" class="btn btn-outline-sm" style="position: absolute; top: 12px; right: 12px; z-index: 10; background: #ffffff; border: 1.5px solid #f59e0b; color: #f59e0b; font-weight: 800; cursor: pointer; box-shadow: 0 4px 12px rgba(245, 158, 11, 0.15);">
+          <div style="position: relative; background: #090d16; border: 2.5px solid #f59e0b; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 30px rgba(245, 158, 11, 0.25);">
+            <canvas id="coin-race-canvas" width="860" height="640" style="display: block; background: radial-gradient(circle at center, #0f172a 0%, #020617 100%); cursor: grab;"></canvas>
+            <button id="btn-reset-camera" class="btn btn-outline-sm" style="position: absolute; top: 12px; right: 12px; z-index: 10; background: rgba(15, 23, 42, 0.88); border: 1.5px solid #f59e0b; color: #f59e0b; font-weight: 900; cursor: pointer; backdrop-filter: blur(4px); box-shadow: 0 0 14px rgba(245, 158, 11, 0.3);">
               🎥 1등 코인 자동 추적
             </button>
-            <div style="position: absolute; bottom: 12px; left: 12px; z-index: 10; background: rgba(255, 255, 255, 0.92); padding: 6px 14px; border-radius: 10px; font-size: 0.85rem; color: #64748b; font-weight: 700; border: 1px solid #e2e8f0; pointer-events: none; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+            <div style="position: absolute; bottom: 12px; left: 12px; z-index: 10; background: rgba(15, 23, 42, 0.85); padding: 6px 14px; border-radius: 10px; font-size: 0.85rem; color: #94a3b8; font-weight: 700; border: 1px solid rgba(255, 255, 255, 0.1); pointer-events: none;">
               💡 마우스 드래그 / 휠 스크롤로 트랙 위치 자율 조작 가능
             </div>
           </div>
 
-          <div style="width: 300px; background: #ffffff; border: 1.5px solid var(--border); border-radius: 20px; padding: 20px; min-height: 640px; display: flex; flex-direction: column; box-shadow: var(--shadow-md);">
-            <h3 style="font-size: 1.25rem; color: #ea580c; margin: 0 0 12px 0; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; text-align: center; font-weight: 900;">
+          <div style="width: 300px; background: #0f172a; border: 1.5px solid rgba(245, 158, 11, 0.3); border-radius: 20px; padding: 20px; min-height: 640px; display: flex; flex-direction: column; box-shadow: 0 20px 45px rgba(0, 0, 0, 0.6);">
+            <h3 style="font-size: 1.25rem; color: #fbbf24; margin: 0 0 12px 0; border-bottom: 2px solid rgba(245, 158, 11, 0.3); padding-bottom: 10px; text-align: center; font-weight: 900;">
               🚩 실시간 코인 도착 현황
             </h3>
             <div id="race-live-arrivals-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
@@ -4007,18 +4007,18 @@
         </div>
 
         <div style="display: flex; gap: 16px; justify-content: center; align-items: flex-start; flex-wrap: wrap;">
-          <div style="position: relative; background: #ffffff; border: 2.5px solid #e2e8f0; border-radius: 20px; overflow: hidden; box-shadow: 0 16px 40px -8px rgba(0,0,0,0.1);">
-            <canvas id="coin-race-canvas" width="860" height="640" style="display: block; background: radial-gradient(circle at center, #f8fafc 0%, #edf2f7 100%); cursor: grab;"></canvas>
-            <button id="btn-reset-camera" class="btn btn-outline-sm" style="position: absolute; top: 12px; right: 12px; z-index: 10; background: #ffffff; border: 1.5px solid #0284c7; color: #0284c7; font-weight: 800; cursor: pointer; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.15);">
+          <div style="position: relative; background: #090d16; border: 2.5px solid #38bdf8; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 30px rgba(56, 189, 248, 0.25);">
+            <canvas id="coin-race-canvas" width="860" height="640" style="display: block; background: radial-gradient(circle at center, #0f172a 0%, #020617 100%); cursor: grab;"></canvas>
+            <button id="btn-reset-camera" class="btn btn-outline-sm" style="position: absolute; top: 12px; right: 12px; z-index: 10; background: rgba(15, 23, 42, 0.88); border: 1.5px solid #38bdf8; color: #38bdf8; font-weight: 900; cursor: pointer; backdrop-filter: blur(4px); box-shadow: 0 0 14px rgba(56, 189, 248, 0.3);">
               🎥 1등 구슬 자동 추적
             </button>
-            <div style="position: absolute; bottom: 12px; left: 12px; z-index: 10; background: rgba(255, 255, 255, 0.92); padding: 6px 14px; border-radius: 10px; font-size: 0.85rem; color: #64748b; font-weight: 700; border: 1px solid #e2e8f0; pointer-events: none; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+            <div style="position: absolute; bottom: 12px; left: 12px; z-index: 10; background: rgba(15, 23, 42, 0.85); padding: 6px 14px; border-radius: 10px; font-size: 0.85rem; color: #94a3b8; font-weight: 700; border: 1px solid rgba(255, 255, 255, 0.1); pointer-events: none;">
               💡 마우스 드래그 / 휠 스크롤로 트랙 위치 자율 조작 가능
             </div>
           </div>
 
-          <div style="width: 300px; background: #ffffff; border: 1.5px solid var(--border); border-radius: 20px; padding: 20px; min-height: 640px; display: flex; flex-direction: column; box-shadow: var(--shadow-md);">
-            <h3 style="font-size: 1.25rem; color: #0284c7; margin: 0 0 12px 0; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; text-align: center; font-weight: 900;">
+          <div style="width: 300px; background: #0f172a; border: 1.5px solid rgba(56, 189, 248, 0.3); border-radius: 20px; padding: 20px; min-height: 640px; display: flex; flex-direction: column; box-shadow: 0 20px 45px rgba(0, 0, 0, 0.6);">
+            <h3 style="font-size: 1.25rem; color: #38bdf8; margin: 0 0 12px 0; border-bottom: 2px solid rgba(56, 189, 248, 0.3); padding-bottom: 10px; text-align: center; font-weight: 900;">
               🚩 실시간 구슬 도착 현황
             </h3>
             <div id="race-live-arrivals-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
@@ -4221,11 +4221,11 @@
         return;
       }
       listEl.innerHTML = arrivedParticipants.map((p, idx) => `
-        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-left: 5px solid ${idx === 0 ? '#f59e0b' : idx === 1 ? '#94a3b8' : idx === 2 ? '#b45309' : '#0284c7'}; border-radius: 12px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 6px rgba(0,0,0,0.03);">
+        <div style="background: #1e293b; border: 1px solid rgba(255, 255, 255, 0.1); border-left: 5px solid ${idx === 0 ? '#f59e0b' : idx === 1 ? '#94a3b8' : idx === 2 ? '#b45309' : '#38bdf8'}; border-radius: 12px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
           <div style="display: flex; align-items: center; gap: 10px;">
-            <span style="font-weight: 900; font-size: 1.05rem; color: ${idx === 0 ? '#d97706' : idx === 1 ? '#475569' : idx === 2 ? '#92400e' : '#0284c7'};">${idx === 0 ? '🥇 1위' : idx === 1 ? '🥈 2위' : idx === 2 ? '🥉 3위' : (idx + 1) + '위'}</span>
-            ${renderAvatarBadgeHtml(p.avatar || '🐶', 32)}
-            <span style="font-size: 1rem; font-weight: 800; color: #1e293b;">${escapeHtml(p.nickname)}</span>
+            <span style="font-weight: 900; font-size: 1.05rem; color: ${idx === 0 ? '#fbbf24' : idx === 1 ? '#cbd5e1' : idx === 2 ? '#f59e0b' : '#38bdf8'};">${idx === 0 ? '🥇 1위' : idx === 1 ? '🥈 2위' : idx === 2 ? '🥉 3위' : (idx + 1) + '위'}</span>
+            ${renderAvatarBadgeHtml(p.avatar || '🐶', 34)}
+            <span style="font-size: 1.05rem; font-weight: 900; color: #ffffff;">${escapeHtml(p.nickname)}</span>
           </div>
         </div>
       `).join('');
@@ -4679,11 +4679,11 @@
           if (canvasBox && !document.getElementById('race-finish-announcement-overlay')) {
             const overlay = document.createElement('div');
             overlay.id = 'race-finish-announcement-overlay';
-            overlay.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 100; background: rgba(255, 255, 255, 0.98); border: 2.5px solid #0284c7; border-radius: 24px; padding: 30px 36px; text-align: center; box-shadow: 0 20px 60px rgba(2, 132, 199, 0.25); width: 85%; max-width: 480px; backdrop-filter: blur(8px);';
+            overlay.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 100; background: rgba(15, 23, 42, 0.96); border: 2.5px solid #38bdf8; border-radius: 24px; padding: 30px 36px; text-align: center; box-shadow: 0 0 50px rgba(56, 189, 248, 0.6); width: 85%; max-width: 480px; backdrop-filter: blur(8px);';
             overlay.innerHTML = `
               <div style="font-size: 3.2rem; margin-bottom: 8px;">🔮</div>
-              <h2 style="font-size: 1.7rem; color: #0284c7; font-weight: 900; margin-bottom: 10px;">구슬 롤러코스터 전원 도착 완료!</h2>
-              <p style="color: #64748b; font-size: 1.05rem; margin-bottom: 24px; line-height: 1.6; font-weight: 600;">모든 구슬이 결승선을 통과했습니다.<br>버튼을 누르면 최종 순위와 명예의 전당을 공개합니다!</p>
+              <h2 style="font-size: 1.7rem; color: #38bdf8; font-weight: 900; margin-bottom: 10px;">구슬 롤러코스터 전원 도착 완료!</h2>
+              <p style="color: #cbd5e1; font-size: 1.05rem; margin-bottom: 24px; line-height: 1.6; font-weight: 600;">모든 구슬이 결승선을 통과했습니다.<br>버튼을 누르면 최종 순위와 명예의 전당을 공개합니다!</p>
               <button id="btn-trigger-race-results-now" class="btn btn-primary" style="font-size: 1.25rem; padding: 16px 30px; background: linear-gradient(135deg, #0284c7, #2563eb); border: none; font-weight: 900; box-shadow: 0 5px 0 #1d4ed8, 0 10px 24px rgba(2, 132, 199, 0.35); cursor: pointer; width: 100%; border-radius: 14px;">
                 🏆 최종 순위 발표 & 명예의 전당 보기
               </button>
@@ -4758,9 +4758,9 @@
           const px = m.x - pw / 2;
           const py = m.y - cameraY - m.radius - 16;
 
-          ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
           ctx.strokeStyle = '#38bdf8';
-          ctx.lineWidth = 1;
+          ctx.lineWidth = 1.2;
           ctx.beginPath();
           ctx.roundRect(px, py, pw, ph, 7);
           ctx.fill();
@@ -4829,7 +4829,7 @@
     }
 
     container.innerHTML = `
-      <div class="quiz-display-container" id="coin-race-result-card" style="padding: 36px 30px; max-width: 1000px; margin: 0 auto; text-align: center; background: #ffffff; border: 1.5px solid var(--border); border-radius: 24px; box-shadow: var(--shadow-lg);">
+      <div class="quiz-display-container" id="coin-race-result-card" style="padding: 36px 30px; max-width: 1000px; margin: 0 auto; text-align: center; background: #0f172a; border: 2px solid rgba(56, 189, 248, 0.3); border-radius: 24px; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7), 0 0 40px rgba(56, 189, 248, 0.15);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
           <h2 style="font-size: 2.2rem; background: linear-gradient(135deg, #ea580c, #d97706); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 900; margin: 0;">
             🏆 ${isMarble ? '선착순 구슬 롤러코스터' : '선착순 핑퐁 낙하'} 레이스 최종 명예의 전당!
@@ -4858,7 +4858,7 @@
           </div>
         </div>
 
-        <h3 style="font-size: 1.5rem; color: #ea580c; font-weight: 900; margin: 28px 0 14px 0;">전체 레이스 순위</h3>
+        <h3 style="font-size: 1.5rem; color: #38bdf8; font-weight: 900; margin: 28px 0 14px 0;">전체 레이스 순위</h3>
         <div style="max-width: 620px; margin: 0 auto 32px auto; display: flex; flex-direction: column; gap: 10px;">
           ${raceResults.map((r, idx) => `
             <div class="leaderboard-row ${idx === 0 ? 'rank-1' : ''}">
