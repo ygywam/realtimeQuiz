@@ -3184,11 +3184,9 @@
           `).join('')}
 
           <div style="display: flex; justify-content: center; gap: 14px; margin-top: 30px; flex-wrap: wrap;">
-            ${(roomData.meta?.enableCoinRace) ? `
-              <button class="btn btn-primary" id="btn-start-coin-race-setup" style="font-size: 1.15rem; padding: 14px 28px; background: linear-gradient(135deg, #f97316, #ea580c); border: none; font-weight: 900; box-shadow: 0 4px 0 #9a3412, 0 8px 20px rgba(234, 88, 12, 0.35);">
-                🎰 선착순 코인 핑퐁 레이스 시작!
-              </button>
-            ` : ''}
+            <button class="btn btn-primary" id="btn-start-coin-race-setup" style="font-size: 1.15rem; padding: 14px 28px; background: linear-gradient(135deg, #f97316, #ea580c); border: none; font-weight: 900; box-shadow: 0 4px 0 #9a3412, 0 8px 20px rgba(234, 88, 12, 0.35); cursor: pointer;">
+              ${roomData.meta?.raceType === 'marble' ? '🔮 선착순 구슬 롤러코스터 레이스 시작!' : '🎰 선착순 코인 핑퐁 레이스 시작!'}
+            </button>
             <button class="btn btn-success" id="btn-export-csv" style="font-size: 1.1rem; padding: 12px 22px;">📥 전체 결과 CSV 내보내기</button>
             <button class="btn btn-primary" id="btn-export-image" style="font-size: 1.1rem; padding: 12px 22px;">📸 결과 이미지 저장 (PNG)</button>
             <button class="btn btn-danger" id="btn-reset-finish-app" style="font-size: 1.1rem; padding: 12px 22px;">🏁 퀴즈 완료 & 방 초기화 (메인으로)</button>
@@ -3270,7 +3268,12 @@
           <h2 style="font-size: 2.2rem; background: ${isMarble ? 'linear-gradient(135deg, #0284c7, #2563eb)' : 'linear-gradient(135deg, #ea580c, #d97706)'}; -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 900; margin: 0;">
             ${isMarble ? '🔮 선착순 구슬 롤러코스터 대기실' : '🎰 선착순 코인 핑퐁 낙하 대기실'}
           </h2>
-          ${renderBgmVolumeControlHtml('coin-lobby')}
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <button type="button" id="btn-toggle-race-type" class="btn btn-outline-sm" style="font-weight: 900; font-size: 0.95rem; color: #38bdf8; border-color: #38bdf8; background: rgba(56, 189, 248, 0.15); cursor: pointer; padding: 8px 16px; border-radius: 10px;">
+              🔄 ${isMarble ? '🎰 핑퐁 낙하 모드로 전환' : '🔮 구슬 롤러코스터 모드로 전환'}
+            </button>
+            ${renderBgmVolumeControlHtml('coin-lobby')}
+          </div>
         </div>
 
         <p style="font-size: 1.15rem; color: var(--text-muted); margin-bottom: 32px; line-height: 1.6; font-weight: 600;">
@@ -3297,11 +3300,9 @@
         </div>
 
         <div style="display: flex; justify-content: center; gap: 16px; flex-wrap: wrap;">
-          ${isTeacherControl ? `
-            <button id="btn-start-coin-race-run" class="btn btn-primary" style="font-size: 1.35rem; padding: 16px 44px; background: linear-gradient(135deg, ${isMarble ? '#0284c7, #2563eb' : '#f97316, #ea580c'}); border: none; font-weight: 900; box-shadow: 0 6px 0 ${isMarble ? '#1d4ed8' : '#9a3412'}, 0 12px 28px ${isMarble ? 'rgba(2, 132, 199, 0.35)' : 'rgba(234, 88, 12, 0.35)'}; cursor: pointer;">
-              🚀 ${isMarble ? '구슬 레이스 출발!' : '낙하 레이스 출발!'} (3-2-1 카운트다운)
-            </button>
-          ` : `<div style="font-size: 1.25rem; color: var(--primary); font-weight: 800; background: #fff7ed; padding: 14px 28px; border-radius: 14px; border: 1.5px solid #ffedd5;">선생님이 출발 버튼을 누르면 레이스가 시작됩니다!</div>`}
+          <button id="btn-start-coin-race-run" class="btn btn-primary" style="font-size: 1.35rem; padding: 16px 44px; background: linear-gradient(135deg, ${isMarble ? '#0284c7, #2563eb' : '#f97316, #ea580c'}); border: none; font-weight: 900; box-shadow: 0 6px 0 ${isMarble ? '#1d4ed8' : '#9a3412'}, 0 12px 28px ${isMarble ? 'rgba(2, 132, 199, 0.35)' : 'rgba(234, 88, 12, 0.35)'}; cursor: pointer;">
+            🚀 ${isMarble ? '구슬 레이스 출발!' : '낙하 레이스 출발!'} (3-2-1 카운트다운)
+          </button>
           <button id="btn-back-to-finished" class="btn btn-secondary" style="font-size: 1.1rem; padding: 14px 28px;">
             ${isStandalone ? '🏠 대시보드 메인으로 돌아가기' : '🔙 퀴즈 시상식 결과로 돌아가기'}
           </button>
@@ -3310,6 +3311,10 @@
     `;
 
     bindBgmVolumeControlEvents(container);
+
+    document.getElementById('btn-toggle-race-type')?.addEventListener('click', async () => {
+      await updateRoomMeta(state.roomId, { raceType: isMarble ? 'pinball' : 'marble' });
+    });
 
     document.getElementById('btn-start-coin-race-run')?.addEventListener('click', async () => {
       await updateRoomMeta(state.roomId, { status: 'COIN_RACE_RUNNING', raceStartTime: Date.now() });
@@ -3347,11 +3352,9 @@
           </h2>
           <div style="display: flex; gap: 10px; align-items: center;">
             ${renderBgmVolumeControlHtml('coin-run')}
-            ${isTeacherControl ? `
-              <button id="btn-force-finish-coin-race" class="btn btn-primary" style="background: linear-gradient(135deg, #10b981, #059669); border: none; font-weight: bold;">
-                🏆 레이스 결과 발표
-              </button>
-            ` : ''}
+            <button id="btn-force-finish-coin-race" class="btn btn-primary" style="background: linear-gradient(135deg, #10b981, #059669); border: none; font-weight: bold; cursor: pointer;">
+              🏆 레이스 결과 발표
+            </button>
           </div>
         </div>
 
@@ -3941,11 +3944,9 @@
               <div style="font-size: 3rem; margin-bottom: 6px;">🏁</div>
               <h2 style="font-size: 1.6rem; color: #fbbf24; font-weight: 900; margin-bottom: 10px;">전원 결승선 도착 완료!</h2>
               <p style="color: #cbd5e1; font-size: 1rem; margin-bottom: 20px; line-height: 1.5;">모든 코인이 경주를 마쳤습니다.<br>버튼을 누르면 최종 순위를 공개합니다!</p>
-              ${isTeacherControl ? `
-                <button id="btn-trigger-race-results-now" class="btn btn-primary" style="font-size: 1.25rem; padding: 14px 28px; background: linear-gradient(135deg, #f59e0b, #ec4899); border: none; font-weight: 900; box-shadow: 0 4px 18px rgba(245, 158, 11, 0.6); cursor: pointer; width: 100%;">
-                  🏆 최종 순위 발표 & 명예의 전당 보기
-                </button>
-              ` : `<div style="font-size: 1.1rem; color: #38bdf8; font-weight: bold;">선생님이 순위를 발표할 때까지 잠시 기다려 주세요!</div>`}
+              <button id="btn-trigger-race-results-now" class="btn btn-primary" style="font-size: 1.25rem; padding: 14px 28px; background: linear-gradient(135deg, #f59e0b, #ec4899); border: none; font-weight: 900; box-shadow: 0 4px 18px rgba(245, 158, 11, 0.6); cursor: pointer; width: 100%;">
+                🏆 최종 순위 발표 & 명예의 전당 보기
+              </button>
             `;
             canvasBox.appendChild(overlay);
 
@@ -4914,14 +4915,12 @@
         </div>
 
         <div style="display: flex; justify-content: center; gap: 16px; flex-wrap: wrap;">
-          ${isTeacherControl ? `
-            <button id="btn-replay-coin-race" class="btn btn-primary" style="font-size: 1.15rem; padding: 14px 28px; background: linear-gradient(135deg, #f97316, #ea580c); border: none; font-weight: 900; box-shadow: 0 4px 0 #9a3412, 0 8px 20px rgba(234, 88, 12, 0.35);">
-              🔄 레이스 재경기 (대기실로)
-            </button>
-            <button id="btn-finish-race-to-lobby" class="btn btn-danger" style="font-size: 1.15rem; padding: 14px 28px; box-shadow: 0 4px 0 #991b1b;">
-              ${isStandalone ? '🏠 선착순 게임 마감 & 메인으로' : '🏁 퀴즈 완료 및 대기실로 방 초기화'}
-            </button>
-          ` : ''}
+          <button id="btn-replay-coin-race" class="btn btn-primary" style="font-size: 1.15rem; padding: 14px 28px; background: linear-gradient(135deg, #f97316, #ea580c); border: none; font-weight: 900; box-shadow: 0 4px 0 #9a3412, 0 8px 20px rgba(234, 88, 12, 0.35); cursor: pointer;">
+            🔄 레이스 재경기 (대기실로)
+          </button>
+          <button id="btn-finish-race-to-lobby" class="btn btn-danger" style="font-size: 1.15rem; padding: 14px 28px; box-shadow: 0 4px 0 #991b1b; cursor: pointer;">
+            ${isStandalone ? '🏠 선착순 게임 마감 & 메인으로' : '🏁 퀴즈 완료 및 대기실로 방 초기화'}
+          </button>
           ${isStandalone ? `
             <button id="btn-exit-standalone-main" class="btn btn-secondary" style="font-size: 1.1rem; padding: 12px 20px;">
               🏠 메인 화면으로 이동
