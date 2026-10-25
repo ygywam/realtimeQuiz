@@ -486,6 +486,9 @@
       title: (roomMeta.title !== undefined && roomMeta.title !== null && roomMeta.title !== '') 
         ? roomMeta.title 
         : (existing?.title || '실시간 수업 퀴즈'),
+      adminPassword: roomMeta.adminPassword !== undefined 
+        ? roomMeta.adminPassword 
+        : (existing?.adminPassword || ''),
       questionCount: typeof roomMeta.questionCount === 'number' 
         ? roomMeta.questionCount 
         : (existing?.questionCount || 0),
@@ -1103,11 +1106,16 @@
 
         <!-- 이 기기 전용 내가 생성한 퀴즈 방 목록 (3일 후 자동 정제) -->
         <div style="margin-top: 36px; text-align: left; background: var(--card-dark); border: 1px solid var(--border); border-radius: 16px; padding: 24px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
             <h2 style="font-size: 1.3rem; color: #38bdf8; display: flex; align-items: center; gap: 8px; margin: 0;">
               📁 내가 생성한 퀴즈 방 목록 <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: normal;">(이 기기 전용 / 3일 지나면 자동 정리)</span>
             </h2>
-            <span style="font-size: 0.9rem; color: #fbbf24; font-weight: bold;">보관: ${localRooms.length}개</span>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <button type="button" id="btn-import-remote-room" class="btn btn-outline-sm" style="font-size: 0.85rem; padding: 6px 14px; color: #38bdf8; border-color: #38bdf8; background: rgba(56, 189, 248, 0.12); cursor: pointer; font-weight: bold; border-radius: 8px;">
+                🔑 다른 기기 퀴즈 방 가져오기 (PIN 등록)
+              </button>
+              <span style="font-size: 0.9rem; color: #fbbf24; font-weight: bold;">보관: ${localRooms.length}개</span>
+            </div>
           </div>
 
           ${localRooms.length === 0 ? `
@@ -1499,6 +1507,55 @@
         }
       });
     });
+
+    document.getElementById('btn-import-remote-room')?.addEventListener('click', async () => {
+      const pin = prompt('가져올 퀴즈 방의 6자리 PIN 번호를 입력하세요:');
+      if (pin === null) return;
+      const cleanPin = pin.trim();
+      if (cleanPin.length !== 6) {
+        alert('올바른 6자리 PIN 번호를 입력해 주세요.');
+        return;
+      }
+
+      let roomData = null;
+      if (db) {
+        try {
+          const snap = await db.ref(`rooms/${cleanPin}`).once('value');
+          roomData = snap.val();
+        } catch (e) {}
+      }
+      if (!roomData) {
+        roomData = await fetchFirebaseRest(`rooms/${cleanPin}`);
+      }
+
+      if (!roomData || !roomData.meta) {
+        alert(`❌ PIN [${cleanPin}] 퀴즈 방을 찾을 수 없습니다.\nPIN 번호를 다시 확인해 주세요.`);
+        return;
+      }
+
+      const meta = roomData.meta;
+      const savedPass = meta.adminPassword;
+      if (savedPass && savedPass.trim() !== '') {
+        const inputPass = prompt(`🔒 관리자 비밀번호 확인\n\n[${meta.title || '퀴즈 방'}]의 관리자 비밀번호를 입력해 주세요:`);
+        if (inputPass === null) return;
+        if (inputPass.trim() !== String(savedPass).trim()) {
+          alert('❌ 관리자 비밀번호가 일치하지 않습니다.');
+          return;
+        }
+      }
+
+      saveMyLocalQuizRoom({
+        roomId: cleanPin,
+        title: meta.title || '실시간 수업 퀴즈',
+        adminPassword: savedPass || '',
+        questionCount: (roomData.questions || []).length,
+        keepPermanent: meta.keepPermanent || false,
+        enableCoinRace: meta.enableCoinRace || false
+      });
+
+      alert(`✅ [${meta.title || cleanPin}] 퀴즈 방이 성공적으로 등록되었습니다!\n이제 이 기기의 목록에서 바로 교사 진행 및 문항 편집을 하실 수 있습니다.`);
+      renderHomeView(app);
+    });
   }
 
   async function handleCreateRoom() {
@@ -1567,7 +1624,7 @@
             ${!isTeacherControl ? '<span style="margin-left: 12px; color: #38bdf8; font-weight: bold;">[전자칠판 디스플레이 모드]</span>' : ''}
           </div>
           <div style="display: flex; gap: 12px;">
-            ${isTeacherControl ? '<button class="btn btn-secondary" id="btn-open-edit">📝 문제 출제 / 편집 (' + questions.length + '개)</button>' : ''}
+            <button class="btn btn-secondary" id="btn-open-edit">📝 문제 출제 / 편집 (${questions.length}개)</button>
             <button class="btn btn-primary" id="btn-start-quiz" style="font-size: 1.25rem; padding: 14px 32px;">🚀 퀴즈 시작</button>
           </div>
         </div>
@@ -1640,11 +1697,36 @@
 
     bindBgmVolumeControlEvents(app);
 
-    document.getElementById('btn-open-edit')?.addEventListener('click', () => {
+    document.getElementById('btn-open-edit')?.addEventListener('click', async () => {
       if (!isRoomCreatorLocal(state.roomId)) {
-        alert('🔒 문제 편집 권한 안내\n\n이 퀴즈 방은 다른 컴퓨터/기기에서 작성된 방입니다.\n문제 수정 및 삭제는 처음 이 퀴즈를 출제하신 교사 PC(로컬)에서만 가능하며, 본 컴퓨터에서는 퀴즈 진행 및 송출만 실행하실 수 있습니다.');
-        return;
+        const roomMeta = state.roomData?.meta || {};
+        const savedPass = roomMeta.adminPassword;
+        if (savedPass && savedPass.trim() !== '') {
+          const inputPass = prompt('🔒 관리자 비밀번호 입력\n\n이 퀴즈 방은 다른 기기에서 생성되었습니다.\n본 기기에서 문제를 편집하시려면 설정된 관리자 비밀번호를 입력해 주세요:');
+          if (inputPass === null) return;
+          if (inputPass.trim() !== String(savedPass).trim()) {
+            alert('❌ 관리자 비밀번호가 일치하지 않습니다.');
+            return;
+          }
+        } else {
+          const setPass = prompt('🔒 관리자 인증 및 비밀번호 설정\n\n이 퀴즈 방은 다른 기기에서 생성되었으며 관리자 비밀번호가 아직 설정되지 않았습니다.\n본 기기 및 향후 타 기기 편집 시 사용할 새 관리자 비밀번호를 입력해 주세요:');
+          if (setPass === null || setPass.trim() === '') return;
+          const cleanPass = setPass.trim();
+          await updateRoomMeta(state.roomId, { adminPassword: cleanPass });
+          if (state.roomData?.meta) state.roomData.meta.adminPassword = cleanPass;
+        }
+
+        saveMyLocalQuizRoom({
+          roomId: state.roomId,
+          title: state.roomData?.meta?.title || '실시간 수업 퀴즈',
+          adminPassword: state.roomData?.meta?.adminPassword || '',
+          questionCount: (state.roomData?.questions || []).length,
+          keepPermanent: state.roomData?.meta?.keepPermanent || false,
+          enableCoinRace: state.roomData?.meta?.enableCoinRace || false
+        });
+        alert('✅ 관리자 인증이 완료되었습니다!\n이제 본 기기에서도 자유롭게 문제를 편집하고 저장하실 수 있습니다.');
       }
+
       renderTeacherAdminModal(state.roomId, state.roomData?.questions, (savedMeta) => {
         if (savedMeta) {
           saveMyLocalQuizRoom({ roomId: state.roomId, ...savedMeta });
@@ -1817,6 +1899,7 @@
     const localRoom = localRooms.find(r => r.roomId === roomId) || {};
     const roomMeta = state.roomData?.meta || initialMeta || localRoom || {};
     const currentTitle = roomMeta.title || localRoom.title || '실시간 수업 퀴즈';
+    const currentPassword = roomMeta.adminPassword || localRoom.adminPassword || '';
     const isEnableCoinRace = typeof roomMeta.enableCoinRace === 'boolean' 
       ? roomMeta.enableCoinRace 
       : (typeof localRoom.enableCoinRace === 'boolean' ? localRoom.enableCoinRace : false);
@@ -1834,17 +1917,23 @@
               <span style="color: var(--text-muted);">방 PIN: <strong>${roomId}</strong></span>
             </div>
           </div>
-          <div style="margin-bottom: 16px; background: #0f172a; padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-            <div style="flex: 1; min-width: 260px;">
-              <label style="font-weight: bold; font-size: 0.9rem; color: #38bdf8;">🏷️ 퀴즈 방 제목/이름:</label>
-              <input type="text" id="input-admin-room-title" value="${escapeHtml(currentTitle)}" placeholder="퀴즈 방 제목을 입력하세요" style="width: 100%; margin-top: 4px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: #fff; font-weight: bold; font-size: 1rem;">
+          <div style="margin-bottom: 16px; background: #0f172a; padding: 14px 16px; border-radius: 10px; border: 1px solid var(--border); display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; gap: 14px; flex-wrap: wrap;">
+              <div style="flex: 2; min-width: 250px;">
+                <label style="font-weight: bold; font-size: 0.9rem; color: #38bdf8;">🏷️ 퀴즈 방 제목/이름:</label>
+                <input type="text" id="input-admin-room-title" value="${escapeHtml(currentTitle)}" placeholder="퀴즈 방 제목을 입력하세요" style="width: 100%; margin-top: 5px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: #fff; font-weight: bold; font-size: 0.95rem;">
+              </div>
+              <div style="flex: 1.2; min-width: 200px;">
+                <label style="font-weight: bold; font-size: 0.9rem; color: #c084fc;">🔑 관리자 비밀번호 (타 기기 수정/가져오기용):</label>
+                <input type="text" id="input-admin-password" value="${escapeHtml(currentPassword)}" placeholder="비밀번호 설정 (미설정 시 타 기기에서 설정 가능)" style="width: 100%; margin-top: 5px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: #f3e8ff; font-weight: bold; font-size: 0.95rem;">
+              </div>
             </div>
-            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px;">
-              <label style="font-weight: bold; font-size: 0.9rem; color: #f59e0b; cursor: pointer; display: flex; align-items: center; gap: 6px; background: rgba(245, 158, 11, 0.12); padding: 8px 12px; border-radius: 8px; border: 1px solid #f59e0b;">
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 4px; border-top: 1px dashed rgba(255,255,255,0.08);">
+              <label style="font-weight: bold; font-size: 0.88rem; color: #f59e0b; cursor: pointer; display: flex; align-items: center; gap: 6px; background: rgba(245, 158, 11, 0.12); padding: 7px 12px; border-radius: 8px; border: 1px solid #f59e0b;">
                 <input type="checkbox" id="input-admin-enable-coin-race" ${isEnableCoinRace ? 'checked' : ''}>
                 🎰 최종 선착순 핑퐁 낙하 레이스 포함
               </label>
-              <label style="font-weight: bold; font-size: 0.9rem; color: #38bdf8; cursor: pointer; display: flex; align-items: center; gap: 6px; background: rgba(56, 189, 248, 0.12); padding: 8px 12px; border-radius: 8px; border: 1px solid #38bdf8;">
+              <label style="font-weight: bold; font-size: 0.88rem; color: #38bdf8; cursor: pointer; display: flex; align-items: center; gap: 6px; background: rgba(56, 189, 248, 0.12); padding: 7px 12px; border-radius: 8px; border: 1px solid #38bdf8;">
                 <input type="checkbox" id="input-admin-keep-permanent" ${isKeepPermanent ? 'checked' : ''}>
                 📌 3일 후 자동 삭제 방지 (영구 보존)
               </label>
@@ -2128,15 +2217,18 @@
     });
     document.getElementById('btn-save-questions').addEventListener('click', async () => {
       const newTitleInput = document.getElementById('input-admin-room-title');
+      const newPasswordInput = document.getElementById('input-admin-password');
       const enableCoinRaceCb = document.getElementById('input-admin-enable-coin-race');
       const enableCoinRace = enableCoinRaceCb ? enableCoinRaceCb.checked : false;
       const keepPermanentCb = document.getElementById('input-admin-keep-permanent');
       const keepPermanent = keepPermanentCb ? keepPermanentCb.checked : false;
 
       const title = newTitleInput ? (newTitleInput.value.trim() || currentTitle || '실시간 수업 퀴즈') : (currentTitle || '실시간 수업 퀴즈');
+      const adminPassword = newPasswordInput ? newPasswordInput.value.trim() : currentPassword;
 
       const savedMeta = {
         title,
+        adminPassword,
         enableCoinRace,
         keepPermanent,
         questionCount: questions.length
@@ -2150,7 +2242,7 @@
         state.roomData.meta = { ...(state.roomData.meta || {}), ...savedMeta };
         state.roomData.questions = questions;
       }
-      await updateRoomMeta(roomId, { title, enableCoinRace, keepPermanent });
+      await updateRoomMeta(roomId, { title, adminPassword, enableCoinRace, keepPermanent });
       await updateQuestions(roomId, questions);
 
       document.getElementById('admin-modal').remove();
