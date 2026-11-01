@@ -2,9 +2,9 @@ import defaultQuestions from '../data/defaultQuiz.js';
 import { updateQuestions } from '../engine/firebase.js';
 
 export function renderTeacherAdminModal(roomId, currentQuestions, onSaveCallback) {
-  let questions = currentQuestions && currentQuestions.length > 0 
+  let questions = Array.isArray(currentQuestions) 
     ? JSON.parse(JSON.stringify(currentQuestions)) 
-    : JSON.parse(JSON.stringify(defaultQuestions));
+    : [];
 
   const modalHtml = `
     <div id="admin-modal" class="modal-overlay">
@@ -21,7 +21,7 @@ export function renderTeacherAdminModal(roomId, currentQuestions, onSaveCallback
         <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; background: #0f172a; padding: 16px; border-radius: 12px;">
           <span style="width: 100%; font-weight: bold; margin-bottom: 4px;">+ 새 문항 유형 선택 추가:</span>
           <button class="btn btn-outline-sm" id="btn-add-ox">+ O/X 참거짓</button>
-          <button class="btn btn-outline-sm" id="btn-add-choice">+ 4지선다형</button>
+          <button class="btn btn-outline-sm" id="btn-add-choice">+ 선다형 (2~5지선다)</button>
           <button class="btn btn-outline-sm" id="btn-add-short">+ 단답형</button>
           <button class="btn btn-outline-sm" id="btn-add-wordcloud">+ 워드클라우드</button>
           <button class="btn btn-outline-sm" id="btn-add-postit">+ 포스트잇 브레인스토밍</button>
@@ -40,6 +40,14 @@ export function renderTeacherAdminModal(roomId, currentQuestions, onSaveCallback
   const container = document.getElementById('question-list-editor');
 
   function renderEditorList() {
+    if (questions.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; color: var(--text-muted); padding: 50px 20px; font-size: 1.1rem; background: #0f172a; border-radius: 12px; border: 1px dashed var(--border);">
+          📝 아직 작성된 문항이 없습니다.<br><br>아래의 <strong>[+ 새 문항 유형 선택 추가]</strong> 버튼을 눌러 첫 문제를 출제해 주세요!
+        </div>
+      `;
+      return;
+    }
     container.innerHTML = questions.map((q, idx) => `
       <div style="background: #0f172a; border: 1px solid var(--border); padding: 20px; border-radius: 12px; margin-bottom: 14px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
@@ -97,7 +105,30 @@ export function renderTeacherAdminModal(roomId, currentQuestions, onSaveCallback
       });
     });
 
-    // 보기 텍스트 및 정답 선택 이벤트
+    container.querySelectorAll('.btn-add-option').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const qIdx = Number(e.currentTarget.dataset.qidx);
+        if (questions[qIdx].options.length < 5) {
+          questions[qIdx].options.push(`보기 ${questions[qIdx].options.length + 1}`);
+          renderEditorList();
+        }
+      });
+    });
+
+    container.querySelectorAll('.btn-del-option').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const qIdx = Number(e.currentTarget.dataset.qidx);
+        const optIdx = Number(e.currentTarget.dataset.optidx);
+        if (questions[qIdx].options.length > 2) {
+          questions[qIdx].options.splice(optIdx, 1);
+          if (questions[qIdx].correctAnswer >= questions[qIdx].options.length) {
+            questions[qIdx].correctAnswer = 0;
+          }
+          renderEditorList();
+        }
+      });
+    });
+
     container.querySelectorAll('.opt-text-input').forEach(input => {
       input.addEventListener('input', (e) => {
         const qIdx = Number(e.target.dataset.qidx);
@@ -123,7 +154,6 @@ export function renderTeacherAdminModal(roomId, currentQuestions, onSaveCallback
 
   renderEditorList();
 
-  // 문항 추가 버튼 이벤트
   document.getElementById('btn-add-ox').addEventListener('click', () => {
     questions.push({
       id: 'q_' + Date.now(),
@@ -141,8 +171,8 @@ export function renderTeacherAdminModal(roomId, currentQuestions, onSaveCallback
     questions.push({
       id: 'q_' + Date.now(),
       type: 'choice',
-      question: '신규 4지선다 질문입니다.',
-      options: ['보기 1', '보기 2', '보기 3', '보기 4'],
+      question: '신규 선다형 질문입니다.',
+      options: ['보기 1', '보기 2'],
       correctAnswer: 0,
       timeLimit: 20,
       isDoublePoints: false
@@ -198,7 +228,7 @@ export function renderTeacherAdminModal(roomId, currentQuestions, onSaveCallback
 function getQuestionTypeLabel(type) {
   switch(type) {
     case 'ox': return 'O/X 참거짓';
-    case 'choice': return '4지선다';
+    case 'choice': return '선다형';
     case 'short': return '단답형';
     case 'wordcloud': return '워드클라우드';
     case 'postit': return '포스트잇';
@@ -208,14 +238,25 @@ function getQuestionTypeLabel(type) {
 
 function renderTypeSpecificEditor(q, idx) {
   if (q.type === 'ox' || q.type === 'choice') {
+    const isChoice = q.type === 'choice';
     return `
-      <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px;">보기 수정 및 정답 선택 (라디오 버튼 클릭):</div>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <div style="font-size: 0.9rem; color: var(--text-muted);">보기 수정 및 정답 선택 (라디오 버튼 클릭):</div>
+        ${isChoice ? `
+          <div style="display: flex; gap: 8px;">
+            ${q.options.length < 5 ? `<button type="button" class="btn btn-outline-sm btn-add-option" data-qidx="${idx}" style="padding: 4px 10px; font-size: 0.8rem;">+ 보기 추가</button>` : ''}
+          </div>
+        ` : ''}
+      </div>
       <div style="display: flex; flex-direction: column; gap: 8px;">
         ${q.options.map((opt, optIdx) => `
           <div style="display: flex; align-items: center; gap: 10px;">
             <input type="radio" class="correct-radio" name="correct_${idx}" data-qidx="${idx}" value="${optIdx}" ${q.correctAnswer == optIdx ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
             <span style="font-weight: bold; min-width: 24px;">${optIdx + 1}.</span>
-            <input type="text" class="opt-text-input" data-qidx="${idx}" data-optidx="${optIdx}" value="${escapeHtml(opt)}" placeholder="보기 내용 입력" style="flex: 1; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: #fff;">
+            <input type="text" class="opt-text-input" data-qidx="${idx}" data-optidx="${optIdx}" value="${escapeHtml(opt)}" placeholder="보기 내용 입력 (비워두면 자동 제외)" style="flex: 1; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: #fff;">
+            ${isChoice && q.options.length > 2 ? `
+              <button type="button" class="btn btn-danger btn-del-option" data-qidx="${idx}" data-optidx="${optIdx}" style="padding: 4px 8px; font-size: 0.8rem;">❌</button>
+            ` : ''}
           </div>
         `).join('')}
       </div>

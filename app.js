@@ -608,7 +608,27 @@
     return true;
   }
 
+  function getLocalRoom(roomId) {
+    if (!roomId) return null;
+    try {
+      const raw = localStorage.getItem(`demo_room_${roomId}`);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return null;
+  }
+
+  function saveLocalRoom(roomId, data) {
+    if (!roomId || !data) return;
+    try {
+      localStorage.setItem(`demo_room_${roomId}`, JSON.stringify(data));
+      broadcastChannel?.postMessage({ type: 'ROOM_UPDATED', roomId, data });
+    } catch (e) {
+      console.warn('Local room save error:', e);
+    }
+  }
+
   async function createRoom(roomId, initialData) {
+    saveLocalRoom(roomId, initialData);
     if (db) {
       try {
         await db.ref(`rooms/${roomId}`).set(initialData);
@@ -619,13 +639,41 @@
     } else {
       await putFirebaseRest(`rooms/${roomId}`, initialData);
     }
-    localStorage.setItem(`demo_room_${roomId}`, JSON.stringify(initialData));
-    broadcastChannel?.postMessage({ type: 'ROOM_UPDATED', roomId, data: initialData });
   }
 
   function subscribeRoom(roomId, callback) {
     let unsubscribed = false;
     let hasData = false;
+
+    // 0. 로컬 스토리지 데이터 즉시 우선 송출 (0ms 초고속 렌더링)
+    const localInit = getLocalRoom(roomId);
+    if (localInit) {
+      hasData = true;
+      callback(localInit);
+    }
+
+    // BroadcastChannel 실시간 메시지 수신 (창/탭 간 0ms 통신)
+    const handleBroadcast = (event) => {
+      if (unsubscribed) return;
+      if (event.data?.type === 'ROOM_UPDATED' && event.data?.roomId === roomId && event.data?.data) {
+        hasData = true;
+        callback(event.data.data);
+      }
+    };
+    broadcastChannel?.addEventListener('message', handleBroadcast);
+
+    // 다른 탭의 localStorage 변경 감지 (storage event)
+    const handleStorage = (event) => {
+      if (unsubscribed) return;
+      if (event.key === `demo_room_${roomId}` && event.newValue) {
+        try {
+          const parsed = JSON.parse(event.newValue);
+          hasData = true;
+          callback(parsed);
+        } catch (e) {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
 
     // 1. Firebase SDK WebSocket 구독
     if (db) {
@@ -636,6 +684,7 @@
           const val = snapshot.val();
           if (val !== null) {
             hasData = true;
+            saveLocalRoom(roomId, val);
             callback(val);
           }
         };
@@ -645,30 +694,34 @@
       }
     }
 
-    // 2. REST API 즉시 조회 (초기 로딩 및 모바일 Safari/네이버 지연 완벽 방어)
+    // 2. REST API 즉시 조회
     fetchFirebaseRest(`rooms/${roomId}`).then(data => {
       if (!unsubscribed && data) {
         hasData = true;
+        saveLocalRoom(roomId, data);
         callback(data);
       }
     });
 
-    // 3. REST API 백업 주기적 폴링 (1.5초) - 네트워크 제약 환경 최후 보증
+    // 3. REST API 백업 주기적 폴링 (1.5초) - 네트워크/클라우드 장애 시 로컬 데이터 자동 유지
     const intervalId = setInterval(async () => {
       if (unsubscribed) return;
       const data = await fetchFirebaseRest(`rooms/${roomId}`);
       if (!unsubscribed && data) {
         hasData = true;
+        saveLocalRoom(roomId, data);
         callback(data);
-      } else if (!unsubscribed && !hasData) {
-        const raw = localStorage.getItem(`demo_room_${roomId}`);
-        if (raw) callback(JSON.parse(raw));
+      } else if (!unsubscribed) {
+        const raw = getLocalRoom(roomId);
+        if (raw) callback(raw);
       }
     }, 1500);
 
     return () => {
       unsubscribed = true;
       clearInterval(intervalId);
+      broadcastChannel?.removeEventListener('message', handleBroadcast);
+      window.removeEventListener('storage', handleStorage);
       if (db) {
         try { db.ref(`rooms/${roomId}`).off(); } catch (e) {}
       }
@@ -677,6 +730,18 @@
 
   async function joinParticipant(roomId, studentId, nickname, avatar = '🐶') {
     const pData = { nickname, avatar, joinedAt: Date.now(), score: 0 };
+    
+    // 로컬 즉시 동기화
+    const current = getLocalRoom(roomId) || { meta: {}, questions: [], participants: {}, responses: {} };
+    if (!current.participants) current.participants = {};
+    current.participants[studentId] = pData;
+    saveLocalRoom(roomId, current);
+
+    if (state.roomId === roomId && state.roomData) {
+      if (!state.roomData.participants) state.roomData.participants = {};
+      state.roomData.participants[studentId] = pData;
+    }
+
     if (db) {
       try {
         await db.ref(`rooms/${roomId}/participants/${studentId}`).set(pData);
@@ -689,6 +754,17 @@
   }
 
   async function updateRoomMeta(roomId, partialMeta) {
+    // 1. 로컬 룸 데이터 즉시 병합 및 저장
+    const current = getLocalRoom(roomId) || { meta: {}, questions: [], participants: {}, responses: {} };
+    current.meta = { ...(current.meta || {}), ...partialMeta };
+    saveLocalRoom(roomId, current);
+
+    // 2. 인메모리 state 즉시 반영
+    if (state.roomId === roomId && state.roomData) {
+      state.roomData.meta = { ...(state.roomData.meta || {}), ...partialMeta };
+    }
+
+    // 3. Firebase 동기화
     if (db) {
       try {
         await db.ref(`rooms/${roomId}/meta`).update(partialMeta);
@@ -701,6 +777,23 @@
   }
 
   async function updateQuestions(roomId, questions) {
+    // 1. 로컬 룸 데이터 즉시 저장
+    const current = getLocalRoom(roomId) || { meta: {}, questions: [], participants: {}, responses: {} };
+    current.questions = questions;
+    if (!current.meta) current.meta = {};
+    current.meta.questionCount = questions.length;
+    saveLocalRoom(roomId, current);
+
+    // 2. 내 퀴즈 보관함 목록의 questionCount도 즉시 안전 갱신
+    saveMyLocalQuizRoom({ roomId, questionCount: questions.length });
+
+    // 3. 인메모리 state 즉시 반영
+    if (state.roomId === roomId && state.roomData) {
+      state.roomData.questions = questions;
+      if (state.roomData.meta) state.roomData.meta.questionCount = questions.length;
+    }
+
+    // 4. Firebase 동기화
     if (db) {
       try {
         await db.ref(`rooms/${roomId}/questions`).set(questions);
@@ -714,6 +807,20 @@
 
   async function submitResponse(roomId, qIndex, studentId, responseData) {
     const resData = { ...responseData, submittedAt: Date.now() };
+
+    // 로컬 즉시 동기화
+    const current = getLocalRoom(roomId) || { meta: {}, questions: [], participants: {}, responses: {} };
+    if (!current.responses) current.responses = {};
+    if (!current.responses[qIndex]) current.responses[qIndex] = {};
+    current.responses[qIndex][studentId] = resData;
+    saveLocalRoom(roomId, current);
+
+    if (state.roomId === roomId && state.roomData) {
+      if (!state.roomData.responses) state.roomData.responses = {};
+      if (!state.roomData.responses[qIndex]) state.roomData.responses[qIndex] = {};
+      state.roomData.responses[qIndex][studentId] = resData;
+    }
+
     if (db) {
       try {
         await db.ref(`rooms/${roomId}/responses/${qIndex}/${studentId}`).set(resData);
@@ -726,6 +833,19 @@
   }
 
   async function updateParticipantScores(roomId, scoresMap) {
+    // 로컬 즉시 동기화
+    const current = getLocalRoom(roomId) || { meta: {}, questions: [], participants: {}, responses: {} };
+    if (!current.participants) current.participants = {};
+    Object.keys(scoresMap).forEach(sid => {
+      if (current.participants[sid]) {
+        current.participants[sid].score = scoresMap[sid];
+      }
+      if (state.roomId === roomId && state.roomData?.participants?.[sid]) {
+        state.roomData.participants[sid].score = scoresMap[sid];
+      }
+    });
+    saveLocalRoom(roomId, current);
+
     const updates = {};
     Object.keys(scoresMap).forEach(sid => {
       updates[`rooms/${roomId}/participants/${sid}/score`] = scoresMap[sid];
@@ -1041,13 +1161,18 @@
         responses: {}
       };
 
-      saveMyLocalQuizRoom({ roomId: pin, title: titleText, questionCount: 0, createdAt: Date.now() });
+      // 1. 방 데이터 생성 및 로컬스토리지/Firebase 확실 저장
+      await createRoom(pin, roomData);
 
-      if (db) {
-        try { await db.ref(`rooms/${pin}`).set(roomData); } catch (e) {}
-      } else {
-        await putFirebaseRest(`rooms/${pin}`, roomData);
-      }
+      // 2. 내 퀴즈 보관함 등록
+      saveMyLocalQuizRoom({
+        roomId: pin,
+        title: titleText,
+        questionCount: 0,
+        createdAt: Date.now(),
+        enableCoinRace: true,
+        coinRaceMode: raceType
+      });
 
       document.getElementById('standalone-race-modal')?.remove();
       window.location.search = `?room=${pin}&role=teacher`;
@@ -1487,8 +1612,15 @@
     document.querySelectorAll('.btn-edit-room').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         const pin = e.currentTarget.dataset.pin;
-        const roomData = await fetchFirebaseRest(`rooms/${pin}`) || JSON.parse(localStorage.getItem(`demo_room_${pin}`) || '{}');
-        const meta = roomData.meta || {};
+        const localData = getLocalRoom(pin) || {};
+        let cloudData = null;
+        try { cloudData = await fetchFirebaseRest(`rooms/${pin}`); } catch (e) {}
+
+        const roomData = (cloudData && Array.isArray(cloudData.questions) && cloudData.questions.length > 0)
+          ? cloudData
+          : (Array.isArray(localData.questions) && localData.questions.length > 0 ? localData : (cloudData || localData));
+        const meta = { ...(localData.meta || {}), ...(cloudData?.meta || {}) };
+
         renderTeacherAdminModal(pin, roomData.questions || [], async (savedMeta) => {
           if (savedMeta) {
             saveMyLocalQuizRoom({ roomId: pin, ...savedMeta });
@@ -1727,11 +1859,20 @@
         alert('✅ 관리자 인증이 완료되었습니다!\n이제 본 기기에서도 자유롭게 문제를 편집하고 저장하실 수 있습니다.');
       }
 
-      renderTeacherAdminModal(state.roomId, state.roomData?.questions, (savedMeta) => {
+      const currentQuestions = (state.roomData?.questions && state.roomData.questions.length > 0)
+        ? state.roomData.questions
+        : (getLocalRoom(state.roomId)?.questions || []);
+
+      renderTeacherAdminModal(state.roomId, currentQuestions, (savedMeta) => {
         if (savedMeta) {
           saveMyLocalQuizRoom({ roomId: state.roomId, ...savedMeta });
         }
         alert('문항이 성공적으로 저장되었습니다.');
+        const existingLobby = document.getElementById('lobby-layout-box');
+        if (existingLobby) {
+          existingLobby.remove();
+        }
+        renderHostLobbyView(app, isTeacherControl);
       }, state.roomData?.meta);
     });
 
@@ -1890,14 +2031,17 @@
   }
 
   function renderTeacherAdminModal(roomId, currentQuestions, onSaveCallback, initialMeta) {
-    let questions = Array.isArray(currentQuestions) 
+    const localSavedRoom = getLocalRoom(roomId) || {};
+    let questions = (Array.isArray(currentQuestions) && currentQuestions.length > 0)
       ? JSON.parse(JSON.stringify(currentQuestions)) 
-      : [];
+      : (Array.isArray(localSavedRoom.questions) && localSavedRoom.questions.length > 0
+          ? JSON.parse(JSON.stringify(localSavedRoom.questions))
+          : (Array.isArray(currentQuestions) ? JSON.parse(JSON.stringify(currentQuestions)) : []));
     currentEditingQuestions = questions;
 
     const localRooms = getMyLocalQuizRooms();
     const localRoom = localRooms.find(r => r.roomId === roomId) || {};
-    const roomMeta = state.roomData?.meta || initialMeta || localRoom || {};
+    const roomMeta = state.roomData?.meta || initialMeta || localSavedRoom.meta || localRoom || {};
     const currentTitle = roomMeta.title || localRoom.title || '실시간 수업 퀴즈';
     const currentPassword = roomMeta.adminPassword || localRoom.adminPassword || '';
     const isEnableCoinRace = typeof roomMeta.enableCoinRace === 'boolean' 

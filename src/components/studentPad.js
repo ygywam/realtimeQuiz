@@ -10,8 +10,9 @@ export function renderStudentPadView(container, roomData, roomId, studentId, nic
   const myParticipant = (roomData.participants && roomData.participants[studentId]) || {};
 
   if (status === 'LOBBY') {
+    if (document.getElementById('student-lobby-card')) return;
     container.innerHTML = `
-      <div class="mobile-view">
+      <div class="mobile-view" id="student-lobby-card">
         <div class="mobile-card">
           <div style="font-size: 3.5rem; margin-bottom: 12px;">${avatar}</div>
           <h2 style="font-size: 1.6rem; color: #38bdf8;">${avatar} ${escapeHtml(nickname)} 님, 대기 중!</h2>
@@ -24,13 +25,47 @@ export function renderStudentPadView(container, roomData, roomId, studentId, nic
     return;
   }
 
+  if (status === 'SHOW_RANKING') {
+    const existingRankCard = document.getElementById('student-ranking-card');
+    if (existingRankCard && existingRankCard.dataset.qindex == qIndex) return;
+
+    const allP = Object.values(roomData.participants || {});
+    allP.sort((a, b) => (b.score || 0) - (a.score || 0));
+    const myRank = allP.findIndex(p => p.nickname === nickname) + 1;
+    container.innerHTML = `
+      <div class="mobile-view" id="student-ranking-card" data-qindex="${qIndex}">
+        <div class="mobile-card" style="text-align: center; border-color: #f59e0b;">
+          <div style="font-size: 3.5rem; margin-bottom: 12px;">${avatar}</div>
+          <h2 style="font-size: 1.5rem; color: #fbbf24;">현재 ${myRank > 0 ? myRank + '위' : '순위 집계 중'} / 총 ${allP.length}명</h2>
+          <p style="font-size: 1.3rem; font-weight: bold; color: #38bdf8; margin-top: 8px;">총 점수: ${myParticipant.score || 0}점</p>
+          <p style="color: var(--text-muted); margin-top: 14px; font-size: 0.95rem;">선생님이 다음 문제를 시작할 때까지 대기해 주세요!</p>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
   if (status === 'FINISHED') {
+    if (document.getElementById('student-final-card')) return;
     renderStudentFinalFeedback(container, roomData, studentId, nickname, avatar);
     return;
   }
 
+  const existingPadCard = document.getElementById('student-pad-card');
+  const renderedQIndex = existingPadCard ? Number(existingPadCard.dataset.qindex) : -1;
+  const renderedStatus = existingPadCard ? existingPadCard.dataset.status : '';
+  const hasMyResponseAlready = existingPadCard ? existingPadCard.dataset.submitted === 'true' : false;
+
+  if (existingPadCard && renderedQIndex === qIndex && renderedStatus === status) {
+    if (!myResponse) {
+      return; // 학생이 답안 입력 중인 경우 DOM 재작성 금지 (자판 닫힘 방지)
+    } else if (hasMyResponseAlready) {
+      return; // 이미 제출 완료 카드 뜬 상태에서 재작성 금지
+    }
+  }
+
   container.innerHTML = `
-    <div class="mobile-view">
+    <div class="mobile-view" id="student-pad-card" data-qindex="${qIndex}" data-status="${status}" data-submitted="${!!myResponse}">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
         <span class="room-badge" style="font-size: 0.95rem;">Q${qIndex + 1} / ${questions.length}</span>
         <span style="font-weight: 800; color: #38bdf8; font-size: 1.1rem;">${avatar} ${escapeHtml(nickname)} (${myParticipant.score || 0}점)</span>
@@ -128,7 +163,7 @@ function renderStudentFinalFeedback(container, roomData, studentId, nickname, av
   const myP = roomData.participants[studentId] || {};
 
   container.innerHTML = `
-    <div class="mobile-view">
+    <div class="mobile-view" id="student-final-card">
       <div class="mobile-card">
         <div style="font-size: 3.5rem; margin-bottom: 10px;">${avatar}</div>
         <h1 style="font-size: 2.2rem; color: #fbbf24; margin-bottom: 12px;">🏆 수고하셨습니다!</h1>

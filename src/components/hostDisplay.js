@@ -19,11 +19,13 @@ export function renderHostDisplayView(container, roomData, roomId, isTeacherCont
   const responseCount = Object.keys(responses).length;
   const participantCount = Object.keys(participants).length;
 
+  const isUnlimited = currentQ.type === 'wordcloud' || currentQ.type === 'postit' || currentQ.timeLimit === 0;
+
   container.innerHTML = `
     <div class="quiz-display-container">
       <div class="quiz-top-bar">
         <span class="room-badge">Q ${qIndex + 1} / ${questions.length}</span>
-        <div id="display-timer" class="timer-badge">⏱️ ${currentQ.timeLimit || 20}s</div>
+        <div id="display-timer" class="timer-badge">${isUnlimited ? '⏱️ 무제한 (의견 수렴)' : `⏱️ ${currentQ.timeLimit || 20}s`}</div>
         <div style="font-size: 1.4rem; font-weight: bold; color: #38bdf8;">
           제출 인원: <span id="resp-count">${responseCount}</span> / ${participantCount}명
         </div>
@@ -39,7 +41,7 @@ export function renderHostDisplayView(container, roomData, roomId, isTeacherCont
 
       ${isTeacherControl ? `
         <div style="display: flex; justify-content: flex-end; gap: 16px; margin-top: 20px;">
-          ${status === 'PLAYING' ? `<button class="btn btn-danger" id="btn-force-finish">⏹️ 응답 마감 및 정답 공개</button>` : ''}
+          ${status === 'PLAYING' ? `<button class="btn btn-danger" id="btn-force-finish">${isUnlimited ? '⏹️ 응답 마감 및 의견 공유' : '⏹️ 응답 마감 및 정답 공개'}</button>` : ''}
           ${status === 'SHOW_ANSWER' ? `<button class="btn btn-primary" id="btn-next-question">➡️ 다음 문제 / 순위 보기</button>` : ''}
         </div>
       ` : ''}
@@ -48,24 +50,30 @@ export function renderHostDisplayView(container, roomData, roomId, isTeacherCont
 
   // 타이머 실행 (PLAYING 상태일 때만)
   if (status === 'PLAYING') {
-    const timeLimit = currentQ.timeLimit || 20;
-    const startedAt = meta.timerStartedAt || Date.now();
-    
-    if (timerInterval) clearInterval(timerInterval);
-
-    timerInterval = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - startedAt) / 1000);
-      const remaining = Math.max(0, timeLimit - elapsed);
+    if (isUnlimited) {
+      if (timerInterval) clearInterval(timerInterval);
       const timerEl = document.getElementById('display-timer');
-      if (timerEl) timerEl.textContent = `⏱️ ${remaining}s`;
+      if (timerEl) timerEl.textContent = '⏱️ 무제한 (의견 수렴)';
+    } else {
+      const timeLimit = currentQ.timeLimit || 20;
+      const startedAt = meta.timerStartedAt || Date.now();
+      
+      if (timerInterval) clearInterval(timerInterval);
 
-      if (remaining <= 0) {
-        clearInterval(timerInterval);
-        if (isTeacherControl) {
-          processQuestionResults(roomId, roomData);
+      timerInterval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+        const remaining = Math.max(0, timeLimit - elapsed);
+        const timerEl = document.getElementById('display-timer');
+        if (timerEl) timerEl.textContent = `⏱️ ${remaining}s`;
+
+        if (remaining <= 0) {
+          clearInterval(timerInterval);
+          if (isTeacherControl) {
+            processQuestionResults(roomId, roomData);
+          }
         }
-      }
-    }, 500);
+      }, 500);
+    }
   } else {
     if (timerInterval) clearInterval(timerInterval);
   }

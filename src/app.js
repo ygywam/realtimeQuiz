@@ -1,0 +1,6510 @@
+(function() {
+  'use strict';
+
+  // 웹 오디오 합성 엔진 (100% 무설치 / 오프라인 / 교내망 차단 0% 안전 효과음)
+  const AudioEngine = {
+    ctx: null,
+    enabled: true,
+    bgmAudio: null,
+    bgmPlaying: false,
+    bgmSynthInterval: null,
+    volume: 0.4,
+    setVolume(val) {
+      this.volume = Math.max(0, Math.min(1, val));
+      if (this.bgmAudio) {
+        try { this.bgmAudio.volume = this.volume; } catch (e) {}
+      }
+    },
+    init() {
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) this.ctx = new AudioCtx();
+      }
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume();
+      }
+    },
+    playTick() {
+      if (!this.enabled) return;
+      this.init();
+      if (!this.ctx) return;
+      try {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = 750;
+        gain.gain.setValueAtTime(0.02, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.04);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.04);
+      } catch (e) {}
+    },
+    playCorrect() {
+      if (!this.enabled) return;
+      this.init();
+      if (!this.ctx) return;
+      try {
+        const now = this.ctx.currentTime;
+        [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.04, now + i * 0.07);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.25);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + i * 0.07);
+          osc.stop(now + i * 0.07 + 0.25);
+        });
+      } catch (e) {}
+    },
+    playFanfare() {
+      if (!this.enabled) return;
+      this.init();
+      if (!this.ctx) return;
+      try {
+        const now = this.ctx.currentTime;
+        const notes = [
+          { f: 523.25, d: 0.15, t: 0 },
+          { f: 659.25, d: 0.15, t: 0.15 },
+          { f: 783.99, d: 0.15, t: 0.30 },
+          { f: 1046.50, d: 0.6, t: 0.45 }
+        ];
+        notes.forEach(n => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'square';
+          osc.frequency.value = n.f;
+          gain.gain.setValueAtTime(0.05, now + n.t);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + n.t + n.d);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + n.t);
+          osc.stop(now + n.t + n.d);
+        });
+      } catch (e) {}
+    },
+    playCountdownTick(count) {
+      if (!this.enabled) return;
+      this.init();
+      if (!this.ctx) return;
+      try {
+        const now = this.ctx.currentTime;
+        if (count > 0) {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = count === 1 ? 987.77 : (count === 2 ? 880 : 783.99);
+          gain.gain.setValueAtTime(0.06, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.12);
+        } else {
+          [523.25, 659.25, 783.99, 1046.50].forEach((freq) => {
+            const o = this.ctx.createOscillator();
+            const g = this.ctx.createGain();
+            o.type = 'triangle';
+            o.frequency.value = freq;
+            g.gain.setValueAtTime(0.075, now);
+            g.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+            o.connect(g);
+            g.connect(this.ctx.destination);
+            o.start(now);
+            o.stop(now + 0.35);
+          });
+        }
+      } catch (e) {}
+    },
+    currentTrackKey: null,
+    activeAudioInstances: [],
+    getBgmUrls(trackKey) {
+      if (trackKey === 'bgm1' || trackKey === 'lobby') {
+        return ['./src/assets/bgm1.mp3', './assets/bgm1.mp3', 'assets/bgm1.mp3', 'bgm1.mp3'];
+      }
+      if (trackKey === 'bgm2' || trackKey === 'quiz') {
+        return ['./src/assets/bgm2.mp3', './assets/bgm2.mp3', 'assets/bgm2.mp3', 'bgm2.mp3'];
+      }
+      if (typeof trackKey === 'string' && trackKey.length > 0) {
+        return [trackKey];
+      }
+      return ['./src/assets/bgm1.mp3', './assets/bgm1.mp3'];
+    },
+    playBGM(trackKey = 'bgm1') {
+      if (!this.enabled) return;
+
+      // 이미 같은 트랙이 재생 중이면 중복 처리 방지
+      if (this.bgmPlaying && this.currentTrackKey === trackKey && this.bgmAudio && !this.bgmAudio.paused) {
+        return;
+      }
+
+      this.stopBGM();
+      this.init();
+      this.bgmPlaying = true;
+      this.currentTrackKey = trackKey;
+
+      const candidates = this.getBgmUrls(trackKey);
+      let candidateIdx = 0;
+
+      const tryPlayCandidate = () => {
+        if (!this.bgmPlaying || this.currentTrackKey !== trackKey) return;
+        if (candidateIdx >= candidates.length) {
+          console.warn('MP3 BGM 재생 후보 경로 모두 실효, 오디오 합성 BGM으로 전환');
+          this.startSynthBGM();
+          return;
+        }
+
+        const url = candidates[candidateIdx];
+        try {
+          const audio = new Audio(url);
+          audio.loop = true;
+          audio.volume = this.volume;
+          this.activeAudioInstances.push(audio);
+
+          audio.onerror = () => {
+            console.warn(`BGM URL 로드 실패 (${url}), 다음 경로 시도...`);
+            candidateIdx++;
+            tryPlayCandidate();
+          };
+
+          const playPromise = audio.play();
+          if (playPromise !== undefined) {
+            playPromise.then(() => {
+              if (!this.bgmPlaying || this.currentTrackKey !== trackKey) {
+                try { audio.pause(); audio.currentTime = 0; } catch (e) {}
+                return;
+              }
+              this.bgmAudio = audio;
+            }).catch(e => {
+              console.warn(`BGM 재생 제한/오류 (${url}):`, e);
+              candidateIdx++;
+              tryPlayCandidate();
+            });
+          } else {
+            this.bgmAudio = audio;
+          }
+        } catch (e) {
+          candidateIdx++;
+          tryPlayCandidate();
+        }
+      };
+
+      tryPlayCandidate();
+    },
+    startSynthBGM() {
+      if (!this.ctx) return;
+      this.bgmPlaying = true;
+
+      const bassNotes = [110, 110, 130.81, 146.83, 110, 110, 164.81, 146.83];
+      const arpNotes = [220, 261.63, 329.63, 440, 329.63, 261.63, 196.00, 246.94];
+      let step = 0;
+
+      this.bgmSynthInterval = setInterval(() => {
+        if (!this.bgmPlaying || !this.ctx) return;
+        try {
+          const now = this.ctx.currentTime;
+          
+          // 트랙 1: Sawtooth 베이스 리듬 (135 BPM)
+          const bFreq = bassNotes[step % bassNotes.length];
+          const bOsc = this.ctx.createOscillator();
+          const bGain = this.ctx.createGain();
+          bOsc.type = 'sawtooth';
+          bOsc.frequency.value = bFreq;
+          bGain.gain.setValueAtTime(0.04, now);
+          bGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+          bOsc.connect(bGain);
+          bGain.connect(this.ctx.destination);
+          bOsc.start(now);
+          bOsc.stop(now + 0.15);
+
+          // 트랙 2: Arpeggio 긴장감 멜로디
+          const aFreq = arpNotes[step % arpNotes.length];
+          const aOsc = this.ctx.createOscillator();
+          const aGain = this.ctx.createGain();
+          aOsc.type = 'triangle';
+          aOsc.frequency.value = aFreq;
+          aGain.gain.setValueAtTime(0.035, now);
+          aGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+          aOsc.connect(aGain);
+          aGain.connect(this.ctx.destination);
+          aOsc.start(now);
+          aOsc.stop(now + 0.12);
+
+          // 트랙 3: 하이햇 틱 음향 효과
+          if (step % 2 === 1) {
+            const hOsc = this.ctx.createOscillator();
+            const hGain = this.ctx.createGain();
+            hOsc.type = 'square';
+            hOsc.frequency.value = 2500;
+            hGain.gain.setValueAtTime(0.015, now);
+            hGain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+            hOsc.connect(hGain);
+            hGain.connect(this.ctx.destination);
+            hOsc.start(now);
+            hOsc.stop(now + 0.03);
+          }
+
+          step++;
+        } catch (e) {}
+      }, 222);
+    },
+    stopBGM() {
+      this.bgmPlaying = false;
+      this.currentTrackKey = null;
+      if (Array.isArray(this.activeAudioInstances)) {
+        this.activeAudioInstances.forEach(audio => {
+          try {
+            audio.pause();
+            audio.currentTime = 0;
+            audio.src = '';
+          } catch (e) {}
+        });
+        this.activeAudioInstances = [];
+      }
+      this.bgmAudio = null;
+      if (this.bgmSynthInterval) {
+        clearInterval(this.bgmSynthInterval);
+        this.bgmSynthInterval = null;
+      }
+    },
+    toggleBGM(trackKey = 'bgm1') {
+      if (this.bgmPlaying) {
+        this.stopBGM();
+        return false;
+      } else {
+        this.playBGM(trackKey);
+        return true;
+      }
+    }
+  };
+
+  function renderBgmVolumeControlHtml(idSuffix = '') {
+    return `
+      <div class="bgm-control-wrapper" style="position: relative; display: inline-flex; align-items: center;">
+        <button id="btn-toggle-bgm${idSuffix ? '-' + idSuffix : ''}" class="btn btn-outline-sm btn-bgm-toggle" style="background: rgba(56, 189, 248, 0.2); border-color: #38bdf8; color: #fff; font-weight: bold; cursor: pointer;">
+          ${AudioEngine.bgmPlaying ? '🎵 BGM 끄기' : '🎵 BGM 켜기'}
+        </button>
+        <div class="bgm-volume-popover" style="position: absolute; top: 100%; right: 0; margin-top: 6px; background: #0f172a; border: 1px solid #38bdf8; border-radius: 8px; padding: 8px 12px; display: none; align-items: center; gap: 8px; z-index: 250; box-shadow: 0 6px 20px rgba(0,0,0,0.6); white-space: nowrap;">
+          <span style="font-size: 0.85rem; color: #38bdf8; font-weight: bold;">🔊</span>
+          <input type="range" class="bgm-volume-slider" min="0" max="1" step="0.05" value="${AudioEngine.volume}" style="width: 90px; cursor: pointer; accent-color: #38bdf8;">
+          <span class="bgm-volume-text" style="font-size: 0.85rem; color: #38bdf8; font-weight: 900; width: 34px;">${Math.round(AudioEngine.volume * 100)}%</span>
+        </div>
+      </div>
+    `;
+  }
+
+  function bindBgmVolumeControlEvents(container = document) {
+    container.querySelectorAll('.bgm-control-wrapper').forEach(wrapper => {
+      const btn = wrapper.querySelector('.btn-bgm-toggle');
+      const popover = wrapper.querySelector('.bgm-volume-popover');
+      const slider = wrapper.querySelector('.bgm-volume-slider');
+      const label = wrapper.querySelector('.bgm-volume-text');
+
+      if (!btn || !popover) return;
+
+      let hideTimer = null;
+      const showPopover = () => {
+        if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+        popover.style.display = 'flex';
+      };
+      const hidePopoverDelay = () => {
+        hideTimer = setTimeout(() => {
+          popover.style.display = 'none';
+        }, 400);
+      };
+
+      wrapper.addEventListener('mouseenter', showPopover);
+      wrapper.addEventListener('mouseleave', hidePopoverDelay);
+
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const currentStatus = state.roomData?.meta?.status || 'LOBBY';
+        const trackKey = (currentStatus === 'LOBBY') ? 'bgm1' : 'bgm2';
+        const isPlaying = AudioEngine.toggleBGM(trackKey);
+        btn.textContent = isPlaying ? '🎵 BGM 끄기' : '🎵 BGM 켜기';
+      });
+
+      if (slider) {
+        slider.addEventListener('input', (e) => {
+          const val = parseFloat(e.target.value);
+          AudioEngine.setVolume(val);
+          if (label) label.textContent = Math.round(val * 100) + '%';
+          document.querySelectorAll('.bgm-volume-slider').forEach(s => s.value = val);
+          document.querySelectorAll('.bgm-volume-text').forEach(t => t.textContent = Math.round(val * 100) + '%');
+        });
+      }
+    });
+  }
+
+  const DEFAULT_FIREBASE_CONFIG = {
+    apiKey: "AIzaSyAt1jZhv7DlxRsKiMPBX0YNAI2iN7P8qFY",
+    databaseURL: "https://recordtuner-default-rtdb.firebaseio.com",
+    projectId: "recordtuner"
+  };
+
+  function getSavedTheme() {
+    return localStorage.getItem('class_quiz_theme') || 'tv';
+  }
+
+  function setTheme(themeName) {
+    const validThemes = ['tv', 'chalkboard', 'marble', 'woodlock'];
+    const selected = validThemes.includes(themeName) ? themeName : 'tv';
+    document.body.className = 'theme-' + selected;
+    localStorage.setItem('class_quiz_theme', selected);
+
+    document.querySelectorAll('.select-theme-dropdown').forEach(sel => {
+      sel.value = selected;
+    });
+  }
+
+  const defaultQuestions = [];
+
+  const AVATARS = ['🐶', '🐱', '🦊', '🐯', '🦁', '🐸', '🤖', '🚀', '🎃', '🦄', '🐥', '🐼'];
+
+  const AVATAR_DETAILS = {
+    '🐶': { name: '멍멍이', bg: 'linear-gradient(135deg, #fbbf24, #d97706)', border: '#fef08a' },
+    '🐱': { name: '야옹이', bg: 'linear-gradient(135deg, #f472b6, #db2777)', border: '#fbcfe8' },
+    '🦊': { name: '여우군', bg: 'linear-gradient(135deg, #fb923c, #ea580c)', border: '#ffedd5' },
+    '🐯': { name: '호랑이', bg: 'linear-gradient(135deg, #f59e0b, #b45309)', border: '#fef3c7' },
+    '🦁': { name: '사자왕', bg: 'linear-gradient(135deg, #eab308, #ca8a04)', border: '#fef9c3' },
+    '🐸': { name: '개구리', bg: 'linear-gradient(135deg, #4ade80, #15803d)', border: '#dcfce7' },
+    '🤖': { name: '로봇군', bg: 'linear-gradient(135deg, #38bdf8, #0284c7)', border: '#e0f2fe' },
+    '🚀': { name: '우주선', bg: 'linear-gradient(135deg, #818cf8, #4338ca)', border: '#e0e7ff' },
+    '🎃': { name: '호박군', bg: 'linear-gradient(135deg, #f97316, #c2410c)', border: '#ffedd5' },
+    '🦄': { name: '유니콘', bg: 'linear-gradient(135deg, #c084fc, #7e22ce)', border: '#f3e8ff' },
+    '🐥': { name: '병아리', bg: 'linear-gradient(135deg, #facc15, #a16207)', border: '#fef9c3' },
+    '🐼': { name: '판다군', bg: 'linear-gradient(135deg, #94a3b8, #334155)', border: '#f1f5f9' }
+  };
+
+  function renderAvatarBadgeHtml(symbol, sizePx = 36, extraStyle = '', showTag = false) {
+    const info = AVATAR_DETAILS[symbol] || { name: '친구', bg: 'linear-gradient(135deg, #38bdf8, #0284c7)', border: '#fff' };
+    const fontSize = Math.round(sizePx * 0.53);
+    return `
+      <div class="avatar-badge-3d-container" style="display: inline-flex; flex-direction: column; align-items: center; flex-shrink: 0; ${extraStyle}">
+        <div class="avatar-badge-3d" style="
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: ${sizePx}px;
+          height: ${sizePx}px;
+          border-radius: 50%;
+          background: ${info.bg};
+          border: 3px solid ${info.border};
+          box-shadow: 0 8px 18px rgba(0,0,0,0.45), 0 0 14px ${info.border}, inset 0 4px 6px rgba(255,255,255,0.85), inset 0 -4px 8px rgba(0,0,0,0.4);
+          font-size: ${fontSize}px;
+          line-height: 1;
+          flex-shrink: 0;
+          overflow: hidden;
+          transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        " title="${info.name}">
+          <div style="position: absolute; top: 2px; left: 14%; width: 72%; height: 38%; background: linear-gradient(to bottom, rgba(255,255,255,0.85), rgba(255,255,255,0.05)); border-radius: 50%; pointer-events: none;"></div>
+          <span style="filter: drop-shadow(0 3px 4px rgba(0,0,0,0.5)); transform: scale(1.05);">${symbol}</span>
+        </div>
+        ${showTag ? `<div style="margin-top: 4px; font-size: 0.75rem; font-weight: bold; color: #fff; background: rgba(15, 23, 42, 0.85); padding: 2px 8px; border-radius: 8px; border: 1px solid ${info.border}; text-shadow: 0 1px 2px #000;">${info.name}</div>` : ''}
+      </div>
+    `;
+  }
+
+  const state = {
+    mode: 'home',
+    roomId: null,
+    role: null,
+    nickname: '',
+    avatar: '🐶',
+    studentId: '',
+    roomData: null,
+    isDemo: false,
+    hideResults: true,
+    showWrongWordcloud: false,
+    showShortNicknames: false
+  };
+
+  let currentEditingQuestions = null;
+  let currentEditingUpdateFn = null;
+
+  function isScoringQuestion(q) {
+    if (!q) return false;
+    if (q.type === 'wordcloud' || q.type === 'postit') return false;
+    if (q.type === 'ox' || q.type === 'short') return true;
+    if (q.type === 'choice' || q.type === 'poll') {
+      if (q.isScoring === false || q.timeLimit === 0) return false;
+      return true;
+    }
+    return false;
+  }
+
+  function hasScoringQuestions(questions) {
+    if (!Array.isArray(questions)) return false;
+    return questions.some(q => isScoringQuestion(q));
+  }
+
+  function getOrCreateStudentId() {
+    let id = sessionStorage.getItem('class_quiz_student_id');
+    if (!id) {
+      id = 'std_' + Math.random().toString(36).substring(2, 9);
+      sessionStorage.setItem('class_quiz_student_id', id);
+    }
+    state.studentId = id;
+    return id;
+  }
+
+  function generateRoomId() {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  }
+
+  const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+
+  function getMyLocalQuizRooms() {
+    try {
+      const raw = localStorage.getItem('my_created_quiz_rooms');
+      const list = raw ? JSON.parse(raw) : [];
+      const now = Date.now();
+      const valid = list.filter(r => r.keepPermanent || (now - (r.lastAccessedAt || r.createdAt || now)) < THREE_DAYS_MS);
+      if (valid.length !== list.length) {
+        localStorage.setItem('my_created_quiz_rooms', JSON.stringify(valid));
+      }
+      return valid;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveMyLocalQuizRoom(roomMeta) {
+    if (!roomMeta || !roomMeta.roomId) return;
+    const list = getMyLocalQuizRooms();
+    const idx = list.findIndex(r => r.roomId === roomMeta.roomId);
+    const now = Date.now();
+    const existing = idx >= 0 ? list[idx] : null;
+
+    const item = {
+      roomId: roomMeta.roomId,
+      title: (roomMeta.title !== undefined && roomMeta.title !== null && roomMeta.title !== '') 
+        ? roomMeta.title 
+        : (existing?.title || '실시간 수업 퀴즈'),
+      adminPassword: roomMeta.adminPassword !== undefined 
+        ? roomMeta.adminPassword 
+        : (existing?.adminPassword || ''),
+      questionCount: typeof roomMeta.questionCount === 'number' 
+        ? roomMeta.questionCount 
+        : (existing?.questionCount || 0),
+      createdAt: roomMeta.createdAt || existing?.createdAt || now,
+      lastAccessedAt: now,
+      keepPermanent: typeof roomMeta.keepPermanent === 'boolean' 
+        ? roomMeta.keepPermanent 
+        : (existing?.keepPermanent || false),
+      enableCoinRace: typeof roomMeta.enableCoinRace === 'boolean' 
+        ? roomMeta.enableCoinRace 
+        : (existing?.enableCoinRace || false),
+      coinRaceMode: roomMeta.coinRaceMode || existing?.coinRaceMode || 'pinball'
+    };
+
+    if (idx >= 0) {
+      list[idx] = item;
+    } else {
+      list.unshift(item);
+    }
+    localStorage.setItem('my_created_quiz_rooms', JSON.stringify(list));
+  }
+
+  function removeMyLocalQuizRoom(roomId) {
+    const list = getMyLocalQuizRooms().filter(r => r.roomId !== roomId);
+    localStorage.setItem('my_created_quiz_rooms', JSON.stringify(list));
+  }
+
+  function isRoomCreatorLocal(roomId) {
+    const list = getMyLocalQuizRooms();
+    return list.some(r => r.roomId === roomId);
+  }
+
+  let db = null;
+  let broadcastChannel = null;
+
+  function getSavedFirebaseConfig() {
+    const saved = localStorage.getItem('class_quiz_fb_config');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
+    }
+    return DEFAULT_FIREBASE_CONFIG;
+  }
+
+  function saveFirebaseConfig(config) {
+    localStorage.setItem('class_quiz_fb_config', JSON.stringify(config));
+  }
+
+  function getFirebaseRestUrl(path) {
+    const config = getSavedFirebaseConfig();
+    const dbUrl = (config && config.databaseURL) ? config.databaseURL : DEFAULT_FIREBASE_CONFIG.databaseURL;
+    const cleanUrl = dbUrl.replace(/\/$/, '');
+    return path ? `${cleanUrl}/${path}.json` : `${cleanUrl}.json`;
+  }
+
+  async function fetchFirebaseRest(path) {
+    try {
+      const url = getFirebaseRestUrl(path);
+      const res = await fetch(url);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.warn('Firebase REST Fetch 경고:', e);
+    }
+    return null;
+  }
+
+  async function putFirebaseRest(path, data) {
+    try {
+      const url = getFirebaseRestUrl(path);
+      await fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      return true;
+    } catch (e) {
+      console.warn('Firebase REST Put 경고:', e);
+      return false;
+    }
+  }
+
+  async function patchFirebaseRest(path, data) {
+    try {
+      const url = getFirebaseRestUrl(path);
+      await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      return true;
+    } catch (e) {
+      console.warn('Firebase REST Patch 경고:', e);
+      return false;
+    }
+  }
+
+  function initRealtimeEngine() {
+    const config = getSavedFirebaseConfig();
+    if (config && config.apiKey && config.databaseURL && window.firebase) {
+      try {
+        if (!window.firebase.apps.length) {
+          window.firebase.initializeApp(config);
+        }
+        db = window.firebase.database();
+        state.isDemo = false;
+        return true;
+      } catch (err) {
+        console.error('Firebase SDK 초기화 실패, REST 통신으로 전환:', err);
+      }
+    }
+    
+    state.isDemo = false; // REST API로 항상 실시간 동기화 가능
+    if (!broadcastChannel && typeof BroadcastChannel !== 'undefined') {
+      broadcastChannel = new BroadcastChannel('class_quiz_channel');
+    }
+    return true;
+  }
+
+  function getLocalRoom(roomId) {
+    if (!roomId) return null;
+    try {
+      const raw = localStorage.getItem(`demo_room_${roomId}`);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return null;
+  }
+
+  function saveLocalRoom(roomId, data) {
+    if (!roomId || !data) return;
+    try {
+      localStorage.setItem(`demo_room_${roomId}`, JSON.stringify(data));
+      broadcastChannel?.postMessage({ type: 'ROOM_UPDATED', roomId, data });
+    } catch (e) {
+      console.warn('Local room save error:', e);
+    }
+  }
+
+  async function createRoom(roomId, initialData) {
+    saveLocalRoom(roomId, initialData);
+    if (db) {
+      try {
+        await db.ref(`rooms/${roomId}`).set(initialData);
+      } catch (e) {
+        console.warn('SDK set 실패, REST API로 생성:', e);
+        await putFirebaseRest(`rooms/${roomId}`, initialData);
+      }
+    } else {
+      await putFirebaseRest(`rooms/${roomId}`, initialData);
+    }
+  }
+
+  function subscribeRoom(roomId, callback) {
+    let unsubscribed = false;
+    let hasData = false;
+
+    // 0. 로컬 스토리지 데이터 즉시 우선 송출 (0ms 초고속 렌더링)
+    const localInit = getLocalRoom(roomId);
+    if (localInit) {
+      hasData = true;
+      callback(localInit);
+    }
+
+    // BroadcastChannel 실시간 메시지 수신 (창/탭 간 0ms 통신)
+    const handleBroadcast = (event) => {
+      if (unsubscribed) return;
+      if (event.data?.type === 'ROOM_UPDATED' && event.data?.roomId === roomId && event.data?.data) {
+        hasData = true;
+        callback(event.data.data);
+      }
+    };
+    broadcastChannel?.addEventListener('message', handleBroadcast);
+
+    // 다른 탭의 localStorage 변경 감지 (storage event)
+    const handleStorage = (event) => {
+      if (unsubscribed) return;
+      if (event.key === `demo_room_${roomId}` && event.newValue) {
+        try {
+          const parsed = JSON.parse(event.newValue);
+          hasData = true;
+          callback(parsed);
+        } catch (e) {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    // 1. Firebase SDK WebSocket 구독
+    if (db) {
+      try {
+        const roomRef = db.ref(`rooms/${roomId}`);
+        const handler = (snapshot) => {
+          if (unsubscribed) return;
+          const val = snapshot.val();
+          if (val !== null) {
+            hasData = true;
+            saveLocalRoom(roomId, val);
+            callback(val);
+          }
+        };
+        roomRef.on('value', handler);
+      } catch (e) {
+        console.warn('SDK 구독 오류:', e);
+      }
+    }
+
+    // 2. REST API 즉시 조회
+    fetchFirebaseRest(`rooms/${roomId}`).then(data => {
+      if (!unsubscribed && data) {
+        hasData = true;
+        saveLocalRoom(roomId, data);
+        callback(data);
+      }
+    });
+
+    // 3. REST API 백업 주기적 폴링 (1.5초) - 네트워크/클라우드 장애 시 로컬 데이터 자동 유지
+    const intervalId = setInterval(async () => {
+      if (unsubscribed) return;
+      const data = await fetchFirebaseRest(`rooms/${roomId}`);
+      if (!unsubscribed && data) {
+        hasData = true;
+        saveLocalRoom(roomId, data);
+        callback(data);
+      } else if (!unsubscribed) {
+        const raw = getLocalRoom(roomId);
+        if (raw) callback(raw);
+      }
+    }, 1500);
+
+    return () => {
+      unsubscribed = true;
+      clearInterval(intervalId);
+      broadcastChannel?.removeEventListener('message', handleBroadcast);
+      window.removeEventListener('storage', handleStorage);
+      if (db) {
+        try { db.ref(`rooms/${roomId}`).off(); } catch (e) {}
+      }
+    };
+  }
+
+  async function joinParticipant(roomId, studentId, nickname, avatar = '🐶') {
+    const pData = { nickname, avatar, joinedAt: Date.now(), score: 0 };
+    
+    // 로컬 즉시 동기화
+    const current = getLocalRoom(roomId) || { meta: {}, questions: [], participants: {}, responses: {} };
+    if (!current.participants) current.participants = {};
+    current.participants[studentId] = pData;
+    saveLocalRoom(roomId, current);
+
+    if (state.roomId === roomId && state.roomData) {
+      if (!state.roomData.participants) state.roomData.participants = {};
+      state.roomData.participants[studentId] = pData;
+    }
+
+    if (db) {
+      try {
+        await db.ref(`rooms/${roomId}/participants/${studentId}`).set(pData);
+      } catch (e) {
+        await putFirebaseRest(`rooms/${roomId}/participants/${studentId}`, pData);
+      }
+    } else {
+      await putFirebaseRest(`rooms/${roomId}/participants/${studentId}`, pData);
+    }
+  }
+
+  async function updateRoomMeta(roomId, partialMeta) {
+    // 1. 로컬 룸 데이터 즉시 병합 및 저장
+    const current = getLocalRoom(roomId) || { meta: {}, questions: [], participants: {}, responses: {} };
+    current.meta = { ...(current.meta || {}), ...partialMeta };
+    saveLocalRoom(roomId, current);
+
+    // 2. 인메모리 state 즉시 반영
+    if (state.roomId === roomId && state.roomData) {
+      state.roomData.meta = { ...(state.roomData.meta || {}), ...partialMeta };
+    }
+
+    // 3. Firebase 동기화
+    if (db) {
+      try {
+        await db.ref(`rooms/${roomId}/meta`).update(partialMeta);
+      } catch (e) {
+        await patchFirebaseRest(`rooms/${roomId}/meta`, partialMeta);
+      }
+    } else {
+      await patchFirebaseRest(`rooms/${roomId}/meta`, partialMeta);
+    }
+  }
+
+  async function updateQuestions(roomId, questions) {
+    // 1. 로컬 룸 데이터 즉시 저장
+    const current = getLocalRoom(roomId) || { meta: {}, questions: [], participants: {}, responses: {} };
+    current.questions = questions;
+    if (!current.meta) current.meta = {};
+    current.meta.questionCount = questions.length;
+    saveLocalRoom(roomId, current);
+
+    // 2. 내 퀴즈 보관함 목록의 questionCount도 즉시 안전 갱신
+    saveMyLocalQuizRoom({ roomId, questionCount: questions.length });
+
+    // 3. 인메모리 state 즉시 반영
+    if (state.roomId === roomId && state.roomData) {
+      state.roomData.questions = questions;
+      if (state.roomData.meta) state.roomData.meta.questionCount = questions.length;
+    }
+
+    // 4. Firebase 동기화
+    if (db) {
+      try {
+        await db.ref(`rooms/${roomId}/questions`).set(questions);
+      } catch (e) {
+        await putFirebaseRest(`rooms/${roomId}/questions`, questions);
+      }
+    } else {
+      await putFirebaseRest(`rooms/${roomId}/questions`, questions);
+    }
+  }
+
+  async function submitResponse(roomId, qIndex, studentId, responseData) {
+    const resData = { ...responseData, submittedAt: Date.now() };
+
+    // 로컬 즉시 동기화
+    const current = getLocalRoom(roomId) || { meta: {}, questions: [], participants: {}, responses: {} };
+    if (!current.responses) current.responses = {};
+    if (!current.responses[qIndex]) current.responses[qIndex] = {};
+    current.responses[qIndex][studentId] = resData;
+    saveLocalRoom(roomId, current);
+
+    if (state.roomId === roomId && state.roomData) {
+      if (!state.roomData.responses) state.roomData.responses = {};
+      if (!state.roomData.responses[qIndex]) state.roomData.responses[qIndex] = {};
+      state.roomData.responses[qIndex][studentId] = resData;
+    }
+
+    if (db) {
+      try {
+        await db.ref(`rooms/${roomId}/responses/${qIndex}/${studentId}`).set(resData);
+      } catch (e) {
+        await putFirebaseRest(`rooms/${roomId}/responses/${qIndex}/${studentId}`, resData);
+      }
+    } else {
+      await putFirebaseRest(`rooms/${roomId}/responses/${qIndex}/${studentId}`, resData);
+    }
+  }
+
+  async function updateParticipantScores(roomId, scoresMap) {
+    // 로컬 즉시 동기화
+    const current = getLocalRoom(roomId) || { meta: {}, questions: [], participants: {}, responses: {} };
+    if (!current.participants) current.participants = {};
+    Object.keys(scoresMap).forEach(sid => {
+      if (current.participants[sid]) {
+        current.participants[sid].score = scoresMap[sid];
+      }
+      if (state.roomId === roomId && state.roomData?.participants?.[sid]) {
+        state.roomData.participants[sid].score = scoresMap[sid];
+      }
+    });
+    saveLocalRoom(roomId, current);
+
+    const updates = {};
+    Object.keys(scoresMap).forEach(sid => {
+      updates[`rooms/${roomId}/participants/${sid}/score`] = scoresMap[sid];
+    });
+    if (db) {
+      try {
+        await db.ref().update(updates);
+      } catch (e) {
+        await patchFirebaseRest('', updates);
+      }
+    } else {
+      await patchFirebaseRest('', updates);
+    }
+  }
+
+  function calculateScore(timeLimitSeconds, elapsedSeconds, isDoublePoints = false) {
+    const basePoints = 1000;
+    if (timeLimitSeconds <= 0) return basePoints * (isDoublePoints ? 2 : 1);
+    const speedRatio = Math.max(0, (timeLimitSeconds - elapsedSeconds) / timeLimitSeconds);
+    const speedBonus = Math.round(speedRatio * 1000);
+    const total = basePoints + speedBonus;
+    return isDoublePoints ? total * 2 : total;
+  }
+
+  let countdownTimer = null;
+
+  async function startCountdownToQuestion(roomId, targetQIndex) {
+    if (countdownTimer) clearInterval(countdownTimer);
+    state.hideResults = true;
+
+    // 퀴즈 시작 시 2번 진행 음악(bgm2.mp3)으로 전환
+    if (AudioEngine.bgmPlaying) {
+      AudioEngine.playBGM('bgm2');
+    }
+
+    let currentNum = 3;
+    AudioEngine.playCountdownTick(3);
+    await updateRoomMeta(roomId, {
+      status: 'COUNTDOWN',
+      currentQuestionIndex: targetQIndex,
+      countdownNumber: currentNum
+    });
+
+    countdownTimer = setInterval(async () => {
+      currentNum--;
+      if (currentNum > 0) {
+        AudioEngine.playCountdownTick(currentNum);
+        await updateRoomMeta(roomId, { countdownNumber: currentNum });
+      } else if (currentNum === 0) {
+        AudioEngine.playCountdownTick(0);
+        await updateRoomMeta(roomId, { countdownNumber: 0 });
+      } else {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+        await updateRoomMeta(roomId, {
+          status: 'PLAYING',
+          currentQuestionIndex: targetQIndex,
+          timerStartedAt: Date.now()
+        });
+      }
+    }, 1000);
+  }
+
+  async function advanceToNextQuestion(roomId, roomData) {
+    const currentIndex = roomData?.meta?.currentQuestionIndex || 0;
+    const questions = roomData?.questions || [];
+    if (currentIndex + 1 < questions.length) {
+      await startCountdownToQuestion(roomId, currentIndex + 1);
+    } else {
+      await updateRoomMeta(roomId, { status: 'FINISHED' });
+    }
+  }
+
+  async function processQuestionResults(roomId, roomData) {
+    const qIndex = roomData.meta.currentQuestionIndex || 0;
+    const question = roomData.questions[qIndex];
+    const responses = (roomData.responses && roomData.responses[qIndex]) || {};
+    const participants = roomData.participants || {};
+    const timerStartedAt = roomData.meta.timerStartedAt || Date.now();
+
+    const updatedScores = {};
+    Object.keys(participants).forEach(sid => {
+      updatedScores[sid] = participants[sid].score || 0;
+    });
+
+    if (['ox', 'choice', 'short'].includes(question.type)) {
+      Object.keys(responses).forEach(sid => {
+        const resp = responses[sid];
+        let isCorrect = false;
+
+        if (question.type === 'ox' || question.type === 'choice') {
+          isCorrect = (Number(resp.answer) === Number(question.correctAnswer));
+        } else if (question.type === 'short') {
+          const userText = String(resp.answer || '').trim().toLowerCase();
+          const targetText = String(question.correctText || '').trim().toLowerCase();
+          isCorrect = (userText === targetText);
+        }
+
+        if (isCorrect) {
+          const elapsedSec = (resp.submittedAt - timerStartedAt) / 1000;
+          const earned = calculateScore(question.timeLimit || 20, elapsedSec, question.isDoublePoints);
+          updatedScores[sid] = (updatedScores[sid] || 0) + earned;
+        }
+      });
+
+      await updateParticipantScores(roomId, updatedScores);
+    }
+
+    await updateRoomMeta(roomId, { status: 'SHOW_ANSWER' });
+  }
+
+  function exportResultsToCSV(roomData) {
+    const participants = roomData.participants || {};
+    const questions = roomData.questions || [];
+    const responses = roomData.responses || {};
+
+    let csvContent = '\uFEFF아바타,닉네임,총점수';
+    questions.forEach((q, idx) => {
+      csvContent += `,Q${idx + 1} (${q.question.substring(0, 10)}...)`;
+    });
+    csvContent += '\n';
+
+    Object.keys(participants).forEach(sid => {
+      const p = participants[sid];
+      let row = `"${p.avatar || '🐶'}","${p.nickname}",${p.score || 0}`;
+
+      questions.forEach((q, qIdx) => {
+        const resp = responses[qIdx] && responses[qIdx][sid];
+        const ans = resp ? String(resp.answer).replace(/"/g, '""') : '미응답';
+        row += `,"${ans}"`;
+      });
+      csvContent += row + '\n';
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `quiz_results_${roomData.meta.title || 'class'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function showAppSplashScreen(force = false) {
+    const isFirstVisit = !sessionStorage.getItem('splash_shown_initial');
+    const isAfterGameFinish = sessionStorage.getItem('trigger_splash_after_game') === 'true';
+
+    // 처음 접속할 때랑 게임 종료 후 대시보드 들어갈 때만 표시
+    if (!force && !isFirstVisit && !isAfterGameFinish) return;
+
+    if (isFirstVisit) {
+      sessionStorage.setItem('splash_shown_initial', 'true');
+    }
+    if (isAfterGameFinish) {
+      sessionStorage.removeItem('trigger_splash_after_game');
+    }
+
+    const overlay = document.createElement('div');
+    overlay.id = 'app-splash-screen';
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      z-index: 99999;
+      background: radial-gradient(circle at center, #0f172a 0%, #020617 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+      padding: 24px;
+      transition: opacity 0.8s ease, transform 0.8s ease;
+      box-shadow: inset 0 0 100px rgba(56, 189, 248, 0.25);
+    `;
+
+    overlay.innerHTML = `
+      <div style="max-width: 820px; width: 100%; text-align: center;">
+        <div style="position: relative; border-radius: 20px; overflow: hidden; border: 3px solid #38bdf8; box-shadow: 0 0 50px rgba(56, 189, 248, 0.6); margin-bottom: 24px; background: #090d16;">
+          <img src="./src/assets/splash_cover.jpg" onerror="this.onerror=null; this.src='splash_cover.jpg';" alt="Class Live Quiz" style="width: 100%; max-height: 440px; object-fit: cover; display: block;">
+        </div>
+        <h1 style="font-size: 2.3rem; color: #38bdf8; font-weight: 900; margin: 0 0 10px 0; text-shadow: 0 0 20px rgba(56, 189, 248, 0.8); font-family: Cafe24Surround, sans-serif;">
+          ⚡ CLASS LIVE QUIZ
+        </h1>
+        <p style="font-size: 1.15rem; color: #cbd5e1; font-weight: bold; margin: 0; line-height: 1.6;">
+          교실 전자칠판 · 교사 PC · 학생 스마트폰을 실시간 클라우드로 이어주는 참여형 퀴즈 플랫폼
+        </p>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    setTimeout(() => {
+      overlay.style.opacity = '0';
+      overlay.style.transform = 'scale(1.05)';
+      setTimeout(() => {
+        overlay.remove();
+      }, 800);
+    }, 2300);
+  }
+
+  function initRouter() {
+    const app = document.getElementById('app');
+    if (!app) return;
+
+    showAppSplashScreen();
+
+    setTheme(getSavedTheme());
+
+    const params = new URLSearchParams(window.location.search);
+    const roomId = params.get('room');
+    const role = params.get('role');
+
+    initRealtimeEngine();
+
+    if (roomId && role === 'student') {
+      state.mode = 'student'; state.roomId = roomId; state.role = 'student';
+      initStudentFlow(app);
+    } else if (roomId && (role === 'display' || role === 'teacher')) {
+      state.mode = role; state.roomId = roomId; state.role = role;
+      initHostFlow(app, role === 'teacher');
+    } else {
+      renderHomeView(app);
+    }
+  }
+
+  function openStandaloneCoinRaceModal() {
+    const modalHtml = `
+      <div id="standalone-race-modal" class="modal-overlay">
+        <div class="modal-box" style="max-width: 580px; text-align: left;">
+          <h2 style="font-size: 1.6rem; color: #f59e0b; margin-bottom: 8px;">🎰 선착순 게임 (단독 모드 시작)</h2>
+          <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 16px;">
+            퀴즈 진행 없이 바로 참가자 명단 및 코인을 생성하여 선착순 레이스를 즐깁니다.
+          </p>
+
+          <div style="margin-bottom: 14px;">
+            <label style="font-weight: bold; font-size: 0.9rem; color: #ec4899;">🎮 레이스 게임 방식 선택:</label>
+            <select id="select-race-game-type" style="width: 100%; margin-top: 6px; padding: 8px 12px; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid var(--border); font-weight: bold; font-size: 0.95rem;">
+              <option value="pinball">🎰 1번 방식: 핑퐁 핀볼 코인 낙하 레이스 (핀볼 반발 장애물 & 핑퐁 날개)</option>
+              <option value="marble">🔮 2번 방식: 구슬 롤러코스터 트랙 레이스 (지그재그 트랙 & 역주행 반발)</option>
+            </select>
+          </div>
+
+          <div style="margin-bottom: 14px;">
+            <label style="font-weight: bold; font-size: 0.9rem; color: #38bdf8;">👥 참가자 목록 (쉼표 또는 줄바꿈으로 구분):</label>
+            <textarea id="input-race-participants" rows="4" style="width: 100%; margin-top: 6px; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: #1e293b; color: #fff; font-size: 0.95rem; font-weight: bold; resize: vertical;" placeholder="예: 1조, 2조, 3조, 4조, 5조, 6조&#10;또는 학생 이름: 김철수, 이영희, 박지성">1조, 2조, 3조, 4조, 5조, 6조</textarea>
+          </div>
+
+          <div style="margin-bottom: 18px;">
+            <label style="font-weight: bold; font-size: 0.9rem; color: #fbbf24;">🪙 인당 코인/구슬 개수 지급 방식:</label>
+            <select id="select-race-coin-mode" style="width: 100%; margin-top: 6px; padding: 8px 12px; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid var(--border); font-weight: bold; font-size: 0.95rem;">
+              <option value="ranked">등수 순서대로 (1등 5개, 2등 4개, 3등 3개, 4~5등 2개, 6등+ 1개)</option>
+              <option value="equal">모두 동일하게 (인당 3개씩)</option>
+              <option value="random">랜덤 보너스 (인당 1~5개 무작위)</option>
+            </select>
+          </div>
+
+          <div class="modal-actions" style="display: flex; gap: 10px; justify-content: flex-end;">
+            <button type="button" class="btn btn-secondary" id="btn-cancel-standalone-race">취소</button>
+            <button type="button" class="btn btn-primary" id="btn-start-standalone-race-exec" style="background: linear-gradient(135deg, #f59e0b, #ec4899); border: none; font-weight: 900; cursor: pointer;">🚀 레이스 시작!</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    document.getElementById('btn-cancel-standalone-race')?.addEventListener('click', () => {
+      document.getElementById('standalone-race-modal')?.remove();
+    });
+
+    document.getElementById('btn-start-standalone-race-exec')?.addEventListener('click', async () => {
+      const rawNames = document.getElementById('input-race-participants')?.value || '';
+      const coinMode = document.getElementById('select-race-coin-mode')?.value || 'ranked';
+      const raceType = document.getElementById('select-race-game-type')?.value || 'pinball';
+      
+      const names = rawNames.split(/[\n,]/).map(n => n.trim()).filter(n => n.length > 0);
+      if (names.length < 2) {
+        alert('최소 2명 이상의 참가자 이름을 입력해 주세요.');
+        return;
+      }
+
+      const pin = Math.floor(100000 + Math.random() * 900000).toString();
+      const participants = {};
+
+      names.forEach((name, idx) => {
+        const pId = 'p_' + idx + '_' + Date.now();
+        let coins = 1;
+        if (coinMode === 'ranked') coins = getCoinAllocation(idx + 1, names.length);
+        else if (coinMode === 'equal') coins = 3;
+        else if (coinMode === 'random') coins = Math.floor(1 + Math.random() * 5);
+
+        participants[pId] = {
+          studentId: pId,
+          nickname: name,
+          avatar: AVATARS[idx % AVATARS.length],
+          score: (names.length - idx) * 100,
+          coins: coins
+        };
+      });
+
+      const titleText = raceType === 'marble' ? '🔮 구슬 롤러코스터 레이스 (단독 모드)' : '🎰 핑퐁 핀볼 낙하 레이스 (단독 모드)';
+
+      const roomData = {
+        meta: {
+          title: titleText,
+          createdAt: Date.now(),
+          status: 'COIN_RACE_LOBBY',
+          enableCoinRace: true,
+          isStandaloneRace: true,
+          raceType: raceType
+        },
+        questions: [],
+        participants: participants,
+        responses: {}
+      };
+
+      // 1. 방 데이터 생성 및 로컬스토리지/Firebase 확실 저장
+      await createRoom(pin, roomData);
+
+      // 2. 내 퀴즈 보관함 등록
+      saveMyLocalQuizRoom({
+        roomId: pin,
+        title: titleText,
+        questionCount: 0,
+        createdAt: Date.now(),
+        enableCoinRace: true,
+        coinRaceMode: raceType
+      });
+
+      document.getElementById('standalone-race-modal')?.remove();
+      window.location.search = `?room=${pin}&role=teacher`;
+    });
+  }
+
+  function renderHomeView(app) {
+    const isFbConnected = !state.isDemo;
+    const localRooms = getMyLocalQuizRooms();
+    app.innerHTML = `
+      <div class="home-container">
+        <h1 class="home-title">⚡ 클래스 라이브 퀴즈</h1>
+        <p class="home-subtitle">전자칠판과 학생 스마트폰을 실시간으로 잇는 반응형 퀴즈</p>
+
+        <div style="margin-bottom: 25px; display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;">
+          <span class="room-badge" style="font-size: 0.95rem; cursor: pointer; background: rgba(16, 185, 129, 0.2); border-color: #10b981; color: #10b981;" id="btn-open-fb-info">
+            🟢 Firebase 실시간 DB 자동 연결됨 (클릭 시 사용 안내)
+          </span>
+          <select class="select-theme-dropdown" id="select-theme-home" style="padding: 8px 14px; border-radius: 999px; background: var(--color-surface); color: var(--color-text); border: 1px solid var(--primary); font-size: 0.9rem; font-weight: bold; cursor: pointer;">
+            <option value="tv" ${getSavedTheme() === 'tv' ? 'selected' : ''}>📺 스마트 TV 테마</option>
+            <option value="chalkboard" ${getSavedTheme() === 'chalkboard' ? 'selected' : ''}>🧹 초록 칠판 테마</option>
+            <option value="marble" ${getSavedTheme() === 'marble' ? 'selected' : ''}>🏛️ 깔끔 대리석 테마</option>
+            <option value="woodlock" ${getSavedTheme() === 'woodlock' ? 'selected' : ''}>🪵 우드락 보드 테마</option>
+          </select>
+        </div>
+
+        <div class="mode-grid">
+          <div class="mode-card">
+            <div class="mode-icon">👨‍🏫</div>
+            <h3>교사 모드</h3>
+            <p>새로운 퀴즈 방을 만들고, 문항을 출제/수정하거나 진행을 제어합니다.</p>
+            <button class="btn btn-primary" id="btn-create-room" style="width: 100%;">새 퀴즈 방 만들기</button>
+            <button class="btn btn-primary" id="btn-standalone-coin-race" style="width: 100%; margin-top: 10px; background: linear-gradient(135deg, #f59e0b, #ec4899); border: none; font-size: 0.95rem; font-weight: 900; box-shadow: 0 4px 14px rgba(245, 158, 11, 0.4);">🎰 선착순 게임</button>
+          </div>
+
+          <div class="mode-card">
+            <div class="mode-icon">🖥️</div>
+            <h3>전자칠판 모드</h3>
+            <p>교사 PC에서 생성된 퀴즈 방의 PIN 코드를 입력해 큰 화면에 송출합니다.</p>
+            <div style="display: flex; gap: 8px; width: 100%; box-sizing: border-box;">
+              <input type="text" id="input-display-pin" placeholder="PIN 6자리" maxlength="6" style="flex: 1; min-width: 0; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--color-bg); color: var(--color-text); text-align: center; font-weight: bold; font-size: 1rem;">
+              <button class="btn btn-secondary" id="btn-enter-display" style="padding: 10px 16px; font-size: 1rem; white-space: nowrap; flex-shrink: 0;">접속</button>
+            </div>
+          </div>
+
+          <div class="mode-card">
+            <div class="mode-icon">📱</div>
+            <h3>학생 모드</h3>
+            <p>교실 화면의 QR코드를 스캔하거나 PIN 번호를 직접 입력해 참여합니다.</p>
+            <div style="display: flex; gap: 8px; width: 100%; box-sizing: border-box;">
+              <input type="text" id="input-student-pin" placeholder="PIN 6자리" maxlength="6" style="flex: 1; min-width: 0; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--color-bg); color: var(--color-text); text-align: center; font-weight: bold; font-size: 1rem;">
+              <button class="btn btn-primary" id="btn-enter-student" style="padding: 10px 16px; font-size: 1rem; white-space: nowrap; flex-shrink: 0;">참여</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 이 기기 전용 내가 생성한 퀴즈 방 목록 (3일 후 자동 정제) -->
+        <div style="margin-top: 36px; text-align: left; background: var(--card-dark); border: 1px solid var(--border); border-radius: 16px; padding: 24px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+            <h2 style="font-size: 1.3rem; color: #38bdf8; display: flex; align-items: center; gap: 8px; margin: 0;">
+              📁 내가 생성한 퀴즈 방 목록 <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: normal;">(이 기기 전용 / 3일 지나면 자동 정리)</span>
+            </h2>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <button type="button" id="btn-import-remote-room" class="btn btn-outline-sm" style="font-size: 0.85rem; padding: 6px 14px; color: #38bdf8; border-color: #38bdf8; background: rgba(56, 189, 248, 0.12); cursor: pointer; font-weight: bold; border-radius: 8px;">
+                🔑 다른 기기 퀴즈 방 가져오기 (PIN 등록)
+              </button>
+              <span style="font-size: 0.9rem; color: #fbbf24; font-weight: bold;">보관: ${localRooms.length}개</span>
+            </div>
+          </div>
+
+          ${localRooms.length === 0 ? `
+            <div style="text-align: center; color: var(--text-muted); padding: 26px 16px; font-size: 0.98rem; border: 1px dashed var(--border); border-radius: 12px; background: #0f172a;">
+              💡 이 컴퓨터에서 생성한 퀴즈 방이 없습니다. 상단의 <strong>[새 퀴즈 방 만들기]</strong>로 첫 문항을 작성해 보세요!
+            </div>
+          ` : `
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px;">
+              ${localRooms.map(room => {
+                const dateStr = new Date(room.createdAt).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                return `
+                  <div style="background: #0f172a; border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; flex-wrap: wrap;">
+                        <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                          <span class="room-badge" style="font-size: 0.88rem; padding: 4px 10px; white-space: nowrap; letter-spacing: 0.5px; display: inline-flex; align-items: center;">
+                            PIN: <span style="margin-left: 5px; color: #ffffff; font-weight: 900; letter-spacing: 1.5px;">${room.roomId}</span>
+                          </span>
+                          ${room.keepPermanent ? '<span style="font-size: 0.75rem; background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid #38bdf8; padding: 2px 6px; border-radius: 4px; font-weight: bold; white-space: nowrap;">📌 영구 보존</span>' : ''}
+                        </div>
+                        <span style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;">${dateStr}</span>
+                      </div>
+                      <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 6px;">
+                        <h4 style="font-size: 1.05rem; color: #fff; margin: 0; flex: 1; word-break: break-all;">${escapeHtml(room.title)}</h4>
+                        <button type="button" class="btn btn-outline-sm btn-rename-room" data-pin="${room.roomId}" data-title="${escapeHtml(room.title)}" style="padding: 2px 8px; font-size: 0.78rem; border-color: #38bdf8; color: #38bdf8; white-space: nowrap;">✏️ 이름 수정</button>
+                      </div>
+                      <p style="font-size: 0.9rem; color: #38bdf8; font-weight: bold; margin-bottom: 14px;">📝 문항 수: ${room.questionCount}개</p>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                      <button class="btn btn-primary btn-run-room" data-pin="${room.roomId}" style="padding: 8px 4px; font-size: 0.85rem;">🚀 교사 진행</button>
+                      <button class="btn btn-secondary btn-display-room" data-pin="${room.roomId}" style="padding: 8px 4px; font-size: 0.85rem;">🖥️ 전자칠판</button>
+                      <button class="btn btn-outline-sm btn-edit-room" data-pin="${room.roomId}" style="padding: 6px 4px; font-size: 0.82rem; border-color: #fbbf24; color: #fbbf24;">📝 문항 편집</button>
+                      <button class="btn btn-danger btn-del-room" data-pin="${room.roomId}" style="padding: 6px 4px; font-size: 0.82rem;">🗑️ 삭제</button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `}
+        </div>
+
+        <!-- 아래로 스크롤 안내 디바이더 -->
+        <div class="landing-scroll-divider">
+          <span>👇 클래스 라이브 퀴즈의 핵심 기능 돋보기 (아래로 스크롤하세요)</span>
+        </div>
+
+        <!-- Section 1: 3중 실시간 뷰 연동 -->
+        <section class="landing-full-section">
+          <div class="landing-split-row">
+            <div class="landing-text-col">
+              <span class="landing-tag">0.1초 실시간 동기화</span>
+              <h2 class="landing-section-heading">⚡ 전자칠판과 모바일이<br>하나로 연결되는 순간</h2>
+              <p class="landing-section-desc">
+                전자칠판(대형 송출), 교사 PC(컨트롤러), 학생 스마트폰(QR 1초 응답 패드)이 클라우드 실시간 DB로 0.1초 만에 완벽 동기화됩니다. 교내망 AP Isolation 차단 환경도 100% 극복합니다.
+              </p>
+            </div>
+            <div class="landing-visual-col">
+              <div class="landing-widget-box">
+                <div style="font-size: 1.1rem; font-weight: bold; color: #38bdf8; margin-bottom: 20px; text-align: center; border-bottom: 1px dashed var(--border); padding-bottom: 12px;">
+                  🌐 3대 화면 실시간 동기화 상태 시뮬레이션
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 14px;">
+                  <div style="background: rgba(56, 189, 248, 0.15); border: 1px solid #38bdf8; border-radius: 12px; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                      <span style="font-size: 1.8rem;">🖥️</span>
+                      <div>
+                        <div style="font-size: 1.05rem; font-weight: 800; color: #ffffff;">전자칠판 (대형 화면)</div>
+                        <div style="font-size: 0.85rem; color: #94a3b8;">실시간 QR & 선택지 차트 송출중</div>
+                      </div>
+                    </div>
+                    <span style="background: #10b981; color: #fff; font-size: 0.78rem; font-weight: bold; padding: 4px 10px; border-radius: 999px;">라이브 0.1초</span>
+                  </div>
+
+                  <div style="background: rgba(251, 191, 36, 0.15); border: 1px solid #fbbf24; border-radius: 12px; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                      <span style="font-size: 1.8rem;">👨‍🏫</span>
+                      <div>
+                        <div style="font-size: 1.05rem; font-weight: 800; color: #ffffff;">교사 컨트롤러 (PC/태블릿)</div>
+                        <div style="font-size: 0.85rem; color: #94a3b8;">문항 제어 & 결과 공개 관리</div>
+                      </div>
+                    </div>
+                    <span style="background: #10b981; color: #fff; font-size: 0.78rem; font-weight: bold; padding: 4px 10px; border-radius: 999px;">제어 준비</span>
+                  </div>
+
+                  <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; border-radius: 12px; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                      <span style="font-size: 1.8rem;">📱</span>
+                      <div>
+                        <div style="font-size: 1.05rem; font-weight: 800; color: #ffffff;">학생 모바일 패드</div>
+                        <div style="font-size: 0.85rem; color: #94a3b8;">QR 1초 즉시 입력 (별도 앱 설치 0)</div>
+                      </div>
+                    </div>
+                    <span style="background: #38bdf8; color: #fff; font-size: 0.78rem; font-weight: bold; padding: 4px 10px; border-radius: 999px;">28명 접속중</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Section 2: 5종 스마트 문항 & 3종 차트 -->
+        <section class="landing-full-section">
+          <div class="landing-split-row">
+            <div class="landing-text-col">
+              <span class="landing-tag" style="background: rgba(251, 191, 36, 0.2); color: #fbbf24; border-color: #fbbf24;">반응형 시각화</span>
+              <h2 class="landing-section-heading">📊 5종 스마트 문항 &<br>3종 실시간 그래프</h2>
+              <p class="landing-section-desc">
+                O/X 참거짓, 선다형(그리드, 막대, 원형 도넛 차트), LaTeX 단답형, 실시간 워드클라우드, 50vh 그림 포스트잇까지! 수업 성격에 맞게 차트 형태를 자유롭게 전환해보세요.
+              </p>
+            </div>
+            <div class="landing-visual-col">
+              <div class="landing-widget-box">
+                <div style="display: flex; gap: 8px; margin-bottom: 20px; justify-content: center; flex-wrap: wrap;">
+                  <button type="button" class="landing-tab-btn active" id="tab-landing-grid">▦ 그리드형</button>
+                  <button type="button" class="landing-tab-btn" id="tab-landing-bar">📊 막대 그래프</button>
+                  <button type="button" class="landing-tab-btn" id="tab-landing-pie">🍩 원형 차트</button>
+                </div>
+                <div id="landing-chart-demo" style="min-height: 200px; display: flex; align-items: center; justify-content: center; background: #0f172a; padding: 18px; border-radius: 14px; border: 1px solid var(--border);"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Section 3: 블라인드 결과 가리기 & 익명 오답 -->
+        <section class="landing-full-section">
+          <div class="landing-split-row">
+            <div class="landing-text-col">
+              <span class="landing-tag" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border-color: #f59e0b;">소신 있는 참여</span>
+              <h2 class="landing-section-heading">🔒 블라인드 결과 가리기 &<br>익명 오답 구경하기</h2>
+              <p class="landing-section-desc">
+                '🙈 결과 가리기' 버튼을 누르면 또래 동조 현상 없이 소신껏 응답하도록 결과 수치만 스포일러 방지 처리되며, 단답형 오답은 닉네임 없이 익명 워드클라우드로 유쾌하게 공유됩니다.
+              </p>
+            </div>
+            <div class="landing-visual-col">
+              <div class="landing-widget-box">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border);">
+                  <span style="font-size: 0.95rem; color: #94a3b8; font-weight: bold;">실시간 결과 가리기 시뮬레이터:</span>
+                  <button type="button" id="btn-landing-toggle-results" class="btn btn-outline-sm" style="padding: 6px 14px; font-size: 0.9rem; border-color: #f59e0b; color: #fbbf24; background: rgba(245, 158, 11, 0.2); font-weight: bold;">
+                    🙈 결과 가리기 (클릭해보세요)
+                  </button>
+                </div>
+                <div id="landing-blind-demo" style="background: #0f172a; padding: 20px; border-radius: 12px; display: flex; flex-direction: column; gap: 12px; border: 1px solid var(--border);">
+                  <div style="display: flex; justify-content: space-between; align-items: center; background: #1e293b; padding: 12px 16px; border-radius: 8px;">
+                    <span style="font-weight: 800; color: #ffffff; font-size: 1.15rem;">1. 세종대왕 (한글 창제)</span>
+                    <strong style="color: #fbbf24; font-size: 1.05rem;" id="demo-stat-1">🔒 가림</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; background: #1e293b; padding: 12px 16px; border-radius: 8px;">
+                    <span style="font-weight: 800; color: #ffffff; font-size: 1.15rem;">2. 이순신 (한산도 대첩)</span>
+                    <strong style="color: #fbbf24; font-size: 1.05rem;" id="demo-stat-2">🔒 가림</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Section 4: 스피드 점수 & 3D 시상식 -->
+        <section class="landing-full-section">
+          <div class="landing-split-row">
+            <div class="landing-text-col">
+              <span class="landing-tag" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border-color: #a855f7;">흥미진진한 몰입</span>
+              <h2 class="landing-section-heading">🏆 스피드 가산점 &<br>3D 챔피언 포디움</h2>
+              <p class="landing-section-desc">
+                빠르고 정확하게 정답을 맞힌 학생에게 스피드 가산점이 수여되며, 흥겨운 팡파르 BGM과 함께 3D 챔피언 시상식이 열립니다. 무점수 의견 수렴은 깔끔한 통합 요약만 전해집니다.
+              </p>
+            </div>
+            <div class="landing-visual-col">
+              <div class="landing-widget-box" style="text-align: center; padding: 30px 20px;">
+                <div style="font-size: 1.1rem; font-weight: bold; color: #fbbf24; margin-bottom: 24px;">🎉 퀴즈 최종 챔피언 시상식</div>
+                <div style="display: flex; justify-content: center; gap: 20px; align-items: flex-end; padding: 10px 0;">
+                  <div style="background: linear-gradient(to top, #1e293b, #334155); padding: 16px 20px; border-radius: 12px 12px 0 0; color: #e2e8f0; border: 1px solid #475569; width: 90px;">
+                    <div style="font-size: 2rem;">🐶</div>
+                    <div style="font-size: 0.9rem; font-weight: bold; color: #cbd5e1; margin-top: 4px;">🥈 2위</div>
+                    <div style="font-size: 0.8rem; color: #38bdf8;">420점</div>
+                  </div>
+                  <div style="background: linear-gradient(to top, #78350f, #b45309); padding: 26px 24px; border-radius: 14px 14px 0 0; color: #fef08a; font-weight: bold; border: 2px solid #fbbf24; width: 110px;">
+                    <div style="font-size: 2.6rem;">👑 🐱</div>
+                    <div style="font-size: 1.05rem; font-weight: bold; color: #fff; margin-top: 4px;">🥇 1위</div>
+                    <div style="font-size: 0.95rem; color: #fef08a;">580점</div>
+                  </div>
+                  <div style="background: linear-gradient(to top, #1e293b, #334155); padding: 12px 16px; border-radius: 12px 12px 0 0; color: #fde68a; border: 1px solid #475569; width: 85px;">
+                    <div style="font-size: 1.8rem;">🦊</div>
+                    <div style="font-size: 0.85rem; font-weight: bold; color: #cbd5e1; margin-top: 4px;">🥉 3위</div>
+                    <div style="font-size: 0.8rem; color: #38bdf8;">310점</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Section 5: 교실 활용 시나리오 & 테마 및 맨위로 CTA -->
+        <section class="landing-full-section">
+          <div style="max-width: 1100px; margin: 0 auto; width: 100%;">
+            <h2 class="landing-section-heading" style="text-align: center; margin-bottom: 12px;">💡 교실 수업 활용 시나리오</h2>
+            <p class="landing-section-desc" style="text-align: center; margin-bottom: 40px; max-width: 700px; margin-left: auto; margin-right: auto;">
+              어떤 교과, 어떤 형태의 수업에서도 자유롭게 응용할 수 있는 최적의 퀴즈 도구입니다.
+            </p>
+
+            <div class="scenario-card-grid" style="margin-bottom: 50px;">
+              <div class="scenario-card">
+                <div class="scenario-icon">📐</div>
+                <div class="scenario-title">수학 / 과학 수식 퀴즈</div>
+                <div class="scenario-desc">LaTeX 수식 헬퍼로 분수, 제곱, 근호 문제를 손쉽게 출제하고 시각화합니다.</div>
+              </div>
+              <div class="scenario-card">
+                <div class="scenario-icon">💬</div>
+                <div class="scenario-title">사회 / 국어 의견 수렴</div>
+                <div class="scenario-desc">무점수 워드클라우드 및 50vh 그림 포스트잇으로 학생들의 토론 의견을 수집합니다.</div>
+              </div>
+              <div class="scenario-card">
+                <div class="scenario-icon">⚡</div>
+                <div class="scenario-title">단원 형성평가 & 복습</div>
+                <div class="scenario-desc">O/X 참거짓 및 3종 차트 선다형 문항으로 스피드 점수 경쟁 복습 퀴즈를 진행합니다.</div>
+              </div>
+              <div class="scenario-card">
+                <div class="scenario-icon">🎨</div>
+                <div class="scenario-title">공개수업 4종 디자인 테마</div>
+                <div class="scenario-desc">스마트 TV, 초록 칠판, 대리석, 우드락 보드 4종 감성 테마로 단번에 전환합니다.</div>
+              </div>
+            </div>
+
+            <div style="text-align: center; padding: 40px 20px; background: var(--card-dark); border: 2px solid var(--primary); border-radius: var(--radius-lg);">
+              <h3 style="font-size: 1.8rem; color: var(--color-primary); margin-bottom: 10px;">🚀 지금 바로 우리 반 퀴즈를 시작해 보세요!</h3>
+              <p style="color: var(--text-muted); margin-bottom: 24px; font-size: 1.1rem;">별도 회원가입이나 프로그램 설치 없이 클릭 한 번으로 시작할 수 있습니다.</p>
+              <button type="button" class="btn btn-primary" id="btn-scroll-top-cta" style="font-size: 1.15rem; padding: 16px 36px;">⬆️ 맨 위로 이동하여 시작하기</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    `;
+
+    document.getElementById('btn-create-room')?.addEventListener('click', handleCreateRoom);
+    document.getElementById('btn-standalone-coin-race')?.addEventListener('click', () => openStandaloneCoinRaceModal());
+    document.getElementById('btn-open-fb-info')?.addEventListener('click', openFirebaseInfoModal);
+    document.getElementById('select-theme-home')?.addEventListener('change', (e) => setTheme(e.target.value));
+    document.getElementById('btn-enter-display')?.addEventListener('click', () => {
+      const pin = document.getElementById('input-display-pin').value.trim();
+      if (pin.length === 6) window.location.search = `?room=${pin}&role=display`;
+      else alert('6자리 PIN 번호를 입력해 주세요.');
+    });
+    document.getElementById('btn-enter-student')?.addEventListener('click', () => {
+      const pin = document.getElementById('input-student-pin').value.trim();
+      if (pin.length === 6) window.location.search = `?room=${pin}&role=student`;
+      else alert('6자리 PIN 번호를 입력해 주세요.');
+    });
+
+    // 랜딩 예시 차트 탭 인터랙션
+    const demoBox = document.getElementById('landing-chart-demo');
+    const tabGrid = document.getElementById('tab-landing-grid');
+    const tabBar = document.getElementById('tab-landing-bar');
+    const tabPie = document.getElementById('tab-landing-pie');
+
+    const renderChartDemo = (type) => {
+      if (!demoBox) return;
+      if (type === 'bar') {
+        demoBox.innerHTML = `
+          <div style="width: 100%; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #1e293b; padding: 6px 12px; border-radius: 6px;">
+              <span style="color: #ffffff; font-weight: 800;">1. 세종대왕</span>
+              <div style="flex:1; margin: 0 12px; background: #0f172a; height: 16px; border-radius: 8px; overflow: hidden;"><div style="width: 75%; height: 100%; background: #38bdf8;"></div></div>
+              <span style="color: #38bdf8; font-weight: bold;">75% (15명)</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #1e293b; padding: 6px 12px; border-radius: 6px;">
+              <span style="color: #ffffff; font-weight: 800;">2. 이순신</span>
+              <div style="flex:1; margin: 0 12px; background: #0f172a; height: 16px; border-radius: 8px; overflow: hidden;"><div style="width: 25%; height: 100%; background: #f59e0b;"></div></div>
+              <span style="color: #f59e0b; font-weight: bold;">25% (5명)</span>
+            </div>
+          </div>
+        `;
+      } else if (type === 'pie') {
+        demoBox.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 20px; justify-content: center;">
+            <div style="width: 80px; height: 80px; border-radius: 50%; background: conic-gradient(#38bdf8 0% 75%, #f59e0b 75% 100%); display: flex; align-items: center; justify-content: center;">
+              <div style="width: 44px; height: 44px; border-radius: 50%; background: #0f172a; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold; color: #fff;">20명</div>
+            </div>
+            <div style="font-size: 0.85rem; text-align: left;">
+              <div style="color: #38bdf8;">● 1. 세종대왕: 75%</div>
+              <div style="color: #f59e0b; margin-top: 4px;">● 2. 이순신: 25%</div>
+            </div>
+          </div>
+        `;
+      } else {
+        demoBox.innerHTML = `
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%;">
+            <div style="background: #1e293b; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #38bdf8;">
+              <span style="font-weight: 800; color: #ffffff; font-size: 1.1rem;">1. 세종대왕</span>
+              <div style="color: #38bdf8; font-weight: bold; margin-top: 4px;">15명 (75%)</div>
+            </div>
+            <div style="background: #1e293b; padding: 12px; border-radius: 8px; text-align: center;">
+              <span style="font-weight: 800; color: #ffffff; font-size: 1.1rem;">2. 이순신</span>
+              <div style="color: #f59e0b; font-weight: bold; margin-top: 4px;">5명 (25%)</div>
+            </div>
+          </div>
+        `;
+      }
+    };
+
+    renderChartDemo('grid');
+
+    tabGrid?.addEventListener('click', () => {
+      [tabGrid, tabBar, tabPie].forEach(b => b?.classList.remove('active'));
+      tabGrid.classList.add('active');
+      renderChartDemo('grid');
+    });
+    tabBar?.addEventListener('click', () => {
+      [tabGrid, tabBar, tabPie].forEach(b => b?.classList.remove('active'));
+      tabBar.classList.add('active');
+      renderChartDemo('bar');
+    });
+    tabPie?.addEventListener('click', () => {
+      [tabGrid, tabBar, tabPie].forEach(b => b?.classList.remove('active'));
+      tabPie.classList.add('active');
+      renderChartDemo('pie');
+    });
+
+    // 결과 가리기 버튼 인터랙션 시뮬레이션
+    let isLandingHide = true;
+    document.getElementById('btn-landing-toggle-results')?.addEventListener('click', (e) => {
+      isLandingHide = !isLandingHide;
+      e.currentTarget.textContent = isLandingHide ? '🙈 결과 가리기 (클릭해 보세요)' : '👁️ 결과 공개 (클릭해 보세요)';
+      const s1 = document.getElementById('demo-stat-1');
+      const s2 = document.getElementById('demo-stat-2');
+      if (s1) s1.innerHTML = isLandingHide ? '🔒 가림' : '15명 (75%)';
+      if (s2) s2.innerHTML = isLandingHide ? '🔒 가림' : '5명 (25%)';
+    });
+
+    // 맨 위로 이동 CTA
+    document.getElementById('btn-scroll-top-cta')?.addEventListener('click', () => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    // 스크롤 감지 reveal 애니메이션 Observer
+    if ('IntersectionObserver' in window) {
+      const landingObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+          }
+        });
+      }, { threshold: 0.15 });
+
+      document.querySelectorAll('.landing-full-section').forEach(sec => {
+        landingObserver.observe(sec);
+      });
+    } else {
+      document.querySelectorAll('.landing-full-section').forEach(sec => sec.classList.add('visible'));
+    }
+
+    document.querySelectorAll('.btn-run-room').forEach(btn => {
+      btn.addEventListener('click', (e) => window.location.search = `?room=${e.currentTarget.dataset.pin}&role=teacher`);
+    });
+    document.querySelectorAll('.btn-display-room').forEach(btn => {
+      btn.addEventListener('click', (e) => window.location.search = `?room=${e.currentTarget.dataset.pin}&role=display`);
+    });
+    document.querySelectorAll('.btn-rename-room').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const pin = e.currentTarget.dataset.pin;
+        const oldTitle = e.currentTarget.dataset.title || '실시간 수업 퀴즈';
+        const newTitle = prompt('퀴즈 방의 새 이름을 입력하세요:', oldTitle);
+        if (newTitle !== null && newTitle.trim() !== '') {
+          const title = newTitle.trim();
+          saveMyLocalQuizRoom({ roomId: pin, title: title });
+          await updateRoomMeta(pin, { title: title });
+          renderHomeView(app);
+        }
+      });
+    });
+    document.querySelectorAll('.btn-edit-room').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const pin = e.currentTarget.dataset.pin;
+        const localData = getLocalRoom(pin) || {};
+        let cloudData = null;
+        try { cloudData = await fetchFirebaseRest(`rooms/${pin}`); } catch (e) {}
+
+        const roomData = (cloudData && Array.isArray(cloudData.questions) && cloudData.questions.length > 0)
+          ? cloudData
+          : (Array.isArray(localData.questions) && localData.questions.length > 0 ? localData : (cloudData || localData));
+        const meta = { ...(localData.meta || {}), ...(cloudData?.meta || {}) };
+
+        renderTeacherAdminModal(pin, roomData.questions || [], async (savedMeta) => {
+          if (savedMeta) {
+            saveMyLocalQuizRoom({ roomId: pin, ...savedMeta });
+          }
+          alert('문항이 성공적으로 저장되었습니다.');
+          renderHomeView(app);
+        }, meta);
+      });
+    });
+    document.querySelectorAll('.btn-del-room').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const pin = e.currentTarget.dataset.pin;
+        if (confirm(`PIN [${pin}] 퀴즈 방을 삭제하시겠습니까?`)) {
+          removeMyLocalQuizRoom(pin);
+          renderHomeView(app);
+        }
+      });
+    });
+
+    document.getElementById('btn-import-remote-room')?.addEventListener('click', async () => {
+      const pin = prompt('가져올 퀴즈 방의 6자리 PIN 번호를 입력하세요:');
+      if (pin === null) return;
+      const cleanPin = pin.trim();
+      if (cleanPin.length !== 6) {
+        alert('올바른 6자리 PIN 번호를 입력해 주세요.');
+        return;
+      }
+
+      let roomData = null;
+      if (db) {
+        try {
+          const snap = await db.ref(`rooms/${cleanPin}`).once('value');
+          roomData = snap.val();
+        } catch (e) {}
+      }
+      if (!roomData) {
+        roomData = await fetchFirebaseRest(`rooms/${cleanPin}`);
+      }
+
+      if (!roomData || !roomData.meta) {
+        alert(`❌ PIN [${cleanPin}] 퀴즈 방을 찾을 수 없습니다.\nPIN 번호를 다시 확인해 주세요.`);
+        return;
+      }
+
+      const meta = roomData.meta;
+      const savedPass = meta.adminPassword;
+      if (savedPass && savedPass.trim() !== '') {
+        const inputPass = prompt(`🔒 관리자 비밀번호 확인\n\n[${meta.title || '퀴즈 방'}]의 관리자 비밀번호를 입력해 주세요:`);
+        if (inputPass === null) return;
+        if (inputPass.trim() !== String(savedPass).trim()) {
+          alert('❌ 관리자 비밀번호가 일치하지 않습니다.');
+          return;
+        }
+      }
+
+      saveMyLocalQuizRoom({
+        roomId: cleanPin,
+        title: meta.title || '실시간 수업 퀴즈',
+        adminPassword: savedPass || '',
+        questionCount: (roomData.questions || []).length,
+        keepPermanent: meta.keepPermanent || false,
+        enableCoinRace: meta.enableCoinRace || false
+      });
+
+      alert(`✅ [${meta.title || cleanPin}] 퀴즈 방이 성공적으로 등록되었습니다!\n이제 이 기기의 목록에서 바로 교사 진행 및 문항 편집을 하실 수 있습니다.`);
+      renderHomeView(app);
+    });
+  }
+
+  async function handleCreateRoom() {
+    const roomId = generateRoomId();
+    state.roomId = roomId;
+    const initialRoomData = {
+      meta: { title: '실시간 수업 퀴즈', createdAt: Date.now(), status: 'LOBBY', currentQuestionIndex: 0 },
+      questions: [],
+      participants: {}
+    };
+    await createRoom(roomId, initialRoomData);
+    saveMyLocalQuizRoom({ roomId, title: '실시간 수업 퀴즈', questionCount: 0, createdAt: Date.now() });
+    window.location.search = `?room=${roomId}&role=teacher`;
+  }
+
+  function initHostFlow(app, isTeacherControl) {
+    subscribeRoom(state.roomId, (roomData) => {
+      if (!roomData) {
+        app.innerHTML = `
+          <div class="mobile-view">
+            <div class="mobile-card">
+              <div style="font-size: 3rem; margin-bottom: 12px;">⚠️</div>
+              <h2 style="font-size: 1.5rem; color: #f59e0b;">퀴즈 방이 생성되지 않았습니다</h2>
+              <p style="color: var(--text-muted); margin-top: 10px;">교사 PC에서 먼저 [새 퀴즈 방 만들기]로 방을 생성해 주세요.</p>
+              <button class="btn btn-secondary" onclick="window.location.search=''" style="margin-top: 20px;">메인 화면으로 이동</button>
+            </div>
+          </div>
+        `;
+        return;
+      }
+      state.roomData = roomData;
+      const status = roomData.meta?.status || 'LOBBY';
+      if (status === 'LOBBY') renderHostLobbyView(app, isTeacherControl);
+      else renderHostDisplayView(app, roomData, state.roomId, isTeacherControl);
+    });
+  }
+
+  function renderHostLobbyView(app, isTeacherControl) {
+    const baseUrl = window.location.origin + window.location.pathname;
+    const studentJoinUrl = `${baseUrl}?room=${state.roomId}&role=student`;
+    const questions = state.roomData?.questions || [];
+
+    const existingLobby = document.getElementById('lobby-layout-box');
+    if (existingLobby) {
+      updateParticipantList(state.roomData?.participants || {});
+      const editBtn = document.getElementById('btn-open-edit');
+      if (editBtn) editBtn.textContent = `📝 문제 출제 / 편집 (${questions.length}개)`;
+      return;
+    }
+
+    app.innerHTML = `
+      <div class="lobby-layout" id="lobby-layout-box">
+        <div class="lobby-header">
+          <div style="display: flex; align-items: center;">
+            <span class="room-badge">방 PIN : ${state.roomId}</span>
+            <button class="btn btn-secondary" id="btn-go-home-lobby" style="margin-left: 12px; font-weight: bold; padding: 6px 14px; font-size: 0.9rem;">🏠 메인으로</button>
+            <select id="select-theme-lobby" class="select-theme-dropdown" style="margin-left: 12px; padding: 6px 12px; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid var(--border); font-size: 0.9rem; font-weight: bold; cursor: pointer;">
+              <option value="tv" ${getSavedTheme() === 'tv' ? 'selected' : ''}>📺 스마트 TV</option>
+              <option value="chalkboard" ${getSavedTheme() === 'chalkboard' ? 'selected' : ''}>🧹 초록 칠판</option>
+              <option value="marble" ${getSavedTheme() === 'marble' ? 'selected' : ''}>🏛️ 깔끔 대리석</option>
+              <option value="woodlock" ${getSavedTheme() === 'woodlock' ? 'selected' : ''}>🪵 우드락 보드</option>
+            </select>
+            <div style="margin-left: 12px; display: inline-flex;">
+              ${renderBgmVolumeControlHtml('lobby')}
+            </div>
+            ${!isTeacherControl ? '<span style="margin-left: 12px; color: #38bdf8; font-weight: bold;">[전자칠판 디스플레이 모드]</span>' : ''}
+          </div>
+          <div style="display: flex; gap: 12px;">
+            <button class="btn btn-secondary" id="btn-open-edit">📝 문제 출제 / 편집 (${questions.length}개)</button>
+            <button class="btn btn-primary" id="btn-start-quiz" style="font-size: 1.25rem; padding: 14px 32px;">🚀 퀴즈 시작</button>
+          </div>
+        </div>
+
+        ${questions.length === 0 ? `
+          <div style="background: rgba(245, 158, 11, 0.15); border: 1px dashed #f59e0b; padding: 14px 20px; border-radius: 12px; margin-top: 20px; color: #fbbf24; font-weight: bold; text-align: center; font-size: 1.1rem;">
+            💡 출제된 문제가 아직 없습니다. 우측 상단의 <strong>[📝 문제 출제 / 편집]</strong> 버튼을 누르고 질문을 자유롭게 추가해 주세요!
+          </div>
+        ` : ''}
+
+        <div class="lobby-content">
+          <div class="qr-box">
+            <h2>스마트폰으로 참여하세요</h2>
+            <div class="pin-number">${state.roomId}</div>
+            <div class="qr-canvas-container" id="qr-canvas-container" style="background:#fff; padding:10px; border-radius:12px;"></div>
+            <div style="color: var(--text-muted); font-size: 0.95rem; word-break: break-all; margin-top: 12px;">
+              <span>접속 주소:</span>
+              <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 6px; flex-wrap: wrap;">
+                <strong style="color: #38bdf8; font-size: 0.95rem; word-break: break-all; user-select: all; background: #0f172a; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);">${studentJoinUrl}</strong>
+                <button type="button" id="btn-copy-student-url" class="btn btn-outline-sm" style="padding: 6px 12px; font-size: 0.85rem; border-color: #38bdf8; color: #38bdf8; font-weight: bold; cursor: pointer; white-space: nowrap; background: rgba(56, 189, 248, 0.15);">
+                  📋 URL 복사
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="participants-box">
+            <div class="participants-header">
+              <h2>대기 중인 학생들</h2>
+              <span class="participant-count" id="count-display">0명</span>
+            </div>
+            <div class="participant-grid" id="participant-list"></div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const qrContainer = document.getElementById('qr-canvas-container');
+    if (qrContainer && window.QRCode) {
+      qrContainer.innerHTML = '';
+      new window.QRCode(qrContainer, { text: studentJoinUrl, width: 200, height: 200 });
+    }
+
+    updateParticipantList(state.roomData?.participants || {});
+
+    document.getElementById('btn-copy-student-url')?.addEventListener('click', (e) => {
+      const btn = e.currentTarget;
+      const copySuccess = () => {
+        const oldText = btn.textContent;
+        btn.textContent = '✅ 복사 완료!';
+        btn.style.borderColor = '#10b981';
+        btn.style.color = '#10b981';
+        setTimeout(() => {
+          btn.textContent = oldText;
+          btn.style.borderColor = '#38bdf8';
+          btn.style.color = '#38bdf8';
+        }, 2000);
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(studentJoinUrl).then(copySuccess).catch(() => {
+          fallbackCopyText(studentJoinUrl, copySuccess);
+        });
+      } else {
+        fallbackCopyText(studentJoinUrl, copySuccess);
+      }
+    });
+
+    document.getElementById('btn-go-home-lobby')?.addEventListener('click', () => window.location.search = '');
+    document.getElementById('select-theme-lobby')?.addEventListener('change', (e) => setTheme(e.target.value));
+
+    bindBgmVolumeControlEvents(app);
+
+    document.getElementById('btn-open-edit')?.addEventListener('click', async () => {
+      if (!isRoomCreatorLocal(state.roomId)) {
+        const roomMeta = state.roomData?.meta || {};
+        const savedPass = roomMeta.adminPassword;
+        if (savedPass && savedPass.trim() !== '') {
+          const inputPass = prompt('🔒 관리자 비밀번호 입력\n\n이 퀴즈 방은 다른 기기에서 생성되었습니다.\n본 기기에서 문제를 편집하시려면 설정된 관리자 비밀번호를 입력해 주세요:');
+          if (inputPass === null) return;
+          if (inputPass.trim() !== String(savedPass).trim()) {
+            alert('❌ 관리자 비밀번호가 일치하지 않습니다.');
+            return;
+          }
+        } else {
+          const setPass = prompt('🔒 관리자 인증 및 비밀번호 설정\n\n이 퀴즈 방은 다른 기기에서 생성되었으며 관리자 비밀번호가 아직 설정되지 않았습니다.\n본 기기 및 향후 타 기기 편집 시 사용할 새 관리자 비밀번호를 입력해 주세요:');
+          if (setPass === null || setPass.trim() === '') return;
+          const cleanPass = setPass.trim();
+          await updateRoomMeta(state.roomId, { adminPassword: cleanPass });
+          if (state.roomData?.meta) state.roomData.meta.adminPassword = cleanPass;
+        }
+
+        saveMyLocalQuizRoom({
+          roomId: state.roomId,
+          title: state.roomData?.meta?.title || '실시간 수업 퀴즈',
+          adminPassword: state.roomData?.meta?.adminPassword || '',
+          questionCount: (state.roomData?.questions || []).length,
+          keepPermanent: state.roomData?.meta?.keepPermanent || false,
+          enableCoinRace: state.roomData?.meta?.enableCoinRace || false
+        });
+        alert('✅ 관리자 인증이 완료되었습니다!\n이제 본 기기에서도 자유롭게 문제를 편집하고 저장하실 수 있습니다.');
+      }
+
+      const currentQuestions = (state.roomData?.questions && state.roomData.questions.length > 0)
+        ? state.roomData.questions
+        : (getLocalRoom(state.roomId)?.questions || []);
+
+      renderTeacherAdminModal(state.roomId, currentQuestions, (savedMeta) => {
+        if (savedMeta) {
+          saveMyLocalQuizRoom({ roomId: state.roomId, ...savedMeta });
+        }
+        alert('문항이 성공적으로 저장되었습니다.');
+        const existingLobby = document.getElementById('lobby-layout-box');
+        if (existingLobby) {
+          existingLobby.remove();
+        }
+        renderHostLobbyView(app, isTeacherControl);
+      }, state.roomData?.meta);
+    });
+
+    document.getElementById('btn-start-quiz')?.addEventListener('click', async () => {
+      const qs = state.roomData?.questions || [];
+      if (qs.length === 0) {
+        alert('출제된 문항이 없습니다. [📝 문제 출제 / 편집] 버튼을 먼저 눌러 문제를 추가해 주세요!');
+        return;
+      }
+      await startCountdownToQuestion(state.roomId, 0);
+    });
+  }
+
+  function fallbackCopyText(text, callback) {
+    const input = document.createElement('input');
+    input.value = text;
+    document.body.appendChild(input);
+    input.select();
+    try {
+      document.execCommand('copy');
+      if (callback) callback();
+    } catch (err) {
+      alert('접속 주소 복사에 실패했습니다.');
+    }
+    document.body.removeChild(input);
+  }
+
+  function updateParticipantList(participants) {
+    const container = document.getElementById('participant-list');
+    const countDisplay = document.getElementById('count-display');
+    if (!container || !countDisplay) return;
+
+    const list = Object.values(participants);
+    countDisplay.textContent = `${list.length}명`;
+
+    if (list.length === 0) {
+      container.innerHTML = `<p style="color: var(--text-muted); margin: auto; font-size: 1.2rem;">학생들이 QR코드를 스캔해 입장하기를 기다리는 중입니다...</p>`;
+      return;
+    }
+
+    container.innerHTML = list.map(p => `
+      <div class="student-tag">
+        ${renderAvatarBadgeHtml(p.avatar || '🐶', 30, 'margin-right: 6px;')}
+        <span>${escapeHtml(p.nickname)}</span>
+      </div>
+    `).join('');
+  }
+
+  function initStudentFlow(app) {
+    const studentId = getOrCreateStudentId();
+
+    app.innerHTML = `
+      <div class="mobile-view">
+        <div class="mobile-card" style="text-align: center; padding: 40px 20px;">
+          <div style="font-size: 3rem; margin-bottom: 16px;">⚡</div>
+          <h2 style="font-size: 1.4rem; color: #38bdf8; margin-bottom: 8px;">퀴즈 방 연결 중...</h2>
+          <p style="color: var(--text-muted); font-size: 0.95rem;">방 PIN: <strong>${state.roomId}</strong></p>
+        </div>
+      </div>
+    `;
+
+    let receiveCount = 0;
+    subscribeRoom(state.roomId, (roomData) => {
+      receiveCount++;
+      if (!roomData) {
+        if (receiveCount < 2) return;
+        app.innerHTML = `
+          <div class="mobile-view">
+            <div class="mobile-card">
+              <div style="font-size: 3.5rem; margin-bottom: 12px;">🔎</div>
+              <h2 style="font-size: 1.5rem; color: #fbbf24;">퀴즈 방을 찾을 수 없습니다</h2>
+              <p style="color: var(--text-muted); margin-top: 10px; font-size: 1rem; line-height: 1.5;">
+                입력하신 방 PIN(<strong>${state.roomId}</strong>)이 존재하지 않거나,<br>교사 PC에서 아직 퀴즈 방 생성이 완료되지 않은 상태입니다.
+              </p>
+              <button class="btn btn-primary" onclick="window.location.search=''" style="width: 100%; margin-top: 20px;">메인 화면으로 이동</button>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      state.roomData = roomData;
+      const myParticipant = roomData.participants && roomData.participants[studentId];
+      if (myParticipant) {
+        state.nickname = myParticipant.nickname;
+        renderStudentPadView(app, roomData, state.roomId, studentId, state.nickname, myParticipant.avatar);
+      } else {
+        if (!document.getElementById('student-join-card')) {
+          renderStudentJoinView(app, studentId);
+        }
+      }
+    });
+  }
+
+  function renderStudentJoinView(app, studentId) {
+    let selectedAvatar = '🐶';
+    app.innerHTML = `
+      <div class="mobile-view">
+        <div style="text-align: center; margin-bottom: 20px;">
+          <span class="room-badge">PIN : ${state.roomId}</span>
+        </div>
+        <div class="mobile-card" id="student-join-card">
+          <h2 style="font-size: 1.6rem; margin-bottom: 6px;">환영합니다! 👋</h2>
+          <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 16px;">닉네임과 캐릭터 아바타를 선택해 주세요.</p>
+
+          <div style="font-size: 0.9rem; font-weight: bold; text-align: left; margin-bottom: 6px; color: var(--text-muted);">아바타 선택:</div>
+          <div id="avatar-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;">
+            ${AVATARS.map((av, idx) => {
+              const info = AVATAR_DETAILS[av] || { name: '친구' };
+              const isSelected = idx === 0;
+              return `
+                <div class="avatar-option ${isSelected ? 'selected' : ''}" data-avatar="${av}" style="padding: 10px 4px; border-radius: 14px; cursor: pointer; background: #0f172a; border: 3px solid ${isSelected ? '#38bdf8' : 'rgba(56,189,248,0.2)'}; text-align: center; user-select: none; transition: all 0.2s ease; box-shadow: ${isSelected ? '0 0 16px rgba(56,189,248,0.6)' : 'none'};">
+                  ${renderAvatarBadgeHtml(av, 42, 'margin: 0 auto 4px auto;')}
+                  <div style="font-size: 0.78rem; font-weight: bold; color: ${isSelected ? '#38bdf8' : '#94a3b8'}; text-align: center;" class="avatar-label">${info.name}</div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+          
+          <input type="text" id="input-nickname" class="input-nickname" placeholder="닉네임 입력 (최대 8자)" maxlength="8" autofocus style="margin-top: 0;">
+          <button class="btn btn-primary" id="btn-student-join" style="width: 100%; font-size: 1.2rem; margin-top: 12px;">입장하기</button>
+        </div>
+      </div>
+    `;
+
+    const avatarGrid = document.getElementById('avatar-grid');
+    avatarGrid.querySelectorAll('.avatar-option').forEach(item => {
+      item.addEventListener('click', (e) => {
+        avatarGrid.querySelectorAll('.avatar-option').forEach(el => {
+          el.style.borderColor = 'rgba(56,189,248,0.2)';
+          el.style.boxShadow = 'none';
+          const lbl = el.querySelector('.avatar-label');
+          if (lbl) lbl.style.color = '#94a3b8';
+        });
+        const current = e.currentTarget;
+        current.style.borderColor = '#38bdf8';
+        current.style.boxShadow = '0 0 16px rgba(56,189,248,0.6)';
+        const activeLbl = current.querySelector('.avatar-label');
+        if (activeLbl) activeLbl.style.color = '#38bdf8';
+        selectedAvatar = current.dataset.avatar;
+      });
+    });
+
+    const btnJoin = document.getElementById('btn-student-join');
+    const inputNick = document.getElementById('input-nickname');
+
+    const doJoin = async () => {
+      const nick = inputNick.value.trim();
+      if (!nick) return alert('닉네임을 입력해 주세요!');
+      state.nickname = nick;
+      await joinParticipant(state.roomId, studentId, nick, selectedAvatar);
+    };
+
+    btnJoin.addEventListener('click', doJoin);
+    inputNick.addEventListener('keydown', (e) => { if (e.key === 'Enter') doJoin(); });
+  }
+
+  function renderTeacherAdminModal(roomId, currentQuestions, onSaveCallback, initialMeta) {
+    const localSavedRoom = getLocalRoom(roomId) || {};
+    let questions = (Array.isArray(currentQuestions) && currentQuestions.length > 0)
+      ? JSON.parse(JSON.stringify(currentQuestions)) 
+      : (Array.isArray(localSavedRoom.questions) && localSavedRoom.questions.length > 0
+          ? JSON.parse(JSON.stringify(localSavedRoom.questions))
+          : (Array.isArray(currentQuestions) ? JSON.parse(JSON.stringify(currentQuestions)) : []));
+    currentEditingQuestions = questions;
+
+    const localRooms = getMyLocalQuizRooms();
+    const localRoom = localRooms.find(r => r.roomId === roomId) || {};
+    const roomMeta = state.roomData?.meta || initialMeta || localSavedRoom.meta || localRoom || {};
+    const currentTitle = roomMeta.title || localRoom.title || '실시간 수업 퀴즈';
+    const currentPassword = roomMeta.adminPassword || localRoom.adminPassword || '';
+    const isEnableCoinRace = typeof roomMeta.enableCoinRace === 'boolean' 
+      ? roomMeta.enableCoinRace 
+      : (typeof localRoom.enableCoinRace === 'boolean' ? localRoom.enableCoinRace : false);
+    const isKeepPermanent = typeof roomMeta.keepPermanent === 'boolean' 
+      ? roomMeta.keepPermanent 
+      : (typeof localRoom.keepPermanent === 'boolean' ? localRoom.keepPermanent : false);
+
+    const modalHtml = `
+      <div id="admin-modal" class="modal-overlay">
+        <div class="modal-box" style="max-width: 780px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+            <h2>📝 퀴즈 출제 / 문항 관리</h2>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <button type="button" class="btn btn-primary btn-open-batch-modal" style="background: linear-gradient(135deg, #8b5cf6, #ec4899); border: none; font-size: 0.9rem; padding: 6px 14px; font-weight: bold; cursor: pointer;">⚡ 텍스트 1초 일괄 출제</button>
+              <span style="color: var(--text-muted);">방 PIN: <strong>${roomId}</strong></span>
+            </div>
+          </div>
+          <div style="margin-bottom: 16px; background: #0f172a; padding: 14px 16px; border-radius: 10px; border: 1px solid var(--border); display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; gap: 14px; flex-wrap: wrap;">
+              <div style="flex: 2; min-width: 250px;">
+                <label style="font-weight: bold; font-size: 0.9rem; color: #38bdf8;">🏷️ 퀴즈 방 제목/이름:</label>
+                <input type="text" id="input-admin-room-title" value="${escapeHtml(currentTitle)}" placeholder="퀴즈 방 제목을 입력하세요" style="width: 100%; margin-top: 5px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: #fff; font-weight: bold; font-size: 0.95rem;">
+              </div>
+              <div style="flex: 1.2; min-width: 200px;">
+                <label style="font-weight: bold; font-size: 0.9rem; color: #c084fc;">🔑 관리자 비밀번호 (타 기기 수정/가져오기용):</label>
+                <input type="text" id="input-admin-password" value="${escapeHtml(currentPassword)}" placeholder="비밀번호 설정 (미설정 시 타 기기에서 설정 가능)" style="width: 100%; margin-top: 5px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: #f3e8ff; font-weight: bold; font-size: 0.95rem;">
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 4px; border-top: 1px dashed rgba(255,255,255,0.08);">
+              <label style="font-weight: bold; font-size: 0.88rem; color: #f59e0b; cursor: pointer; display: flex; align-items: center; gap: 6px; background: rgba(245, 158, 11, 0.12); padding: 7px 12px; border-radius: 8px; border: 1px solid #f59e0b;">
+                <input type="checkbox" id="input-admin-enable-coin-race" ${isEnableCoinRace ? 'checked' : ''}>
+                🎰 최종 선착순 핑퐁 낙하 레이스 포함
+              </label>
+              <label style="font-weight: bold; font-size: 0.88rem; color: #38bdf8; cursor: pointer; display: flex; align-items: center; gap: 6px; background: rgba(56, 189, 248, 0.12); padding: 7px 12px; border-radius: 8px; border: 1px solid #38bdf8;">
+                <input type="checkbox" id="input-admin-keep-permanent" ${isKeepPermanent ? 'checked' : ''}>
+                📌 3일 후 자동 삭제 방지 (영구 보존)
+              </label>
+            </div>
+          </div>
+          <div id="question-list-editor" style="margin-bottom: 20px; max-height: 50vh; overflow-y: auto;"></div>
+          <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; background: #0f172a; padding: 16px; border-radius: 12px; justify-content: space-between; align-items: center;">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+              <span style="font-weight: bold; margin-right: 2px;">+ 개별 추가:</span>
+              <button class="btn btn-outline-sm" id="btn-add-ox">+ O/X 참거짓</button>
+              <button class="btn btn-outline-sm" id="btn-add-choice" style="border-color: #38bdf8; color: #38bdf8; font-weight: bold;">+ 선다형 (그리드/막대/원형)</button>
+              <button class="btn btn-outline-sm" id="btn-add-short">+ 단답형</button>
+              <button class="btn btn-outline-sm" id="btn-add-wordcloud">+ 워드클라우드</button>
+              <button class="btn btn-outline-sm" id="btn-add-postit">+ 포스트잇 브레인스토밍</button>
+            </div>
+            <button type="button" class="btn btn-primary btn-open-batch-modal-2" style="background: linear-gradient(135deg, #8b5cf6, #ec4899); border: none; font-size: 0.9rem; padding: 8px 16px; font-weight: bold; cursor: pointer;">⚡ 텍스트 1초 일괄 출제</button>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" id="btn-cancel-admin">닫기</button>
+            <button class="btn btn-primary" id="btn-save-questions">저장 및 반영하기</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    const container = document.getElementById('question-list-editor');
+
+    function renderEditorList() {
+      if (questions.length === 0) {
+        container.innerHTML = `
+          <div style="text-align: center; color: var(--text-muted); padding: 50px 20px; font-size: 1.1rem; background: #0f172a; border-radius: 12px; border: 1px dashed var(--border);">
+            📝 아직 작성된 문항이 없습니다.<br><br>위의 <strong>[⚡ 텍스트 1초 일괄 출제]</strong> 버튼으로 복수 문항을 한번에 넣거나<br>아래의 <strong>[+ 개별 추가]</strong> 버튼을 누르고 첫 문제를 출제해 보세요!
+          </div>
+        `;
+        return;
+      }
+      container.innerHTML = questions.map((q, idx) => `
+        <div style="background: #0f172a; border: 1px solid var(--border); padding: 20px; border-radius: 12px; margin-bottom: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+            <span style="font-weight: 800; color: #38bdf8; font-size: 1.1rem;">Q${idx + 1}. [${getQuestionTypeLabel(q.type)}]</span>
+            <div style="display: flex; gap: 12px; align-items: center;">
+              <label style="font-size: 0.9rem; color: #fbbf24; cursor: pointer; display: flex; align-items: center; gap: 4px; font-weight: bold;">
+                <input type="checkbox" class="double-points-cb" data-idx="${idx}" ${q.isDoublePoints ? 'checked' : ''}>
+                ⚡ 점수 2배 이벤트
+              </label>
+              <select class="time-limit-select" data-idx="${idx}" style="padding: 6px 10px; border-radius: 6px; background: #1e293b; color: #fff; border: 1px solid var(--border);">
+                <option value="0" ${q.timeLimit == 0 ? 'selected' : ''}>⏱️ 무제한 (의견 수렴)</option>
+                <option value="10" ${q.timeLimit == 10 ? 'selected' : ''}>10초</option>
+                <option value="15" ${q.timeLimit == 15 ? 'selected' : ''}>15초</option>
+                <option value="20" ${q.timeLimit == 20 ? 'selected' : ''}>20초</option>
+                <option value="30" ${q.timeLimit == 30 ? 'selected' : ''}>30초</option>
+              </select>
+              <button class="btn btn-outline-sm btn-duplicate-q" data-idx="${idx}" style="padding: 6px 12px; font-size: 0.85rem; border-color: #38bdf8; color: #38bdf8; font-weight: bold;">📋 복제</button>
+              <button class="btn btn-danger btn-delete-q" data-idx="${idx}" style="padding: 6px 12px; font-size: 0.85rem;">삭제</button>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+              <label style="font-size: 0.88rem; font-weight: bold;">질문 제목/내용:</label>
+              <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                <button type="button" class="btn btn-outline-sm btn-open-formula" data-target="title_${idx}" style="padding: 3px 8px; font-size: 0.78rem; border-color: #38bdf8; color: #38bdf8; font-weight: bold; background: rgba(56, 189, 248, 0.1);">
+                  ∑ 수식·도구
+                </button>
+                <button type="button" class="btn btn-outline-sm btn-quick-fmt" data-target="title_${idx}" data-fmt="**" style="padding: 3px 6px; font-size: 0.78rem;"><b>B</b></button>
+                <button type="button" class="btn btn-outline-sm btn-quick-fmt" data-target="title_${idx}" data-fmt="*" style="padding: 3px 6px; font-size: 0.78rem;"><i>i</i></button>
+                <button type="button" class="btn btn-outline-sm btn-quick-sym" data-target="title_${idx}" data-sym="△" style="padding: 3px 6px; font-size: 0.78rem;">△</button>
+                <button type="button" class="btn btn-outline-sm btn-quick-sym" data-target="title_${idx}" data-sym="◯" style="padding: 3px 6px; font-size: 0.78rem;">◯</button>
+                <button type="button" class="btn btn-outline-sm btn-quick-sym" data-target="title_${idx}" data-sym="□" style="padding: 3px 6px; font-size: 0.78rem;">□</button>
+                <button type="button" class="btn btn-outline-sm btn-quick-sym" data-target="title_${idx}" data-sym="★" style="padding: 3px 6px; font-size: 0.78rem;">★</button>
+                <button type="button" class="btn btn-outline-sm btn-quick-sym" data-target="title_${idx}" data-sym="→" style="padding: 3px 6px; font-size: 0.78rem;">→</button>
+              </div>
+            </div>
+            <input type="text" id="input_title_${idx}" class="q-title-input" data-idx="${idx}" value="${escapeHtml(q.question)}" placeholder="질문 내용을 입력하세요 (버튼으로 수식/도형/서식 쉽게 입력)">
+          </div>
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label style="font-size: 0.88rem; font-weight: bold;">🖼️ 문제 첨부 이미지 / 그래프 (선택):</label>
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 4px;">
+              <input type="file" class="q-image-file" data-idx="${idx}" accept="image/*" style="font-size: 0.85rem; color: var(--text-muted);">
+              <button type="button" class="btn btn-outline-sm btn-open-graph-modal" data-idx="${idx}" style="padding: 4px 10px; font-size: 0.82rem; border-color: #10b981; color: #10b981; font-weight: bold; background: rgba(16, 185, 129, 0.12); border-radius: 6px;">
+                📈 함수 그래프 그리기·삽입
+              </button>
+              ${q.imageUrl ? `<button type="button" class="btn btn-danger btn-del-image" data-idx="${idx}" style="padding: 4px 10px; font-size: 0.8rem;">❌ 이미지 삭제</button>` : ''}
+            </div>
+            ${q.imageUrl ? `<div style="margin-top: 8px; display: inline-block; background: #ffffff; padding: 4px; border-radius: 8px; border: 1px solid var(--border);"><img src="${q.imageUrl}" style="max-height: 140px; max-width: 100%; border-radius: 6px; display: block;"></div>` : ''}
+          </div>
+          ${renderTypeSpecificEditor(q, idx)}
+        </div>
+      `).join('');
+
+      container.querySelectorAll('.q-title-input').forEach(input => {
+        input.addEventListener('input', (e) => { questions[e.target.dataset.idx].question = e.target.value; });
+      });
+      container.querySelectorAll('.q-image-file').forEach(input => {
+        input.addEventListener('change', (e) => {
+          const qIdx = Number(e.target.dataset.idx);
+          const file = e.target.files[0];
+          if (file) {
+            compressImage(file, 600, (dataUrl) => {
+              questions[qIdx].imageUrl = dataUrl;
+              renderEditorList();
+            });
+          }
+        });
+      });
+      container.querySelectorAll('.btn-open-graph-modal').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const qIdx = Number(e.currentTarget.dataset.idx);
+          openGraphEditorModal(qIdx, questions, () => renderEditorList());
+        });
+      });
+      container.querySelectorAll('.btn-del-image').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const qIdx = Number(e.target.dataset.idx);
+          delete questions[qIdx].imageUrl;
+          delete questions[qIdx].graphFormula;
+          renderEditorList();
+        });
+      });
+      container.querySelectorAll('.double-points-cb').forEach(cb => {
+        cb.addEventListener('change', (e) => { questions[e.target.dataset.idx].isDoublePoints = e.target.checked; });
+      });
+      container.querySelectorAll('.time-limit-select').forEach(sel => {
+        sel.addEventListener('change', (e) => { questions[e.target.dataset.idx].timeLimit = Number(e.target.value); });
+      });
+      container.querySelectorAll('.btn-duplicate-q').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const qIdx = Number(e.currentTarget.dataset.idx);
+          const source = questions[qIdx];
+          if (source) {
+            const cloned = JSON.parse(JSON.stringify(source));
+            cloned.id = 'q_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+            questions.splice(qIdx + 1, 0, cloned);
+            renderEditorList();
+          }
+        });
+      });
+      container.querySelectorAll('.btn-delete-q').forEach(btn => {
+        btn.addEventListener('click', (e) => { questions.splice(Number(e.target.dataset.idx), 1); renderEditorList(); });
+      });
+      container.querySelectorAll('.choice-chartstyle-select').forEach(sel => {
+        sel.addEventListener('change', (e) => {
+          const qIdx = Number(e.target.dataset.idx);
+          questions[qIdx].chartStyle = e.target.value;
+          renderEditorList();
+        });
+      });
+      container.querySelectorAll('.choice-isscoring-cb').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+          const qIdx = Number(e.target.dataset.idx);
+          questions[qIdx].isScoring = e.target.checked;
+          if (!e.target.checked) {
+            questions[qIdx].timeLimit = 0;
+          }
+          renderEditorList();
+        });
+      });
+      container.querySelectorAll('.poll-multiselect-cb').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+          const qIdx = Number(e.target.dataset.idx);
+          questions[qIdx].isMultiSelect = e.target.checked;
+          renderEditorList();
+        });
+      });
+      container.querySelectorAll('.poll-maxselect-select').forEach(sel => {
+        sel.addEventListener('change', (e) => {
+          const qIdx = Number(e.target.dataset.idx);
+          questions[qIdx].maxSelect = Number(e.target.value);
+        });
+      });
+
+      container.querySelectorAll('.btn-open-formula').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const targetId = 'input_' + e.currentTarget.dataset.target;
+          const inputEl = document.getElementById(targetId);
+          openFormulaEditorModal(inputEl, questions, () => renderEditorList());
+        });
+      });
+      container.querySelectorAll('.btn-quick-fmt').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const targetId = 'input_' + e.currentTarget.dataset.target;
+          const fmt = e.currentTarget.dataset.fmt;
+          const inputEl = document.getElementById(targetId);
+          if (inputEl) {
+            const start = inputEl.selectionStart || 0;
+            const end = inputEl.selectionEnd || inputEl.value.length;
+            const val = inputEl.value;
+            const sel = val.substring(start, end) || '텍스트';
+            inputEl.value = val.substring(0, start) + fmt + sel + fmt + val.substring(end);
+            inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        });
+      });
+      container.querySelectorAll('.btn-quick-sym').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const targetId = 'input_' + e.currentTarget.dataset.target;
+          const sym = e.currentTarget.dataset.sym;
+          const inputEl = document.getElementById(targetId);
+          if (inputEl) {
+            const start = inputEl.selectionStart || inputEl.value.length;
+            const end = inputEl.selectionEnd || inputEl.value.length;
+            const val = inputEl.value;
+            inputEl.value = val.substring(0, start) + sym + val.substring(end);
+            inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        });
+      });
+
+      container.querySelectorAll('.btn-add-option').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const qIdx = Number(e.currentTarget.dataset.qidx);
+          if (questions[qIdx].options.length < 5) {
+            questions[qIdx].options.push(`보기 ${questions[qIdx].options.length + 1}`);
+            renderEditorList();
+          }
+        });
+      });
+
+      container.querySelectorAll('.btn-del-option').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const qIdx = Number(e.currentTarget.dataset.qidx);
+          const optIdx = Number(e.currentTarget.dataset.optidx);
+          if (questions[qIdx].options.length > 2) {
+            questions[qIdx].options.splice(optIdx, 1);
+            if (questions[qIdx].correctAnswer >= questions[qIdx].options.length) {
+              questions[qIdx].correctAnswer = 0;
+            }
+            renderEditorList();
+          }
+        });
+      });
+
+      container.querySelectorAll('.opt-text-input').forEach(input => {
+        input.addEventListener('input', (e) => {
+          questions[Number(e.target.dataset.qidx)].options[Number(e.target.dataset.optidx)] = e.target.value;
+        });
+      });
+      container.querySelectorAll('.correct-radio').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+          questions[Number(e.target.dataset.qidx)].correctAnswer = Number(e.target.value);
+        });
+      });
+      container.querySelectorAll('.short-target-input').forEach(input => {
+        input.addEventListener('input', (e) => {
+          questions[Number(e.target.dataset.qidx)].correctText = e.target.value;
+        });
+      });
+    }
+
+    renderEditorList();
+
+    const openBatchModalHandler = () => {
+      openBatchTextImportModal(questions, () => renderEditorList());
+    };
+    document.querySelectorAll('.btn-open-batch-modal, .btn-open-batch-modal-2').forEach(btn => {
+      btn.addEventListener('click', openBatchModalHandler);
+    });
+
+    document.getElementById('btn-add-ox').addEventListener('click', () => {
+      questions.push({ id: 'q_' + Date.now(), type: 'ox', question: '신규 O/X 질문입니다.', options: ['O (그렇다)', 'X (아니다)'], correctAnswer: 0, timeLimit: 15, isDoublePoints: false });
+      renderEditorList();
+    });
+    document.getElementById('btn-add-choice').addEventListener('click', () => {
+      questions.push({ id: 'q_' + Date.now(), type: 'choice', question: '신규 선다형 질문입니다.', options: ['보기 1', '보기 2'], correctAnswer: 0, timeLimit: 20, isDoublePoints: false, chartStyle: 'grid', isScoring: true });
+      renderEditorList();
+    });
+    document.getElementById('btn-add-short').addEventListener('click', () => {
+      questions.push({ id: 'q_' + Date.now(), type: 'short', question: '신규 단답형 질문입니다.', correctText: '정답', timeLimit: 20, isDoublePoints: false });
+      renderEditorList();
+    });
+    document.getElementById('btn-add-wordcloud').addEventListener('click', () => {
+      questions.push({ id: 'q_' + Date.now(), type: 'wordcloud', question: '신규 워드클라우드 질문입니다.', timeLimit: 0, isDoublePoints: false });
+      renderEditorList();
+    });
+    document.getElementById('btn-add-postit').addEventListener('click', () => {
+      questions.push({ id: 'q_' + Date.now(), type: 'postit', question: '신규 포스트잇 질문입니다.', timeLimit: 0, isDoublePoints: false });
+      renderEditorList();
+    });
+    document.getElementById('btn-cancel-admin').addEventListener('click', () => {
+      document.getElementById('admin-modal').remove();
+    });
+    document.getElementById('btn-save-questions').addEventListener('click', async () => {
+      const newTitleInput = document.getElementById('input-admin-room-title');
+      const newPasswordInput = document.getElementById('input-admin-password');
+      const enableCoinRaceCb = document.getElementById('input-admin-enable-coin-race');
+      const enableCoinRace = enableCoinRaceCb ? enableCoinRaceCb.checked : false;
+      const keepPermanentCb = document.getElementById('input-admin-keep-permanent');
+      const keepPermanent = keepPermanentCb ? keepPermanentCb.checked : false;
+
+      const title = newTitleInput ? (newTitleInput.value.trim() || currentTitle || '실시간 수업 퀴즈') : (currentTitle || '실시간 수업 퀴즈');
+      const adminPassword = newPasswordInput ? newPasswordInput.value.trim() : currentPassword;
+
+      const savedMeta = {
+        title,
+        adminPassword,
+        enableCoinRace,
+        keepPermanent,
+        questionCount: questions.length
+      };
+
+      // 1. localStorage 동기화
+      saveMyLocalQuizRoom({ roomId, ...savedMeta });
+
+      // 2. 인메모리 및 Firebase DB 동기화
+      if (state.roomData) {
+        state.roomData.meta = { ...(state.roomData.meta || {}), ...savedMeta };
+        state.roomData.questions = questions;
+      }
+      await updateRoomMeta(roomId, { title, adminPassword, enableCoinRace, keepPermanent });
+      await updateQuestions(roomId, questions);
+
+      document.getElementById('admin-modal').remove();
+      if (onSaveCallback) onSaveCallback(savedMeta);
+    });
+  }
+
+  // ============================================================
+  // BATCH TEXT QUESTION PARSER & IMPORT MODAL
+  // ============================================================
+  function parseBatchTextToQuestions(rawText) {
+    if (!rawText || !rawText.trim()) return [];
+    
+    const text = rawText.trim().replace(/\r\n/g, '\n');
+    
+    // Split into question blocks by matching digits with DOT '.' at line start (e.g. 1. 2. 10. Q1.)
+    // Note: Never split on choice options '1)' or '2)'
+    const rawBlocks = text.split(/(?:^|\n+)(?=\s*(?:\d+\.|\d+\s*\.|[Qq]\d+[\.\)]|\[\d+\])\s*\S)/).filter(b => b.trim().length > 0);
+    
+    const parsedQuestions = [];
+
+    rawBlocks.forEach((blockStr, blockIdx) => {
+      const lines = blockStr.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      if (lines.length === 0) return;
+
+      let firstLine = lines[0];
+
+      // Remove question number prefix (e.g. "1.", "1. ", "Q1.", "[1]")
+      firstLine = firstLine.replace(/^\s*(?:\d+\.|\d+\s*\.|[Qq]\d+[\.\)]|\[\d+\])\s*/, '');
+
+      // Extract answer in parentheses at end of question line e.g. (4), (참), (거짓), (답: 4)
+      let extractedAnswer = null;
+      let questionTitle = firstLine;
+
+      const answerMatch = firstLine.match(/^(.*?)\s*[\(（\[]\s*(?:답\s*:?|정답\s*:?)?\s*([0-9가-힣\w\s]+?)\s*[\)）\]]\s*$/);
+      if (answerMatch) {
+        questionTitle = answerMatch[1].trim();
+        extractedAnswer = answerMatch[2].trim();
+      }
+
+      const restText = lines.slice(1).join(' ');
+
+      // Extract choice options like "1)태양 2)우주 3)없다 4)사람" or "1)참 2)거짓"
+      let options = [];
+      const optRegex = /(\d+)[\)\.]\s*(.*?)(?=\s*\d+[\)\.]|$)/g;
+      let optMatch;
+      while ((optMatch = optRegex.exec(restText)) !== null) {
+        const val = optMatch[2].trim();
+        if (val) options.push(val);
+      }
+
+      if (options.length === 0 && lines.length > 1) {
+        const lineOptions = lines.slice(1).map(l => l.replace(/^\d+[\)\.]\s*/, '').trim()).filter(Boolean);
+        if (lineOptions.length >= 2) {
+          options = lineOptions;
+        }
+      }
+
+      let type = 'choice';
+      let correctAnswer = 0;
+      let correctText = '';
+      let timeLimit = 20;
+
+      const isOxStyle = options.length === 2 && (
+        (options[0].includes('참') && options[1].includes('거짓')) ||
+        (options[0].toUpperCase().includes('O') && options[1].toUpperCase().includes('X'))
+      );
+
+      if (isOxStyle || (!options.length && extractedAnswer && (extractedAnswer === '참' || extractedAnswer === '거짓' || extractedAnswer.toUpperCase() === 'O' || extractedAnswer.toUpperCase() === 'X'))) {
+        type = 'ox';
+        options = ['O (그렇다)', 'X (아니다)'];
+        timeLimit = 15;
+        if (extractedAnswer) {
+          const uAns = extractedAnswer.toUpperCase();
+          if (uAns === '참' || uAns === 'O' || uAns === '1' || uAns === 'O (그렇다)') {
+            correctAnswer = 0;
+          } else if (uAns === '거짓' || uAns === 'X' || uAns === '2' || uAns === 'X (아니다)') {
+            correctAnswer = 1;
+          }
+        }
+      } else if (options.length >= 2) {
+        type = 'choice';
+        timeLimit = 20;
+        if (extractedAnswer) {
+          if (/^\d+$/.test(extractedAnswer)) {
+            const num = parseInt(extractedAnswer, 10);
+            correctAnswer = Math.max(0, Math.min(options.length - 1, num - 1));
+          } else {
+            const foundIdx = options.findIndex(opt => opt.trim() === extractedAnswer.trim());
+            if (foundIdx >= 0) correctAnswer = foundIdx;
+          }
+        }
+      } else {
+        type = 'short';
+        timeLimit = 20;
+        correctText = extractedAnswer || '';
+      }
+
+      parsedQuestions.push({
+        id: 'q_' + Date.now() + '_' + blockIdx + '_' + Math.random().toString(36).substring(2, 6),
+        type,
+        question: questionTitle || `문항 ${blockIdx + 1}`,
+        options: options.length ? options : (type === 'ox' ? ['O (그렇다)', 'X (아니다)'] : []),
+        correctAnswer: type === 'short' ? 0 : correctAnswer,
+        correctText: type === 'short' ? correctText : '',
+        timeLimit,
+        isDoublePoints: false,
+        chartStyle: 'grid',
+        isScoring: true
+      });
+    });
+
+    return parsedQuestions;
+  }
+
+  function openBatchTextImportModal(existingQuestions, onSaveCallback) {
+    const modalHtml = `
+      <div id="batch-import-modal" class="modal-overlay" style="z-index: 9999;">
+        <div class="modal-box" style="max-width: 820px; width: 94%; max-height: 90vh; display: flex; flex-direction: column; background: #0f172a; border: 2px solid #8b5cf6;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
+            <h3 style="margin: 0; color: #c084fc; font-size: 1.35rem; display: flex; align-items: center; gap: 8px;">
+              ⚡ 텍스트 1초 문항 일괄 자동 출제기
+            </h3>
+            <button id="btn-close-batch-modal" class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.9rem;">✕ 닫기</button>
+          </div>
+
+          <div style="font-size: 0.88rem; color: #e2e8f0; margin-bottom: 10px; line-height: 1.5; background: #1e293b; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #8b5cf6;">
+            💡 <strong>사용 방법:</strong> 아래 텍스트 상자에 퀴즈 문항 텍스트(문제 + 선택지 + 정답)를 붙여넣고 <strong>[🔍 문항 자동 분석하기]</strong> 버튼을 누르면 O/X 참거짓, 선다형, 단답형 문제로 자동으로 판별 및 분류되어 생성됩니다.
+          </div>
+
+          <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; gap: 12px;">
+            <div style="flex: 1; display: flex; flex-direction: column; min-height: 180px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <label style="font-weight: bold; font-size: 0.88rem; color: #38bdf8;">📋 퀴즈 문항 텍스트 붙여넣기:</label>
+                <span id="batch-char-count" style="font-size: 0.78rem; color: var(--text-muted);">0자</span>
+              </div>
+              <textarea id="batch-text-input" placeholder="문항 텍스트를 이곳에 붙여넣으세요..." style="width: 100%; flex: 1; min-height: 180px; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: #090d16; color: #fff; font-family: monospace; font-size: 0.95rem; line-height: 1.5; resize: vertical;"></textarea>
+            </div>
+
+            <div style="display: flex; justify-content: center;">
+              <button type="button" id="btn-parse-batch-text" class="btn btn-primary" style="font-size: 1.05rem; padding: 10px 24px; background: linear-gradient(135deg, #38bdf8, #8b5cf6); border: none; font-weight: bold;">
+                🔍 문항 자동 분석 & 파싱 실행
+              </button>
+            </div>
+
+            <!-- 파싱 결과 미리보기 영역 -->
+            <div id="batch-preview-container" style="display: none; border-top: 1px solid var(--border); padding-top: 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span id="batch-parsed-summary" style="font-weight: bold; font-size: 1.05rem; color: #10b981;">
+                  🎉 총 0개 문항 분석 완료!
+                </span>
+                <span style="font-size: 0.8rem; color: var(--text-muted);">아래 분석된 문항을 확인 후 추가 방식을 선택하세요.</span>
+              </div>
+              <div id="batch-parsed-list" style="max-height: 220px; overflow-y: auto; background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px;">
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-actions" style="margin-top: 14px; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--border); padding-top: 12px;">
+            <button class="btn btn-secondary" id="btn-cancel-batch">취소</button>
+            <button class="btn btn-primary" id="btn-append-batch-qs" style="display: none; background: #38bdf8; border-color: #0284c7; font-weight: bold;">
+              ➕ 기존 문항 뒤에 추가하기
+            </button>
+            <button class="btn btn-primary" id="btn-replace-batch-qs" style="display: none; background: #10b981; border-color: #059669; font-weight: bold;">
+              🔄 기존 문항 지우고 새 문항으로 교체하기
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    const txtInput = document.getElementById('batch-text-input');
+    const charCount = document.getElementById('batch-char-count');
+    const previewBox = document.getElementById('batch-preview-container');
+    const parsedSummary = document.getElementById('batch-parsed-summary');
+    const parsedList = document.getElementById('batch-parsed-list');
+    const btnAppend = document.getElementById('btn-append-batch-qs');
+    const btnReplace = document.getElementById('btn-replace-batch-qs');
+
+    let currentParsed = [];
+
+    txtInput.addEventListener('input', () => {
+      charCount.textContent = `${txtInput.value.length}자`;
+    });
+
+    document.getElementById('btn-fill-sample-text')?.addEventListener('click', () => {
+      txtInput.value = `1.하나님을 가장 비슷하게 보여줄 수 있는 것은 무엇인가요?(4)
+1)태양 2)우주 3)없다 4)사람
+
+2.하나님을 완벽하게 보여줄 수 있는 것은 무엇인가요?(3)
+1)태양 2)우주 3)없다 4)사람
+
+3.’망령되게’는 ‘함부로’라는 말로 바꿔서 말할 수 있습니다.(참)
+1)참 2)거짓
+
+4.주일날 가장 먼저 해야 하는 일은 무엇인가요?
+1)놀러가기 2)게임하기 3)공부하기 4)예배드리기
+
+5.부모님을 공경하면 주어지는 복은 무엇인가요?(4)
+1)똑똑해진다 2)멋있어진다 3)부자가 된다 4)생명이 길어진다
+
+6.친구에게 바보라고 말하는 것도 살인이다.(참)
+1)참 2)거짓
+
+7.한 아빠와 한 엄마로 이루어진 가정은 누가 만들었나요?(2)
+1)아빠 2)하나님 3)엄마 4)부모님
+
+8.남에게 대접을 받고자 하는 대로 남을 대접하는 것이 율법과 선지자이다.(참)
+1)참 2)거짓
+
+9.내가 미워하는 친구에게는 거짓말을 해도 된다.(거짓)
+1)참 2)거짓
+
+10.거짓말로 친구를 괴롭히고 싶을 때는 입장을 바꿔서 생각해 보자.(참)
+1)참 2)거짓`;
+      charCount.textContent = `${txtInput.value.length}자`;
+      document.getElementById('btn-parse-batch-text')?.click();
+    });
+
+    document.getElementById('btn-parse-batch-text')?.addEventListener('click', () => {
+      const text = txtInput.value.trim();
+      if (!text) return alert('분석할 문항 텍스트를 입력해 주세요.');
+
+      currentParsed = parseBatchTextToQuestions(text);
+      if (currentParsed.length === 0) {
+        alert('문항을 인식하지 못했습니다. 번호(1. 또는 Q1.) 형식을 확인해 주세요.');
+        return;
+      }
+
+      previewBox.style.display = 'block';
+      parsedSummary.textContent = `🎉 총 ${currentParsed.length}개 문항 분석 완료!`;
+
+      parsedList.innerHTML = currentParsed.map((q, idx) => `
+        <div style="background: #1e293b; padding: 10px 14px; border-radius: 6px; border: 1px solid var(--border); font-size: 0.9rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <span style="font-weight: bold; color: #38bdf8;">Q${idx + 1}. [${getQuestionTypeLabel(q.type)}] ${escapeHtml(q.question)}</span>
+            <span style="color: #fbbf24; font-size: 0.82rem; font-weight: bold;">
+              ${q.type === 'ox' ? `정답: ${q.correctAnswer === 0 ? 'O (참)' : 'X (거짓)'}` : (q.type === 'choice' ? `정답: 보기 ${q.correctAnswer + 1} (${escapeHtml(q.options[q.correctAnswer] || '')})` : `정답: ${escapeHtml(q.correctText)}`)}
+            </span>
+          </div>
+          ${q.type === 'choice' ? `
+            <div style="color: var(--text-muted); font-size: 0.82rem;">
+              보기: ${q.options.map((opt, i) => `${i + 1})${escapeHtml(opt)}`).join('  ')}
+            </div>
+          ` : ''}
+        </div>
+      `).join('');
+
+      btnAppend.style.display = 'inline-block';
+      btnReplace.style.display = 'inline-block';
+    });
+
+    document.getElementById('btn-close-batch-modal')?.addEventListener('click', () => {
+      document.getElementById('batch-import-modal')?.remove();
+    });
+    document.getElementById('btn-cancel-batch')?.addEventListener('click', () => {
+      document.getElementById('batch-import-modal')?.remove();
+    });
+
+    btnAppend.addEventListener('click', () => {
+      if (currentParsed.length === 0) return;
+      existingQuestions.push(...currentParsed);
+      document.getElementById('batch-import-modal')?.remove();
+      if (typeof onSaveCallback === 'function') onSaveCallback();
+    });
+
+    btnReplace.addEventListener('click', () => {
+      if (currentParsed.length === 0) return;
+      if (confirm(`기존 문항(${existingQuestions.length}개)을 모두 삭제하고 새 파싱 문항(${currentParsed.length}개)으로 교체하시겠습니까?`)) {
+        existingQuestions.length = 0;
+        existingQuestions.push(...currentParsed);
+        document.getElementById('batch-import-modal')?.remove();
+        if (typeof onSaveCallback === 'function') onSaveCallback();
+      }
+    });
+  }
+
+  function getQuestionTypeLabel(type) {
+    switch(type) {
+      case 'ox': return 'O/X 참거짓'; case 'choice': return '선다형'; case 'poll': return '선다형'; case 'short': return '단답형'; case 'wordcloud': return '워드클라우드'; case 'postit': return '포스트잇'; default: return '퀴즈';
+    }
+  }
+
+  function renderTypeSpecificEditor(q, idx) {
+    if (q.type === 'ox' || q.type === 'choice' || q.type === 'poll') {
+      const isChoice = q.type === 'choice' || q.type === 'poll';
+      const chartStyle = q.chartStyle || 'grid';
+      const isScoring = q.isScoring !== false;
+
+      return `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+          <div style="font-size: 0.9rem; color: var(--text-muted);">보기 수정 및 정답 선택:</div>
+          ${isChoice ? `
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <select class="choice-chartstyle-select" data-idx="${idx}" style="padding: 4px 8px; border-radius: 6px; background: #1e293b; color: #38bdf8; border: 1px solid var(--border); font-weight: bold; font-size: 0.85rem;">
+                <option value="grid" ${chartStyle === 'grid' ? 'selected' : ''}>▦ 그리드 카드 형태</option>
+                <option value="bar" ${chartStyle === 'bar' ? 'selected' : ''}>📊 막대 그래프 형태</option>
+                <option value="pie" ${chartStyle === 'pie' ? 'selected' : ''}>🍩 원형 그래프 (차트) 형태</option>
+              </select>
+              ${q.options.length < 5 ? `<button type="button" class="btn btn-outline-sm btn-add-option" data-qidx="${idx}" style="padding: 4px 10px; font-size: 0.8rem;">+ 보기 추가</button>` : ''}
+            </div>
+          ` : ''}
+        </div>
+
+        ${isChoice ? `
+          <div style="display: flex; gap: 14px; align-items: center; margin-bottom: 12px; background: #1e293b; padding: 10px 12px; border-radius: 8px; flex-wrap: wrap;">
+            <label style="font-size: 0.9rem; color: #10b981; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+              <input type="checkbox" class="choice-isscoring-cb" data-idx="${idx}" ${isScoring ? 'checked' : ''}>
+              💯 점수 반영 (퀴즈 모드 - 정답 1개 선택)
+            </label>
+            ${!isScoring ? `
+              <label style="font-size: 0.9rem; color: #fbbf24; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 6px; margin-left: 10px;">
+                <input type="checkbox" class="poll-multiselect-cb" data-idx="${idx}" ${q.isMultiSelect ? 'checked' : ''}>
+                ☑️ 중복 투표 허용 (다중 선택)
+              </label>
+              ${q.isMultiSelect ? `
+                <label style="font-size: 0.88rem; color: #fff; display: flex; align-items: center; gap: 6px;">
+                  최대 선택 개수:
+                  <select class="poll-maxselect-select" data-idx="${idx}" style="padding: 4px 8px; border-radius: 6px; background: #0f172a; color: #fff; border: 1px solid var(--border);">
+                    <option value="0" ${!q.maxSelect || q.maxSelect == 0 ? 'selected' : ''}>무제한 (자유 선택)</option>
+                    <option value="2" ${q.maxSelect == 2 ? 'selected' : ''}>최대 2개</option>
+                    <option value="3" ${q.maxSelect == 3 ? 'selected' : ''}>최대 3개</option>
+                    <option value="4" ${q.maxSelect == 4 ? 'selected' : ''}>최대 4개</option>
+                    <option value="5" ${q.maxSelect == 5 ? 'selected' : ''}>최대 5개</option>
+                  </select>
+                </label>
+              ` : ''}
+            ` : ''}
+          </div>
+        ` : ''}
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          ${q.options.map((opt, optIdx) => `
+            <div style="display: flex; align-items: center; gap: 10px;">
+              ${isScoring ? `
+                <input type="radio" class="correct-radio" name="correct_${idx}" data-qidx="${idx}" value="${optIdx}" ${q.correctAnswer == optIdx ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
+              ` : `
+                <span style="font-size: 1.1rem; width: 20px; text-align: center;">📊</span>
+              `}
+              <span style="font-weight: bold; min-width: 24px;">${optIdx + 1}.</span>
+              <input type="text" id="input_opt_${idx}_${optIdx}" class="opt-text-input" data-qidx="${idx}" data-optidx="${optIdx}" value="${escapeHtml(opt)}" placeholder="보기 내용 입력 (비워두면 자동 제외)" style="flex: 1; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: #fff;">
+              <button type="button" class="btn btn-outline-sm btn-open-formula" data-target="opt_${idx}_${optIdx}" style="padding: 4px 8px; font-size: 0.8rem; border-color: #38bdf8; color: #38bdf8;">∑</button>
+              ${isChoice && q.options.length > 2 ? `
+                <button type="button" class="btn btn-danger btn-del-option" data-qidx="${idx}" data-optidx="${optIdx}" style="padding: 4px 8px; font-size: 0.8rem;">❌</button>
+              ` : ''}
+            </div>
+          `).join('')}
+        </div>
+      `;
+    } else if (q.type === 'short') {
+      return `
+        <div class="form-group" style="margin-top: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <label style="font-weight: bold;">단답형 정답 텍스트:</label>
+            <button type="button" class="btn btn-outline-sm btn-open-formula" data-target="short_${idx}" style="padding: 3px 8px; font-size: 0.78rem; border-color: #38bdf8; color: #38bdf8;">∑ 수식 도구</button>
+          </div>
+          <input type="text" id="input_short_${idx}" class="short-target-input" data-qidx="${idx}" value="${escapeHtml(q.correctText || '')}" placeholder="정답 단어/문장 입력">
+        </div>
+      `;
+    }
+    return '';
+  }
+
+  let timerInterval = null;
+  let activeTimerQIndex = -1;
+
+  function renderHostDisplayView(container, roomData, roomId, isTeacherControl = false) {
+    const meta = roomData.meta || {};
+    const status = meta.status || 'LOBBY';
+    const qIndex = meta.currentQuestionIndex || 0;
+    const questions = roomData.questions || [];
+    const currentQ = questions[qIndex] || {};
+    const responses = (roomData.responses && roomData.responses[qIndex]) || {};
+    const participants = roomData.participants || {};
+    const responseCount = Object.keys(responses).length;
+    const participantCount = Object.keys(participants).length;
+    const isUnlimited = currentQ.type === 'wordcloud' || currentQ.type === 'postit' || currentQ.timeLimit === 0;
+    const isScoringQ = isScoringQuestion(currentQ);
+
+    if (status === 'COUNTDOWN') {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      activeTimerQIndex = -1;
+      const countNum = meta.countdownNumber !== undefined ? meta.countdownNumber : 3;
+      container.innerHTML = `
+        <div class="quiz-display-container countdown-display-wrapper" style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 70vh; text-align: center;">
+          <div style="font-size: 1.6rem; color: #38bdf8; font-weight: bold; margin-bottom: 16px;">
+            Q${qIndex + 1} / ${questions.length} 문제 카운트다운!
+          </div>
+          <h1 style="font-size: 2.3rem; color: #ffffff; margin-bottom: 24px; max-width: 800px; line-height: 1.4; font-weight: 900; text-shadow: 0 2px 10px rgba(0,0,0,0.6);">
+            ${parseMath(currentQ.question || '')}
+          </h1>
+          <div class="countdown-badge-pulse" style="font-size: 8rem; font-weight: 900; color: #fbbf24; text-shadow: 0 0 40px rgba(251, 191, 36, 0.8); margin: 20px 0;">
+            ${countNum > 0 ? countNum : '🚀 START!'}
+          </div>
+          <p style="color: var(--text-muted); font-size: 1.2rem; margin-top: 16px;">잠시 후 문제가 시작됩니다!</p>
+        </div>
+      `;
+      return;
+    }
+
+    if (status === 'SHOW_RANKING') {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      activeTimerQIndex = -1;
+      renderIntermediateLeaderboardView(container, roomData, roomId, isTeacherControl);
+      return;
+    }
+
+    if (status === 'FINISHED') {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      activeTimerQIndex = -1;
+      if (container.querySelector('#final-podium-container')) return;
+      renderLeaderboardView(container, roomData, isTeacherControl);
+      return;
+    }
+
+    if (status === 'COIN_RACE_LOBBY') {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      activeTimerQIndex = -1;
+      if (container.querySelector('#coin-race-lobby-card')) return;
+      renderCoinRaceLobbyView(container, roomData, roomId, isTeacherControl);
+      return;
+    }
+
+    if (status === 'COIN_RACE_RUNNING') {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      activeTimerQIndex = -1;
+      if (document.getElementById('coin-race-canvas')) return;
+      if (roomData.meta?.raceType === 'marble') {
+        renderMarbleRaceRunningView(container, roomData, roomId, isTeacherControl);
+      } else {
+        renderCoinRaceRunningView(container, roomData, roomId, isTeacherControl);
+      }
+      return;
+    }
+
+    if (status === 'COIN_RACE_RESULT') {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      activeTimerQIndex = -1;
+      if (container.querySelector('#coin-race-result-card')) return;
+      renderCoinRaceResultView(container, roomData, roomId, isTeacherControl);
+      return;
+    }
+
+    const currentDisplayCard = document.getElementById('host-display-card');
+    const renderedStatus = currentDisplayCard ? currentDisplayCard.dataset.status : '';
+    const renderedQIdx = currentDisplayCard ? Number(currentDisplayCard.dataset.qindex) : -1;
+    const isLastQ = qIndex + 1 >= questions.length;
+    const hasAnyScoring = hasScoringQuestions(questions);
+
+    if (currentDisplayCard && renderedStatus === status && renderedQIdx === qIndex) {
+      const respEl = document.getElementById('resp-count');
+      if (respEl) respEl.textContent = responseCount;
+
+      const btnResults = document.getElementById('btn-toggle-results');
+      if (btnResults) {
+        btnResults.textContent = state.hideResults ? '👁️ 결과 공개' : '🙈 결과 가리기';
+        btnResults.style.background = state.hideResults ? 'rgba(245, 158, 11, 0.4)' : 'rgba(245, 158, 11, 0.15)';
+      }
+
+      const mainContentEl = document.getElementById('display-main-content');
+      if (mainContentEl) {
+        const newHash = JSON.stringify(responses) + '_' + status + '_' + state.hideResults + '_' + state.showWrongWordcloud + '_' + state.showShortNicknames + '_' + (currentQ.chartStyle || '');
+        if (mainContentEl.dataset.resphash !== newHash) {
+          mainContentEl.dataset.resphash = newHash;
+          mainContentEl.innerHTML = renderQuestionContent(currentQ, responses, status, participants);
+        }
+      }
+    } else {
+      container.innerHTML = `
+        <div class="quiz-display-container" id="host-display-card" data-qindex="${qIndex}" data-status="${status}">
+          <div class="quiz-top-bar">
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+              <span class="room-badge">Q ${qIndex + 1} / ${questions.length}</span>
+              <button id="btn-go-home-display" class="btn btn-secondary" style="font-weight: bold; padding: 6px 14px; font-size: 0.9rem;">🏠 메인으로</button>
+              <select id="select-theme-display" class="select-theme-dropdown" style="padding: 6px 12px; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid var(--border); font-size: 0.9rem; font-weight: bold; cursor: pointer;">
+                <option value="tv" ${getSavedTheme() === 'tv' ? 'selected' : ''}>📺 스마트 TV</option>
+                <option value="chalkboard" ${getSavedTheme() === 'chalkboard' ? 'selected' : ''}>🧹 초록 칠판</option>
+                <option value="marble" ${getSavedTheme() === 'marble' ? 'selected' : ''}>🏛️ 깔끔 대리석</option>
+                <option value="woodlock" ${getSavedTheme() === 'woodlock' ? 'selected' : ''}>🪵 우드락 보드</option>
+              </select>
+            </div>
+            <div id="display-timer" class="timer-badge">${isUnlimited ? '⏱️ 무제한 (의견 수렴)' : `⏱️ ${currentQ.timeLimit || 20}s`}</div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button id="btn-toggle-results" class="btn btn-outline-sm" style="background: ${state.hideResults ? 'rgba(245, 158, 11, 0.4)' : 'rgba(245, 158, 11, 0.15)'}; border-color: #f59e0b; color: #fbbf24; font-weight: bold;">
+                ${state.hideResults ? '👁️ 결과 공개' : '🙈 결과 가리기'}
+              </button>
+              ${renderBgmVolumeControlHtml('host-display')}
+            </div>
+            <div style="font-size: 1.4rem; font-weight: bold; color: #38bdf8;">
+              제출 인원: <span id="resp-count">${responseCount}</span> / ${participantCount}명
+            </div>
+          </div>
+          <div class="question-card">
+            <h1 class="question-title">${parseMath(currentQ.question || '')}</h1>
+            ${currentQ.imageUrl ? `<div style="text-align: center; margin-top: 14px;"><img src="${currentQ.imageUrl}" style="max-height: 320px; max-width: 100%; border-radius: 12px; box-shadow: 0 8px 20px rgba(0,0,0,0.4);"></div>` : ''}
+            ${currentQ.isDoublePoints ? `<div style="color: #fbbf24; font-size: 1.2rem; font-weight: bold; margin-top: 10px;">⚡ 점수 2배 이벤트 문항!</div>` : ''}
+          </div>
+          <div id="display-main-content" style="flex: 1; display: flex; flex-direction: column;" data-resphash="${JSON.stringify(responses) + '_' + status + '_' + state.hideResults + '_' + state.showWrongWordcloud + '_' + state.showShortNicknames + '_' + (currentQ.chartStyle || '')}">
+            ${renderQuestionContent(currentQ, responses, status, participants)}
+          </div>
+          <div style="display: flex; justify-content: flex-end; gap: 16px; margin-top: 20px; flex-wrap: wrap;">
+            ${status === 'PLAYING' ? `<button class="btn btn-danger" id="btn-force-finish">${isUnlimited ? '⏹️ 응답 마감 및 의견 공유' : '⏹️ 응답 마감 및 정답 공개'}</button>` : ''}
+            ${status === 'SHOW_ANSWER' ? `
+              ${isScoringQ ? `
+                <button class="btn btn-secondary" id="btn-show-ranking" style="font-weight: bold; font-size: 1.1rem; padding: 12px 24px;">📊 중간 순위 보기 (1~5위)</button>
+              ` : `
+                ${isLastQ ? `
+                  <button class="btn btn-primary" id="btn-next-question-host" style="font-weight: bold; font-size: 1.1rem; padding: 12px 24px;">${hasAnyScoring ? '🏆 최종 시상식 결과 보기' : '🏁 의견 수렴 완료'}</button>
+                ` : `
+                  <button class="btn btn-primary" id="btn-next-question-host" style="font-weight: bold; font-size: 1.1rem; padding: 12px 24px;">➡️ 다음 문제로 이동 (Q${qIndex + 2})</button>
+                `}
+              `}
+            ` : ''}
+          </div>
+        </div>
+      `;
+
+      document.getElementById('btn-go-home-display')?.addEventListener('click', async () => {
+        if (confirm('게임을 중단하고 초기화하여 대시보드로 돌아가시겠습니까?\n(진행 중인 퀴즈가 중단되고 대기실 상태로 초기화됩니다)')) {
+          try {
+            await updateRoomMeta(state.roomId, {
+              status: 'LOBBY',
+              currentQuestionIndex: 0,
+              countdownNumber: 3
+            });
+            if (db) {
+              try {
+                await db.ref(`rooms/${state.roomId}/responses`).remove();
+                const snapshot = await db.ref(`rooms/${state.roomId}/participants`).once('value');
+                const parts = snapshot.val() || {};
+                const updates = {};
+                Object.keys(parts).forEach(pid => {
+                  updates[`rooms/${state.roomId}/participants/${pid}/score`] = 0;
+                });
+                if (Object.keys(updates).length > 0) {
+                  await db.ref().update(updates);
+                }
+              } catch (e) {}
+            } else {
+              await putFirebaseRest(`rooms/${state.roomId}/responses`, {});
+            }
+          } catch (e) {
+            console.error(e);
+          }
+          window.location.search = '';
+        }
+      });
+      document.getElementById('select-theme-display')?.addEventListener('change', (e) => setTheme(e.target.value));
+
+      document.getElementById('btn-toggle-results')?.addEventListener('click', () => {
+        state.hideResults = !state.hideResults;
+        const btn = document.getElementById('btn-toggle-results');
+        if (btn) {
+          btn.textContent = state.hideResults ? '👁️ 결과 공개' : '🙈 결과 가리기';
+          btn.style.background = state.hideResults ? 'rgba(245, 158, 11, 0.4)' : 'rgba(245, 158, 11, 0.15)';
+        }
+        const mainContentEl = document.getElementById('display-main-content');
+        if (mainContentEl) {
+          mainContentEl.dataset.resphash = '';
+          mainContentEl.innerHTML = renderQuestionContent(currentQ, responses, status, participants);
+        }
+      });
+
+      document.getElementById('btn-toggle-wrong-cloud')?.addEventListener('click', () => {
+        state.showWrongWordcloud = !state.showWrongWordcloud;
+        const mainContentEl = document.getElementById('display-main-content');
+        if (mainContentEl) mainContentEl.dataset.resphash = '';
+        renderHostDisplayView(container, roomData, roomId, isTeacherControl);
+      });
+
+      document.getElementById('btn-toggle-short-nicknames')?.addEventListener('click', () => {
+        state.showShortNicknames = !state.showShortNicknames;
+        const mainContentEl = document.getElementById('display-main-content');
+        if (mainContentEl) mainContentEl.dataset.resphash = '';
+        renderHostDisplayView(container, roomData, roomId, isTeacherControl);
+      });
+
+      bindBgmVolumeControlEvents(container);
+
+      document.getElementById('btn-force-finish')?.addEventListener('click', () => {
+        if (timerInterval) clearInterval(timerInterval);
+        processQuestionResults(roomId, state.roomData || roomData);
+      });
+
+      document.getElementById('btn-show-ranking')?.addEventListener('click', () => {
+        AudioEngine.playCorrect();
+        updateRoomMeta(roomId, { status: 'SHOW_RANKING' });
+      });
+
+      document.getElementById('btn-next-question-host')?.addEventListener('click', () => {
+        if (isLastQ) {
+          AudioEngine.playFanfare();
+          updateRoomMeta(roomId, { status: 'FINISHED' });
+        } else {
+          advanceToNextQuestion(roomId, state.roomData || roomData);
+        }
+      });
+    }
+
+    if (status === 'PLAYING') {
+      if (isUnlimited) {
+        if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+        activeTimerQIndex = qIndex;
+        const timerEl = document.getElementById('display-timer');
+        if (timerEl) timerEl.textContent = '⏱️ 무제한 (의견 수렴)';
+      } else if (activeTimerQIndex !== qIndex) {
+        activeTimerQIndex = qIndex;
+        if (timerInterval) clearInterval(timerInterval);
+        const timeLimit = currentQ.timeLimit || 20;
+        const startedAt = meta.timerStartedAt || Date.now();
+
+        timerInterval = setInterval(() => {
+          const currentMeta = state.roomData?.meta || {};
+          const currentStartedAt = currentMeta.timerStartedAt || startedAt;
+          const elapsed = Math.floor((Date.now() - currentStartedAt) / 1000);
+          const remaining = Math.max(0, timeLimit - elapsed);
+          const timerEl = document.getElementById('display-timer');
+          if (timerEl) timerEl.textContent = `⏱️ ${remaining}s`;
+          if (remaining > 0 && remaining <= 5) AudioEngine.playTick();
+          if (remaining <= 0) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+            processQuestionResults(roomId, state.roomData || roomData);
+          }
+        }, 1000);
+      }
+    } else {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      activeTimerQIndex = -1;
+    }
+  }
+
+  function renderIntermediateLeaderboardView(container, roomData, roomId, isTeacherControl) {
+    const meta = roomData.meta || {};
+    const qIndex = meta.currentQuestionIndex || 0;
+    const questions = roomData.questions || [];
+    const isLastQ = qIndex + 1 >= questions.length;
+
+    const participants = Object.values(roomData.participants || {});
+    participants.sort((a, b) => (b.score || 0) - (a.score || 0));
+    const top5 = participants.slice(0, 5);
+
+    container.innerHTML = `
+      <div class="quiz-display-container" id="intermediate-ranking-card" data-qindex="${qIndex}">
+        <div class="leaderboard-container">
+          <h1 class="leaderboard-title">📊 중간 점수 순위 (Top 5)</h1>
+          <p style="text-align: center; color: var(--text-muted); margin-bottom: 20px; font-size: 1.1rem;">
+            Q${qIndex + 1} / ${questions.length} 문제 진행 상황
+          </p>
+          ${top5.map((p, rank) => `
+            <div class="leaderboard-row ${rank === 0 ? 'rank-1' : ''}">
+              <div style="display: flex; align-items: center; gap: 16px;">
+                <div class="rank-badge">${rank === 0 ? '🥇' : rank === 1 ? '🥈' : rank === 2 ? '🥉' : rank + 1}</div>
+                ${renderAvatarBadgeHtml(p.avatar || '🐶', 32, 'margin-right: 8px;')}
+                <span>${escapeHtml(p.nickname)}</span>
+              </div>
+              <span style="color: var(--primary); font-weight: 900; font-size: 1.2rem;">${p.score || 0}점</span>
+            </div>
+          `).join('')}
+          <div style="display: flex; justify-content: center; gap: 16px; margin-top: 30px; flex-wrap: wrap;">
+            <button class="btn btn-secondary" id="btn-back-to-answer" style="font-size: 1.1rem; padding: 12px 24px;">🔙 문제 정답 화면으로 돌아가기</button>
+            ${isLastQ ? `
+              <button class="btn btn-primary" id="btn-show-ceremony" style="font-size: 1.2rem; padding: 12px 32px;">🏆 최종 시상식 결과 보기</button>
+            ` : `
+              <button class="btn btn-primary" id="btn-next-question-rank" style="font-size: 1.2rem; padding: 12px 32px;">➡️ 다음 문제로 이동 (Q${qIndex + 2})</button>
+            `}
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('btn-back-to-answer')?.addEventListener('click', () => {
+      updateRoomMeta(roomId, { status: 'SHOW_ANSWER' });
+    });
+    document.getElementById('btn-show-ceremony')?.addEventListener('click', () => {
+      AudioEngine.playFanfare();
+      updateRoomMeta(roomId, { status: 'FINISHED' });
+    });
+    document.getElementById('btn-next-question-rank')?.addEventListener('click', () => {
+      advanceToNextQuestion(roomId, roomData);
+    });
+  }
+
+  function renderQuestionContent(currentQ, responses, status, participants = {}) {
+    const showAnswer = status === 'SHOW_ANSWER';
+    const isHidden = state.hideResults && status === 'PLAYING';
+
+    if (currentQ.type === 'ox' || currentQ.type === 'choice' || currentQ.type === 'poll') {
+      const rawOptions = currentQ.options || [];
+      const validIndices = [];
+      const options = [];
+      rawOptions.forEach((opt, idx) => {
+        if (String(opt || '').trim() !== '') {
+          validIndices.push(idx);
+          options.push(opt);
+        }
+      });
+      const counts = validIndices.map(idx => Object.values(responses).filter(r => {
+        if (Array.isArray(r.answer)) {
+          return r.answer.map(Number).includes(idx);
+        }
+        return Number(r.answer) === idx;
+      }).length);
+      const totalCount = counts.reduce((sum, c) => sum + c, 0);
+
+      const chartStyle = currentQ.type === 'ox' ? 'grid' : (currentQ.chartStyle || 'grid');
+      const BAR_COLORS = ['#38bdf8', '#f59e0b', '#10b981', '#ec4899', '#a855f7'];
+
+      if (chartStyle === 'bar') {
+        return `
+          <div class="poll-chart-container">
+            ${options.map((opt, displayIdx) => {
+              const realIdx = validIndices[displayIdx];
+              const count = counts[displayIdx];
+              const pct = totalCount > 0 ? Math.round((count / totalCount) * 100) : 0;
+              const barColor = BAR_COLORS[displayIdx % BAR_COLORS.length];
+              const isCorrect = showAnswer && currentQ.isScoring !== false && realIdx === currentQ.correctAnswer;
+              return `
+                <div class="poll-bar-row" style="${isCorrect ? 'border: 2px solid #10b981; background: rgba(16, 185, 129, 0.1);' : ''}">
+                  <div class="poll-option-label">
+                    <span>${displayIdx + 1}. ${parseMath(opt)} ${isCorrect ? ' (정답! 🎉)' : ''}</span>
+                  </div>
+                  <div class="poll-bar-track">
+                    <div class="poll-bar-fill" style="width: ${isHidden ? '0%' : pct + '%'}; background-color: ${barColor};"></div>
+                  </div>
+                  <div class="poll-stat-text" style="color: ${barColor};">
+                    ${isHidden ? '🔒 가림' : `${pct}% <span style="font-size: 0.85em; color: var(--text-muted);">(${count}명)</span>`}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `;
+      } else if (chartStyle === 'pie') {
+        let cumulativePercent = 0;
+        const gradientStops = [];
+        options.forEach((opt, idx) => {
+          const count = counts[idx];
+          const pct = totalCount > 0 ? (count / totalCount) * 100 : 0;
+          const color = BAR_COLORS[idx % BAR_COLORS.length];
+          gradientStops.push(`${color} ${cumulativePercent}% ${cumulativePercent + pct}%`);
+          cumulativePercent += pct;
+        });
+        const conicStyle = gradientStops.length > 0 ? `conic-gradient(${gradientStops.join(', ')})` : '#334155';
+
+        return `
+          <div style="display: flex; align-items: center; justify-content: center; gap: 40px; padding: 20px; flex-wrap: wrap;">
+            <div style="width: 240px; height: 240px; border-radius: 50%; background: ${isHidden || totalCount === 0 ? '#334155' : conicStyle}; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px rgba(0,0,0,0.4); position: relative; transition: background 0.5s ease;">
+              <div style="width: 130px; height: 130px; border-radius: 50%; background: #ffffff; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #1e293b; font-weight: 900; border: 2px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.06);">
+                <span style="font-size: 1.5rem; color: #38bdf8;">${isHidden ? '🔒' : totalCount + '명'}</span>
+                <span style="font-size: 0.85rem; color: var(--text-muted);">${isHidden ? '가림 모드' : '총 응답'}</span>
+              </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 12px; min-width: 280px; max-width: 440px; flex: 1;">
+              ${options.map((opt, displayIdx) => {
+                const realIdx = validIndices[displayIdx];
+                const count = counts[displayIdx];
+                const pct = totalCount > 0 ? Math.round((count / totalCount) * 100) : 0;
+                const color = BAR_COLORS[displayIdx % BAR_COLORS.length];
+                const isCorrect = showAnswer && currentQ.isScoring !== false && realIdx === currentQ.correctAnswer;
+                return `
+                  <div style="display: flex; align-items: center; justify-content: space-between; background: #1e293b; padding: 12px 18px; border-radius: 12px; border-left: 6px solid ${color}; ${isCorrect ? 'border: 2px solid #10b981;' : ''}">
+                    <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
+                      <span style="width: 14px; height: 14px; border-radius: 50%; background: ${color}; display: inline-block;"></span>
+                      <span style="font-weight: bold; color: #fff; font-size: 1.1rem;">${displayIdx + 1}. ${parseMath(opt)} ${isCorrect ? ' (정답! 🎉)' : ''}</span>
+                    </div>
+                    <div style="font-weight: bold; color: ${color}; font-size: 1.1rem; margin-left: 14px;">
+                      ${isHidden ? '🔒 가림' : `${pct}% (${count}명)`}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      } else {
+        return `
+          <div class="options-grid">
+            ${options.map((opt, displayIdx) => {
+              const realIdx = validIndices[displayIdx];
+              const isCorrect = showAnswer && currentQ.isScoring !== false && realIdx === currentQ.correctAnswer;
+              return `
+                <div class="option-card-display opt-${realIdx} ${isCorrect ? 'correct-highlight' : ''}">
+                  <span>${parseMath(opt)} ${isCorrect ? ' (정답! 🎉)' : ''}</span>
+                  <span class="count-bar">${isHidden ? '🔒 가림' : counts[displayIdx] + '명'}</span>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `;
+      }
+    } else if (currentQ.type === 'short') {
+      const targetText = String(currentQ.correctText || '').trim().toLowerCase();
+      const wrongCounts = {};
+      let wrongTotal = 0;
+
+      Object.values(responses).forEach(r => {
+        const ans = String(r.answer || '').trim();
+        if (ans && ans.toLowerCase() !== targetText) {
+          const key = ans.toLowerCase();
+          if (!wrongCounts[key]) wrongCounts[key] = { display: ans, count: 0 };
+          wrongCounts[key].count++;
+          wrongTotal++;
+        }
+      });
+
+      const wrongList = Object.values(wrongCounts);
+
+      return `
+        <div style="background: var(--card-dark); padding: 30px; border-radius: 16px; text-align: center; flex: 1; display: flex; flex-direction: column;">
+          ${showAnswer ? `<h2 style="font-size: 2.2rem; color: #10b981; margin-bottom: 12px;">💡 정답: ${parseMath(currentQ.correctText)}</h2>` : `<h2 style="font-size: 1.8rem; color: #94a3b8; margin-bottom: 12px;">학생들이 단답형 답안을 입력하는 중입니다...</h2>`}
+
+          <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 16px; flex-wrap: wrap;">
+            ${showAnswer && wrongTotal > 0 ? `
+              <button class="btn btn-outline-sm" id="btn-toggle-wrong-cloud" style="border-color: #ec4899; color: #ec4899; font-weight: bold; font-size: 0.95rem; padding: 8px 16px;">
+                ${state.showWrongWordcloud ? '🙈 오답 가리기' : `💬 재미있는 오답 구경하기 (${wrongList.length}종류)`}
+              </button>
+            ` : ''}
+            <button class="btn btn-outline-sm" id="btn-toggle-short-nicknames" style="border-color: #38bdf8; color: #38bdf8; font-weight: bold; font-size: 0.95rem; padding: 8px 16px;">
+              ${state.showShortNicknames ? '🙈 닉네임 가리기' : '👤 닉네임 공개'}
+            </button>
+          </div>
+
+          ${showAnswer && state.showWrongWordcloud && wrongList.length > 0 ? `
+            <div style="background: #0f172a; border: 2px dashed #ec4899; border-radius: 16px; padding: 20px; margin-bottom: 20px;">
+              <h3 style="color: #ec4899; font-size: 1.3rem; margin-bottom: 14px;">☁️ 재미있는 오답 워드클라우드 (익명)</h3>
+              <div class="wordcloud-container">
+                ${wrongList.map(item => {
+                  const freqClass = item.count >= 3 ? 'freq-3' : (item.count === 2 ? 'freq-2' : 'freq-1');
+                  return `
+                    <div class="word-chip ${freqClass}" style="background: rgba(236, 72, 153, 0.15); border-color: #ec4899; color: #f472b6;">
+                      <span>${parseMath(item.display)}</span>
+                      ${item.count > 1 ? `<span style="font-size: 0.8em; background: rgba(236, 72, 153, 0.3); padding: 2px 8px; border-radius: 999px;">${item.count}</span>` : ''}
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          ` : ''}
+
+          <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; justify-content: center;">
+            ${isHidden ? `
+              <div style="color: #fbbf24; font-size: 1.2rem; padding: 20px; font-weight: bold;">🔒 결과 가리기 모드 작동 중 (응답 집계 중)</div>
+            ` : Object.entries(responses).map(([sid, r]) => {
+              const p = (participants && participants[sid]) || {};
+              const nick = p.nickname || r.nickname || '';
+              const av = p.avatar || r.avatar || '';
+              if (state.showShortNicknames) {
+                return `<div class="student-tag" style="font-size: 1.1rem; background: #1e293b;">${av} ${escapeHtml(nick ? nick + ': ' : '')}${parseMath(r.answer)}</div>`;
+              } else {
+                return `<div class="student-tag" style="font-size: 1.1rem; background: #1e293b;">💬 ${parseMath(r.answer)}</div>`;
+              }
+            }).join('')}
+          </div>
+        </div>
+      `;
+    } else if (currentQ.type === 'wordcloud') {
+      const counts = {};
+      Object.values(responses).forEach(r => {
+        const word = String(r.answer || '').trim();
+        if (word) {
+          const key = word.toLowerCase();
+          if (!counts[key]) counts[key] = { display: word, count: 0 };
+          counts[key].count++;
+        }
+      });
+
+      const wordList = Object.values(counts);
+      if (isHidden) {
+        return `<div style="text-align: center; color: #fbbf24; padding: 40px; font-size: 1.2rem; font-weight: bold;">🔒 실시간 결과 가리기 모드 작동 중 (응답 집계 중)</div>`;
+      }
+      if (wordList.length === 0) {
+        return `<div style="text-align: center; color: var(--text-muted); padding: 40px; font-size: 1.2rem;">학생들의 워드클라우드 응답을 기다리는 중입니다...</div>`;
+      }
+
+      return `
+        <div class="wordcloud-container">
+          ${wordList.map(item => {
+            const freqClass = item.count >= 3 ? 'freq-3' : (item.count === 2 ? 'freq-2' : 'freq-1');
+            return `
+              <div class="word-chip ${freqClass}">
+                <span>${parseMath(item.display)}</span>
+                ${item.count > 1 ? `<span style="font-size: 0.8em; background: rgba(255,255,255,0.25); padding: 2px 8px; border-radius: 999px;">${item.count}</span>` : ''}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    } else if (currentQ.type === 'postit') {
+      if (isHidden) {
+        return `<div style="text-align: center; color: #fbbf24; padding: 40px; font-size: 1.2rem; font-weight: bold;">🔒 실시간 결과 가리기 모드 작동 중 (응답 집계 중)</div>`;
+      }
+      return `
+        <div class="postit-container">
+          ${Object.entries(responses).map(([sid, r]) => {
+            const p = (participants && participants[sid]) || {};
+            const nick = p.nickname || r.nickname || '익명 학생';
+            const av = p.avatar || r.avatar || '📌';
+            return `
+              <div class="postit-card">
+                <div style="font-size: 0.95rem; color: #78350f; font-weight: 800; margin-bottom: 8px; border-bottom: 1px dashed rgba(120,53,15,0.3); padding-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                  <span>${av}</span>
+                  <span>${escapeHtml(nick)}</span>
+                </div>
+                ${r.drawing ? `<div style="text-align: center; margin-bottom: 6px;"><img src="${r.drawing}" style="max-height: 160px; border-radius: 6px; background: #fff; border: 1px solid rgba(120,53,15,0.2);"></div>` : ''}
+                ${r.answer ? `<div style="font-size: 1.1rem; word-break: break-all; color: #451a03; font-weight: 700; line-height: 1.4;">${parseMath(r.answer)}</div>` : ''}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+    return '';
+  }
+
+  function renderLeaderboardView(container, roomData, isTeacherControl) {
+    if (document.getElementById('final-podium-container')) {
+      return;
+    }
+
+    const questions = roomData.questions || [];
+    const participants = Object.values(roomData.participants || {});
+
+    if (!hasScoringQuestions(questions)) {
+      container.innerHTML = `
+        <div class="quiz-display-container" id="final-podium-container">
+          <div class="leaderboard-container" style="text-align: center;">
+            <h1 class="leaderboard-title" style="font-size: 2.6rem;">📝 전체 의견 수렴이 완료되었습니다!</h1>
+            <p style="font-size: 1.3rem; color: #38bdf8; margin: 16px 0 30px 0;">
+              총 <strong>${participants.length}명</strong>의 학생이 모든 의견 수렴 문항에 적극적으로 참여하였습니다. 👏
+            </p>
+            <div style="background: #0f172a; padding: 24px; border-radius: 16px; border: 1px solid var(--border); margin-bottom: 30px; display: inline-block; max-width: 540px; width: 100%;">
+              <div style="font-size: 4rem; margin-bottom: 10px;">📊💡💬</div>
+              <div style="font-size: 1.1rem; color: var(--text-muted); line-height: 1.6;">
+                제출된 생각과 답변은 교사 보관함 및 CSV 내보내기를 통해 언제든 다시 확인하실 수 있습니다.
+              </div>
+            </div>
+            <div style="display: flex; justify-content: center; gap: 14px; flex-wrap: wrap;">
+              <button class="btn btn-success" id="btn-export-csv" style="font-size: 1.1rem; padding: 12px 20px;">📥 전체 결과 CSV 내보내기</button>
+              <button class="btn btn-primary" id="btn-export-image" style="font-size: 1.1rem; padding: 12px 20px;">📸 결과 이미지 저장 (PNG)</button>
+              <button class="btn btn-danger" id="btn-reset-finish-app" style="font-size: 1.1rem; padding: 12px 20px;">🏁 수렴 완료 & 메인으로</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('btn-export-csv')?.addEventListener('click', () => exportResultsToCSV(roomData));
+
+      document.getElementById('btn-export-image')?.addEventListener('click', async () => {
+        const elem = document.getElementById('final-podium-container');
+        if (!elem) return;
+        if (window.html2canvas) {
+          try {
+            const canvas = await window.html2canvas(elem, { backgroundColor: '#090d16', scale: 2 });
+            const a = document.createElement('a');
+            a.download = `의견수렴_결과_PIN_${state.roomId}_${new Date().toISOString().slice(0, 10)}.png`;
+            a.href = canvas.toDataURL('image/png');
+            a.click();
+          } catch (err) {
+            alert('이미지 저장 중 오류가 발생했습니다: ' + err.message);
+          }
+        } else {
+          alert('이미지 저장 라이브러리를 준비 중입니다. 잠시 후 다시 시도해 주세요.');
+        }
+      });
+
+      document.getElementById('btn-reset-finish-app')?.addEventListener('click', async () => {
+          sessionStorage.setItem('trigger_splash_after_game', 'true');
+        if (confirm('의견 수렴을 마감하고 방을 대기실(LOBBY) 상태로 초기화하시겠습니까?')) {
+          await updateRoomMeta(state.roomId, { status: 'LOBBY', currentQuestionIndex: 0 });
+          if (db) {
+            try {
+              await db.ref(`rooms/${state.roomId}/participants`).remove();
+              await db.ref(`rooms/${state.roomId}/responses`).remove();
+            } catch (e) {}
+          } else {
+            await putFirebaseRest(`rooms/${state.roomId}/participants`, {});
+            await putFirebaseRest(`rooms/${state.roomId}/responses`, {});
+          }
+          window.location.search = '';
+        }
+      });
+      return;
+    }
+
+    participants.sort((a, b) => (b.score || 0) - (a.score || 0));
+    const first = participants[0] || { nickname: '1위', avatar: '🥇', score: 0 };
+    const second = participants[1] || { nickname: '2위', avatar: '🥈', score: 0 };
+    const third = participants[2] || { nickname: '3위', avatar: '🥉', score: 0 };
+
+    AudioEngine.playFanfare();
+
+    container.innerHTML = `
+      <div class="quiz-display-container" id="final-podium-container">
+        <div class="leaderboard-container">
+          <h1 class="leaderboard-title" style="font-size: 2.8rem;">🏆 최종 퀴즈 시상식</h1>
+          
+          <div class="podium-wrapper">
+            <div class="podium-step podium-2">
+              <div style="display: flex; justify-content: center; margin-bottom: 6px;">${renderAvatarBadgeHtml(second.avatar || '🥈', 64)}</div>
+              <div style="font-size: 1.2rem;">${escapeHtml(second.nickname)}</div>
+              <div style="font-size: 1rem; color: #e2e8f0; margin-top: 4px;">🥈 2위 (${second.score || 0}점)</div>
+            </div>
+
+            <div class="podium-step podium-1">
+              <div style="font-size: 1.2rem; color: #fef08a;">👑 챔피언 👑</div>
+              <div style="display: flex; justify-content: center; margin-bottom: 6px;">${renderAvatarBadgeHtml(first.avatar || '🥇', 84)}</div>
+              <div style="font-size: 1.4rem; color: #fff;">${escapeHtml(first.nickname)}</div>
+              <div style="font-size: 1.2rem; color: #fef08a; margin-top: 4px;">🥇 1위 (${first.score || 0}점)</div>
+            </div>
+
+            <div class="podium-step podium-3">
+              <div style="display: flex; justify-content: center; margin-bottom: 6px;">${renderAvatarBadgeHtml(third.avatar || '🥉', 64)}</div>
+              <div style="font-size: 1.2rem;">${escapeHtml(third.nickname)}</div>
+              <div style="font-size: 1rem; color: #fde68a; margin-top: 4px;">🥉 3위 (${third.score || 0}점)</div>
+            </div>
+          </div>
+
+          <h2 style="font-size: 1.5rem; color: #ea580c; margin: 24px 0 12px 0; text-align: center; font-weight: 900;">전체 명예의 전당 랭킹</h2>
+          ${participants.slice(0, 10).map((p, rank) => `
+            <div class="leaderboard-row ${rank === 0 ? 'rank-1' : ''}">
+              <div style="display: flex; align-items: center; gap: 16px;">
+                <div class="rank-badge">${rank === 0 ? '🥇' : rank === 1 ? '🥈' : rank === 2 ? '🥉' : rank + 1}</div>
+                ${renderAvatarBadgeHtml(p.avatar || '🐶', 34, 'margin-right: 4px;')}
+                <span style="font-size: 1.15rem; font-weight: 800;">${escapeHtml(p.nickname)}</span>
+              </div>
+              <span style="color: var(--primary); font-weight: 900;">${p.score || 0}점</span>
+            </div>
+          `).join('')}
+
+          <div style="display: flex; justify-content: center; gap: 14px; margin-top: 30px; flex-wrap: wrap;">
+            <button class="btn btn-primary" id="btn-start-coin-race-setup" style="font-size: 1.15rem; padding: 14px 28px; background: linear-gradient(135deg, #f97316, #ea580c); border: none; font-weight: 900; box-shadow: 0 4px 0 #9a3412, 0 8px 20px rgba(234, 88, 12, 0.35); cursor: pointer;">
+              ${roomData.meta?.raceType === 'marble' ? '🔮 선착순 구슬 롤러코스터 레이스 시작!' : '🎰 선착순 코인 핑퐁 레이스 시작!'}
+            </button>
+            <button class="btn btn-success" id="btn-export-csv" style="font-size: 1.1rem; padding: 12px 22px;">📥 전체 결과 CSV 내보내기</button>
+            <button class="btn btn-primary" id="btn-export-image" style="font-size: 1.1rem; padding: 12px 22px;">📸 결과 이미지 저장 (PNG)</button>
+            <button class="btn btn-danger" id="btn-reset-finish-app" style="font-size: 1.1rem; padding: 12px 22px;">🏁 퀴즈 완료 & 방 초기화 (메인으로)</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('btn-start-coin-race-setup')?.addEventListener('click', async () => {
+      await updateRoomMeta(state.roomId, { status: 'COIN_RACE_LOBBY' });
+    });
+
+    document.getElementById('btn-export-csv')?.addEventListener('click', () => exportResultsToCSV(roomData));
+
+    document.getElementById('btn-export-image')?.addEventListener('click', async () => {
+      const elem = document.getElementById('final-podium-container');
+      if (!elem) return;
+      if (window.html2canvas) {
+        try {
+          const canvas = await window.html2canvas(elem, { backgroundColor: '#fff9f2', scale: 2 });
+          const a = document.createElement('a');
+          a.download = `시상식_결과_PIN_${state.roomId}_${new Date().toISOString().slice(0, 10)}.png`;
+          a.href = canvas.toDataURL('image/png');
+          a.click();
+        } catch (err) {
+          alert('이미지 저장 중 오류가 발생했습니다: ' + err.message);
+        }
+      } else {
+        alert('이미지 저장 라이브러리를 준비 중입니다. 잠시 후 다시 시도해 주세요.');
+      }
+    });
+
+    document.getElementById('btn-reset-finish-app')?.addEventListener('click', async () => {
+      if (confirm('퀴즈를 완료 처리하고 대기실(LOBBY) 상태로 방을 초기화하시겠습니까?\n\n초기화 완료 후 메인 화면으로 돌아가며, 다음 클래스 수업 시 본 방으로 즉시 퀴즈를 다시 진행할 수 있습니다.')) {
+        await updateRoomMeta(state.roomId, { status: 'LOBBY', currentQuestionIndex: 0 });
+        if (db) {
+          try {
+            await db.ref(`rooms/${state.roomId}/participants`).remove();
+            await db.ref(`rooms/${state.roomId}/responses`).remove();
+          } catch (e) {}
+        } else {
+          await putFirebaseRest(`rooms/${state.roomId}/participants`, {});
+          await putFirebaseRest(`rooms/${state.roomId}/responses`, {});
+        }
+        window.location.search = '';
+      }
+    });
+  }
+
+  // ============================================================
+  // COIN RACE & MARBLE RACE PHYSICS GAME & ALLOCATION
+  // ============================================================
+  let playedFanfareStateKey = null;
+
+  function getCoinAllocation(rank, total) {
+    if (rank === 1) return 5;
+    if (rank === 2) return 4;
+    if (rank === 3) return 3;
+    if (rank === 4 || rank === 5) return 2;
+    return 1;
+  }
+
+  function getCoinAllocationForParticipant(p, rankIdx, total) {
+    if (p && typeof p.coins === 'number' && p.coins > 0) {
+      return p.coins;
+    }
+    return getCoinAllocation(rankIdx + 1, total);
+  }
+
+  function renderCoinRaceLobbyView(container, roomData, roomId, isTeacherControl) {
+    const isStandalone = !!roomData.meta?.isStandaloneRace;
+    const isMarble = roomData.meta?.raceType === 'marble';
+    const participants = Object.values(roomData.participants || {});
+    participants.sort((a, b) => (b.score || 0) - (a.score || 0));
+
+    container.innerHTML = `
+      <div class="quiz-display-container" id="coin-race-lobby-card" style="padding: 36px 30px; max-width: 1080px; margin: 0 auto; text-align: center; background: #0f172a; border: 2px solid rgba(56, 189, 248, 0.3); border-radius: 24px; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7), 0 0 40px rgba(56, 189, 248, 0.15);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+          <h2 style="font-size: 2.2rem; background: ${isMarble ? 'linear-gradient(135deg, #0284c7, #2563eb)' : 'linear-gradient(135deg, #ea580c, #d97706)'}; -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 900; margin: 0;">
+            ${isMarble ? '🔮 선착순 구슬 롤러코스터 대기실' : '🎰 선착순 코인 핑퐁 낙하 대기실'}
+          </h2>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <button type="button" id="btn-toggle-race-type" class="btn btn-outline-sm" style="font-weight: 900; font-size: 0.95rem; color: #38bdf8; border-color: #38bdf8; background: rgba(56, 189, 248, 0.15); cursor: pointer; padding: 8px 16px; border-radius: 10px;">
+              🔄 ${isMarble ? '🎰 핑퐁 낙하 모드로 전환' : '🔮 구슬 롤러코스터 모드로 전환'}
+            </button>
+            ${renderBgmVolumeControlHtml('coin-lobby')}
+          </div>
+        </div>
+
+        <p style="font-size: 1.15rem; color: var(--text-muted); margin-bottom: 32px; line-height: 1.6; font-weight: 600;">
+          지정된 🪙 <strong>${isMarble ? '구슬 개수' : '코인 개수'}</strong>를 가지고 출발선에 집결했습니다!<br>
+          ${isMarble ? '지그재그 롤러코스터 트랙과 역주행 범퍼를 뚫고 가장 먼저 도착선을 통과하는 우승자가 가려집니다!' : '핑퐁 핀볼 장애물과 서로 부딪히며 가장 먼저 도착선(Bottom)을 통과하는 선착순 우승자가 가려집니다!'}
+        </p>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px; margin-bottom: 38px; max-height: 52vh; overflow-y: auto; padding: 10px;">
+          ${participants.map((p, idx) => {
+            const coins = getCoinAllocationForParticipant(p, idx, participants.length);
+            const isFirst = idx === 0;
+            return `
+              <div style="background: #1e293b; border: ${isFirst ? '2px solid #f59e0b' : '1.5px solid rgba(255, 255, 255, 0.12)'}; border-radius: 18px; padding: 18px 14px; text-align: center; box-shadow: ${isFirst ? '0 0 25px rgba(245, 158, 11, 0.35)' : '0 4px 14px rgba(0,0,0,0.4)'}; transition: transform 0.2s ease;">
+                <div style="display: flex; justify-content: center; margin-bottom: 10px;">${renderAvatarBadgeHtml(p.avatar || '🐶', 64)}</div>
+                <div style="font-size: 1.25rem; font-weight: 900; color: #ffffff; margin-bottom: 2px; text-shadow: 0 1px 3px rgba(0,0,0,0.5);">${escapeHtml(p.nickname)}</div>
+                <div style="font-size: 0.92rem; color: ${isFirst ? '#fbbf24' : '#38bdf8'}; font-weight: 700; margin-bottom: 12px;">${isStandalone ? '참가자' : `퀴즈 ${idx + 1}위 (${p.score || 0}점)`}</div>
+                <div style="background: #090d16; border: 1px solid ${isFirst ? '#f59e0b' : 'rgba(56, 189, 248, 0.4)'}; border-radius: 12px; padding: 8px; font-size: 1.25rem; font-weight: 900; color: ${isMarble ? '#38bdf8' : '#fbbf24'}; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                  <span>${isMarble ? '🔮'.repeat(coins) : '🪙'.repeat(coins)}</span>
+                  <span style="font-size: 0.95rem; color: #e2e8f0; margin-left: 4px;">(${coins}개)</span>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+
+        <div style="display: flex; justify-content: center; gap: 16px; flex-wrap: wrap;">
+          <button id="btn-start-coin-race-run" class="btn btn-primary" style="font-size: 1.35rem; padding: 16px 44px; background: linear-gradient(135deg, ${isMarble ? '#0284c7, #2563eb' : '#f97316, #ea580c'}); border: none; font-weight: 900; box-shadow: 0 6px 0 ${isMarble ? '#1d4ed8' : '#9a3412'}, 0 12px 28px ${isMarble ? 'rgba(2, 132, 199, 0.35)' : 'rgba(234, 88, 12, 0.35)'}; cursor: pointer;">
+            🚀 ${isMarble ? '구슬 레이스 출발!' : '낙하 레이스 출발!'} (3-2-1 카운트다운)
+          </button>
+          <button id="btn-back-to-finished" class="btn btn-secondary" style="font-size: 1.1rem; padding: 14px 28px;">
+            ${isStandalone ? '🏠 대시보드 메인으로 돌아가기' : '🔙 퀴즈 시상식 결과로 돌아가기'}
+          </button>
+        </div>
+      </div>
+    `;
+
+    bindBgmVolumeControlEvents(container);
+
+    document.getElementById('btn-toggle-race-type')?.addEventListener('click', async () => {
+      await updateRoomMeta(state.roomId, { raceType: isMarble ? 'pinball' : 'marble' });
+    });
+
+    document.getElementById('btn-start-coin-race-run')?.addEventListener('click', async () => {
+      await updateRoomMeta(state.roomId, { status: 'COIN_RACE_RUNNING', raceStartTime: Date.now() });
+    });
+
+    document.getElementById('btn-back-to-finished')?.addEventListener('click', async () => {
+      if (isStandalone) {
+        window.location.search = '';
+      } else {
+        await updateRoomMeta(state.roomId, { status: 'FINISHED' });
+      }
+    });
+  }
+
+  let coinRaceAnimId = null;
+
+  function renderCoinRaceRunningView(container, roomData, roomId, isTeacherControl) {
+    if (coinRaceAnimId) {
+      cancelAnimationFrame(coinRaceAnimId);
+      coinRaceAnimId = null;
+    }
+    if (marbleRaceAnimId) {
+      cancelAnimationFrame(marbleRaceAnimId);
+      marbleRaceAnimId = null;
+    }
+
+    const participants = Object.values(roomData.participants || {});
+    participants.sort((a, b) => (b.score || 0) - (a.score || 0));
+
+    container.innerHTML = `
+      <div class="quiz-display-container" style="padding: 16px; text-align: center; max-width: 1220px; margin: 0 auto;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+          <h2 style="font-size: 1.6rem; color: #f59e0b; font-weight: 900; margin: 0; display: flex; align-items: center; gap: 8px;">
+            🎰 선착순 핑퐁 코인 레이스
+          </h2>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            ${renderBgmVolumeControlHtml('coin-run')}
+            <button id="btn-force-finish-coin-race" class="btn btn-primary" style="background: linear-gradient(135deg, #10b981, #059669); border: none; font-weight: bold; cursor: pointer;">
+              🏆 레이스 결과 발표
+            </button>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 16px; justify-content: center; align-items: flex-start; flex-wrap: wrap;">
+          <div style="position: relative; background: #090d16; border: 2.5px solid #f59e0b; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 30px rgba(245, 158, 11, 0.25);">
+            <canvas id="coin-race-canvas" width="860" height="640" style="display: block; background: radial-gradient(circle at center, #0f172a 0%, #020617 100%); cursor: grab;"></canvas>
+            <button id="btn-reset-camera" class="btn btn-outline-sm" style="position: absolute; top: 12px; right: 12px; z-index: 10; background: rgba(15, 23, 42, 0.88); border: 1.5px solid #f59e0b; color: #f59e0b; font-weight: 900; cursor: pointer; backdrop-filter: blur(4px); box-shadow: 0 0 14px rgba(245, 158, 11, 0.3);">
+              🎥 1등 코인 자동 추적
+            </button>
+            <div style="position: absolute; bottom: 12px; left: 12px; z-index: 10; background: rgba(15, 23, 42, 0.85); padding: 6px 14px; border-radius: 10px; font-size: 0.85rem; color: #94a3b8; font-weight: 700; border: 1px solid rgba(255, 255, 255, 0.1); pointer-events: none;">
+              💡 마우스 드래그 / 휠 스크롤로 트랙 위치 자율 조작 가능
+            </div>
+          </div>
+
+          <div style="width: 300px; background: #0f172a; border: 1.5px solid rgba(245, 158, 11, 0.3); border-radius: 20px; padding: 20px; min-height: 640px; display: flex; flex-direction: column; box-shadow: 0 20px 45px rgba(0, 0, 0, 0.6);">
+            <h3 style="font-size: 1.25rem; color: #fbbf24; margin: 0 0 12px 0; border-bottom: 2px solid rgba(245, 158, 11, 0.3); padding-bottom: 10px; text-align: center; font-weight: 900;">
+              🚩 실시간 코인 도착 현황
+            </h3>
+            <div id="race-live-arrivals-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+              <div style="color: var(--text-muted); font-size: 0.95rem; text-align: center; margin-top: 20px; font-weight: 600;">
+                3-2-1 출발 준비 중...
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    bindBgmVolumeControlEvents(container);
+
+    const canvas = document.getElementById('coin-race-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    const width = canvas.width;
+    const height = canvas.height;
+    const VIRTUAL_HEIGHT = 5850;
+    const finishY = 5520;
+
+    let cameraY = 0;
+    let isManualCamera = false;
+    let isDragging = false;
+    let dragStartY = 0;
+    let startCamY = 0;
+
+    canvas.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      dragStartY = e.clientY;
+      startCamY = cameraY;
+      canvas.style.cursor = 'grabbing';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        isManualCamera = true;
+        const dy = e.clientY - dragStartY;
+        cameraY = Math.max(0, Math.min(VIRTUAL_HEIGHT - height, startCamY - dy));
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
+      if (canvas) canvas.style.cursor = 'grab';
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      isManualCamera = true;
+      cameraY = Math.max(0, Math.min(VIRTUAL_HEIGHT - height, cameraY + e.deltaY * 0.8));
+    }, { passive: false });
+
+    document.getElementById('btn-reset-camera')?.addEventListener('click', () => {
+      isManualCamera = false;
+    });
+
+    const PALETTE = ['#f59e0b', '#ec4899', '#38bdf8', '#10b981', '#a855f7', '#ef4444', '#84cc16', '#06b6d4', '#f97316', '#e11d48'];
+
+    const coins = [];
+    participants.forEach((p, rankIdx) => {
+      const coinCount = getCoinAllocationForParticipant(p, rankIdx, participants.length);
+      const color = PALETTE[rankIdx % PALETTE.length];
+      for (let c = 0; c < coinCount; c++) {
+        coins.push({
+          id: p.nickname + '_' + c,
+          nickname: p.nickname,
+          avatar: p.avatar || '🐶',
+          color: color,
+          x: 90 + Math.random() * (width - 180),
+          y: 40 + Math.random() * 30,
+          vx: (Math.random() - 0.5) * 1.5,
+          vy: 0.2 + Math.random() * 0.4,
+          radius: 20,
+          arrived: false
+        });
+      }
+    });
+
+    // 1. Plinko Peg Matrix (Zone 1: y=130..500)
+    const pegs = [];
+    for (let r = 0; r < 6; r++) {
+      const py = 130 + r * 70;
+      const isEven = r % 2 === 0;
+      const count = isEven ? 8 : 9;
+      const margin = isEven ? 90 : 60;
+      const spacing = (width - margin * 2) / (count - 1);
+      for (let i = 0; i < count; i++) {
+        pegs.push({ x: margin + i * spacing, y: py, r: 7 });
+      }
+    }
+
+    // 2. Rotating Gears (8 gears placed away from island tips)
+    const gears = [
+      { x: 240, y: 1000, r: 65, teeth: 10, omega: 0.04, angle: 0 },
+      { x: 620, y: 1000, r: 70, teeth: 12, omega: -0.045, angle: 0 },
+      { x: 300, y: 2000, r: 60, teeth: 9, omega: -0.035, angle: 0 },
+      { x: 560, y: 2000, r: 65, teeth: 10, omega: 0.04, angle: 0 },
+      { x: 240, y: 3100, r: 65, teeth: 10, omega: 0.04, angle: 0 },
+      { x: 620, y: 3100, r: 70, teeth: 12, omega: -0.045, angle: 0 },
+      { x: 300, y: 4200, r: 60, teeth: 9, omega: -0.04, angle: 0 },
+      { x: 560, y: 4200, r: 65, teeth: 10, omega: 0.045, angle: 0 }
+    ];
+
+    // 3. Spring Bumpers (Adjusted position away from island tips + Center Flipper Bumper)
+    const bumpers = [
+      { x: 430, y: 380, r: 20, pulse: 0 },
+      { x: 220, y: 1420, r: 18, pulse: 0 },
+      { x: 640, y: 1420, r: 18, pulse: 0 },
+      { x: 220, y: 2420, r: 18, pulse: 0 },
+      { x: 640, y: 2420, r: 18, pulse: 0 },
+      { x: 220, y: 3420, r: 18, pulse: 0 },
+      { x: 640, y: 3420, r: 18, pulse: 0 },
+      { x: 220, y: 4420, r: 18, pulse: 0 },
+      { x: 640, y: 4420, r: 18, pulse: 0 },
+      { x: 430, y: 5060, r: 24, pulse: 0, isCore: true } // 💥 핑퐁 날개 중앙 코어 장애물!
+    ];
+
+    // 4. Galimgil Split Islands (4 island wedges)
+    const islands = [
+      { yStart: 1450, yEnd: 1700, centerX: 430, label: '⚡ 1차 갈림길' },
+      { yStart: 2450, yEnd: 2700, centerX: 430, label: '⚡ 2차 갈림길' },
+      { yStart: 3450, yEnd: 3700, centerX: 430, label: '⚡ 3차 갈림길' },
+      { yStart: 4350, yEnd: 4600, centerX: 430, label: '⚡ 4차 갈림길' }
+    ];
+
+    // Additional pegs down lower
+    for (let r = 0; r < 6; r++) {
+      const py = 3700 + r * 75;
+      const isEven = r % 2 === 0;
+      const count = isEven ? 7 : 8;
+      const margin = isEven ? 120 : 80;
+      const spacing = (width - margin * 2) / (count - 1);
+      for (let i = 0; i < count; i++) {
+        pegs.push({ x: margin + i * spacing, y: py, r: 7 });
+      }
+    }
+
+    // Speed Boosters
+    const boosters = [
+      { x: 250, y: 4500, w: 120, h: 40, vy: 2.2 },
+      { x: 610, y: 4500, w: 120, h: 40, vy: 2.2 }
+    ];
+
+    let countdown = 3;
+    let countdownTimer = setInterval(() => {
+      countdown--;
+      AudioEngine.playCountdownTick(countdown);
+      if (countdown <= 0) {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+      }
+    }, 1000);
+
+    const arrivedParticipants = [];
+    const arrivedNicknames = new Set();
+    let raceFinishedSent = false;
+
+    function updateArrivalsListDOM() {
+      const listEl = document.getElementById('race-live-arrivals-list');
+      if (!listEl) return;
+      if (arrivedParticipants.length === 0) {
+        listEl.innerHTML = `<div style="color: var(--text-muted); font-size: 0.95rem; text-align: center; margin-top: 20px;">낙하 레이스 진행 중...</div>`;
+        return;
+      }
+      listEl.innerHTML = arrivedParticipants.map((p, idx) => `
+        <div style="background: #1e293b; border-left: 4px solid ${idx === 0 ? '#f59e0b' : idx === 1 ? '#94a3b8' : idx === 2 ? '#b45309' : '#38bdf8'}; border-radius: 8px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-weight: 800; font-size: 1rem; color: #fbbf24;">${idx === 0 ? '🥇 1위' : idx === 1 ? '🥈 2위' : idx === 2 ? '🥉 3위' : (idx + 1) + '위'}</span>
+            ${renderAvatarBadgeHtml(p.avatar || '🐶', 30)}
+            <span style="font-size: 0.95rem; font-weight: bold; color: #fff;">${escapeHtml(p.nickname)}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function getTrackBoundsAtY(y) {
+      let left = 50;
+      let right = width - 50;
+
+      if (y >= 700 && y <= 950) {
+        const pinch = Math.sin((y - 700) / 250 * Math.PI) * 170;
+        left = 50 + pinch; right = width - 50 - pinch;
+      } else if (y >= 1500 && y <= 1800) {
+        const shift = -Math.sin((y - 1500) / 300 * Math.PI) * 190;
+        left = 50 + shift; right = width - 50 + shift;
+      } else if (y >= 2500 && y <= 2800) {
+        const shift = Math.sin((y - 2500) / 300 * Math.PI) * 190;
+        left = 50 + shift; right = width - 50 + shift;
+      } else if (y >= 3600 && y <= 3850) {
+        const pinch = Math.sin((y - 3600) / 250 * Math.PI) * 175;
+        left = 50 + pinch; right = width - 50 - pinch;
+      } else if (y >= 4600 && y <= 4850) {
+        const shift = -Math.sin((y - 4600) / 250 * Math.PI) * 180;
+        left = 50 + shift; right = width - 50 + shift;
+      } else if (y >= 4950 && y <= 5080) {
+        left = 280; right = 580;
+      }
+
+      return { left, right };
+    }
+
+    function loop() {
+      if (!isManualCamera) {
+        let maxCoinY = 0;
+        coins.forEach(c => {
+          if (!c.arrived && c.y > maxCoinY) maxCoinY = c.y;
+        });
+        if (maxCoinY > 0) {
+          const targetCamY = Math.max(0, Math.min(VIRTUAL_HEIGHT - height, maxCoinY - 220));
+          cameraY += (targetCamY - cameraY) * 0.12;
+        }
+      }
+
+      ctx.clearRect(0, 0, width, height);
+
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.06)';
+      ctx.lineWidth = 1;
+      const startGridY = Math.floor(cameraY / 40) * 40;
+      for (let y = startGridY; y < cameraY + height; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(0, y - cameraY);
+        ctx.lineTo(width, y - cameraY);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = '#1e293b';
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 3;
+
+      ctx.beginPath();
+      ctx.moveTo(0, 0 - cameraY);
+      for (let y = 0; y <= VIRTUAL_HEIGHT; y += 50) {
+        const b = getTrackBoundsAtY(y);
+        ctx.lineTo(b.left, y - cameraY);
+      }
+      ctx.lineTo(0, VIRTUAL_HEIGHT - cameraY);
+      ctx.fill(); ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(width, 0 - cameraY);
+      for (let y = 0; y <= VIRTUAL_HEIGHT; y += 50) {
+        const b = getTrackBoundsAtY(y);
+        ctx.lineTo(b.right, y - cameraY);
+      }
+      ctx.lineTo(width, VIRTUAL_HEIGHT - cameraY);
+      ctx.fill(); ctx.stroke();
+
+      // Render 4 Galimgil Islands
+      islands.forEach(isl => {
+        const topY = isl.yStart;
+        const midY = (isl.yStart + isl.yEnd) / 2;
+        const botY = isl.yEnd;
+        if (botY - cameraY > 0 && topY - cameraY < height) {
+          ctx.fillStyle = '#0f172a';
+          ctx.strokeStyle = '#ec4899';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(isl.centerX, topY - cameraY);
+          ctx.lineTo(isl.centerX + 90, midY - cameraY);
+          ctx.lineTo(isl.centerX, botY - cameraY);
+          ctx.lineTo(isl.centerX - 90, midY - cameraY);
+          ctx.closePath();
+          ctx.fill(); ctx.stroke();
+
+          ctx.fillStyle = '#ec4899';
+          ctx.font = 'bold 15px Cafe24Surround, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(isl.label, isl.centerX, midY - cameraY + 4);
+        }
+      });
+
+      // Render Pingpong Flippers near Finish Line
+      const flipperY = 5120;
+      const flipperAngle = Math.sin(Date.now() * 0.005) * 0.45;
+
+      if (flipperY - 40 - cameraY < height && flipperY + 40 - cameraY > 0) {
+        ctx.save();
+        ctx.lineWidth = 10;
+        ctx.strokeStyle = '#f43f5e';
+        ctx.lineCap = 'round';
+
+        // Left Flipper
+        ctx.beginPath();
+        ctx.moveTo(130, flipperY - cameraY);
+        const leftX2 = 130 + Math.cos(flipperAngle) * 140;
+        const leftY2 = flipperY + Math.sin(flipperAngle) * 140;
+        ctx.lineTo(leftX2, leftY2 - cameraY);
+        ctx.stroke();
+
+        // Right Flipper
+        ctx.beginPath();
+        ctx.moveTo(730, flipperY - cameraY);
+        const rightX2 = 730 - Math.cos(-flipperAngle) * 140;
+        const rightY2 = flipperY + Math.sin(-flipperAngle) * 140;
+        ctx.lineTo(rightX2, rightY2 - cameraY);
+        ctx.stroke();
+
+        ctx.fillStyle = '#f43f5e';
+        ctx.font = 'bold 14px Cafe24Surround, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🏓 핑퐁 리바운드 날개 🏓', width / 2, flipperY - cameraY - 15);
+
+        ctx.restore();
+      }
+
+      if (finishY - cameraY < height && finishY + 60 - cameraY > 0) {
+        ctx.fillStyle = 'rgba(234, 88, 12, 0.12)';
+        ctx.fillRect(50, finishY - cameraY, width - 100, 50);
+        ctx.strokeStyle = '#ea580c';
+        ctx.lineWidth = 4;
+        ctx.setLineDash([10, 10]);
+        ctx.beginPath(); ctx.moveTo(50, finishY - cameraY); ctx.lineTo(width - 50, finishY - cameraY); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#c2410c';
+        ctx.font = '900 18px Cafe24Surround, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🏁 FINISH LINE (코인 낙하 결승선) 🏁', width / 2, finishY - cameraY + 32);
+      }
+
+      gears.forEach(g => {
+        g.angle += g.omega;
+        if (g.y + g.r - cameraY > 0 && g.y - g.r - cameraY < height) {
+          ctx.save();
+          ctx.translate(g.x, g.y - cameraY);
+          ctx.rotate(g.angle);
+
+          ctx.fillStyle = '#a855f7';
+          for (let i = 0; i < g.teeth; i++) {
+            const rot = (i / g.teeth) * Math.PI * 2;
+            ctx.save();
+            ctx.rotate(rot);
+            ctx.fillRect(-6, -g.r - 8, 12, 16);
+            ctx.restore();
+          }
+
+          ctx.beginPath();
+          ctx.arc(0, 0, g.r, 0, Math.PI * 2);
+          ctx.fillStyle = '#6b21a8';
+          ctx.fill();
+          ctx.strokeStyle = '#e9d5ff';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.arc(0, 0, 14, 0, Math.PI * 2);
+          ctx.fillStyle = '#a855f7';
+          ctx.fill();
+          ctx.restore();
+        }
+      });
+
+      pegs.forEach(p => {
+        if (p.y + p.r - cameraY > 0 && p.y - p.r - cameraY < height) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y - cameraY, p.r, 0, Math.PI * 2);
+          ctx.fillStyle = '#38bdf8';
+          ctx.shadowColor = '#38bdf8';
+          ctx.shadowBlur = 8;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
+      });
+
+      bumpers.forEach(b => {
+        if (b.pulse > 0) b.pulse -= 0.05;
+        if (b.y + b.r - cameraY > 0 && b.y - b.r - cameraY < height) {
+          const rCurr = b.r + Math.max(0, b.pulse) * 8;
+          ctx.beginPath();
+          ctx.arc(b.x, b.y - cameraY, rCurr, 0, Math.PI * 2);
+          ctx.fillStyle = b.isCore ? '#f43f5e' : '#ec4899';
+          ctx.shadowColor = b.isCore ? '#f43f5e' : '#ec4899';
+          ctx.shadowBlur = 14;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = b.isCore ? 3 : 2;
+          ctx.stroke();
+
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 12px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(b.isCore ? '🏓' : '💥', b.x, b.y - cameraY);
+        }
+      });
+
+      boosters.forEach(bst => {
+        if (bst.y + bst.h - cameraY > 0 && bst.y - cameraY < height) {
+          ctx.fillStyle = 'rgba(16, 185, 129, 0.3)';
+          ctx.strokeStyle = '#10b981';
+          ctx.lineWidth = 2;
+          ctx.fillRect(bst.x, bst.y - cameraY, bst.w, bst.h);
+          ctx.strokeRect(bst.x, bst.y - cameraY, bst.w, bst.h);
+          ctx.fillStyle = '#10b981';
+          ctx.font = 'bold 14px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('⏩ SPEED BOOST ⏩', bst.x + bst.w / 2, bst.y - cameraY + 25);
+        }
+      });
+
+      if (countdown <= 0) {
+        coins.forEach(c => {
+          if (c.arrived) return;
+
+          c.vy += 0.22;
+          c.vx *= 0.99;
+          c.vy = Math.min(c.vy, 6.5);
+          c.vx = Math.max(-5.0, Math.min(5.0, c.vx));
+
+          c.x += c.vx;
+          c.y += c.vy;
+
+          const bounds = getTrackBoundsAtY(c.y);
+          if (c.x < bounds.left + c.radius) {
+            c.x = bounds.left + c.radius;
+            c.vx = Math.abs(c.vx) * 0.7 + 0.5;
+          }
+          if (c.x > bounds.right - c.radius) {
+            c.x = bounds.right - c.radius;
+            c.vx = -Math.abs(c.vx) * 0.7 - 0.5;
+          }
+
+          // Galimgil Islands Collision
+          islands.forEach(isl => {
+            if (c.y >= isl.yStart && c.y <= isl.yEnd) {
+              if (c.x > isl.centerX - 90 && c.x < isl.centerX + 90) {
+                if (c.x < isl.centerX) {
+                  c.x = isl.centerX - 90 - c.radius;
+                  c.vx = -Math.abs(c.vx) * 0.8 - 1.2;
+                } else {
+                  c.x = isl.centerX + 90 + c.radius;
+                  c.vx = Math.abs(c.vx) * 0.8 + 1.2;
+                }
+                AudioEngine.playTick();
+              }
+            }
+          });
+
+          // Flipper Paddles Bounce Collision
+          if (c.y >= 5080 && c.y <= 5160) {
+            const leftX2 = 130 + Math.cos(flipperAngle) * 140;
+            const rightX2 = 730 - Math.cos(-flipperAngle) * 140;
+            if ((c.x >= 120 && c.x <= leftX2 + 20) || (c.x <= 740 && c.x >= rightX2 - 20)) {
+              c.vy = -Math.abs(c.vy) * 1.6 - 4.5;
+              c.vx += (Math.random() - 0.5) * 6.0;
+              AudioEngine.playCorrect();
+            }
+          }
+
+          gears.forEach(g => {
+            const dx = c.x - g.x;
+            const dy = c.y - g.y;
+            const dist = Math.hypot(dx, dy);
+            const minDist = c.radius + g.r;
+            if (dist < minDist && dist > 0) {
+              const nx = dx / dist;
+              const ny = dy / dist;
+              c.x = g.x + nx * minDist;
+              c.y = g.y + ny * minDist;
+              const tangVx = -ny * (g.omega * g.r * 1.5);
+              const tangVy = nx * (g.omega * g.r * 1.5);
+              c.vx = c.vx * -0.5 + tangVx + nx * 2.5;
+              c.vy = c.vy * -0.5 + tangVy + ny * 2.5;
+              AudioEngine.playTick();
+            }
+          });
+
+          pegs.forEach(p => {
+            const dx = c.x - p.x;
+            const dy = c.y - p.y;
+            const dist = Math.hypot(dx, dy);
+            const minDist = c.radius + p.r;
+            if (dist < minDist && dist > 0) {
+              const nx = dx / dist;
+              const ny = dy / dist;
+              const overlap = minDist - dist;
+              c.x += nx * overlap;
+              c.y += ny * overlap;
+              const dot = c.vx * nx + c.vy * ny;
+              c.vx -= (1 + 0.65) * dot * nx + (Math.random() - 0.5) * 0.5;
+              c.vy -= (1 + 0.65) * dot * ny;
+              AudioEngine.playTick();
+            }
+          });
+
+          bumpers.forEach(b => {
+            const dx = c.x - b.x;
+            const dy = c.y - b.y;
+            const dist = Math.hypot(dx, dy);
+            const minDist = c.radius + b.r;
+            if (dist < minDist && dist > 0) {
+              const nx = dx / dist;
+              const ny = dy / dist;
+              const overlap = minDist - dist;
+              c.x += nx * overlap;
+              c.y += ny * overlap;
+              const dot = c.vx * nx + c.vy * ny;
+              c.vx -= (1 + 1.4) * dot * nx;
+              c.vy -= (1 + 1.4) * dot * ny;
+              b.pulse = 1.0;
+              AudioEngine.playCorrect();
+            }
+          });
+
+          boosters.forEach(bst => {
+            if (c.x >= bst.x && c.x <= bst.x + bst.w && c.y >= bst.y && c.y <= bst.y + bst.h) {
+              c.vy += bst.vy;
+            }
+          });
+
+          if (c.y >= finishY && !c.arrived) {
+            c.arrived = true;
+            if (!arrivedNicknames.has(c.nickname)) {
+              arrivedNicknames.add(c.nickname);
+              arrivedParticipants.push({
+                nickname: c.nickname,
+                avatar: c.avatar,
+                rank: arrivedParticipants.length + 1
+              });
+              updateArrivalsListDOM();
+              AudioEngine.playFanfare();
+            }
+          }
+        });
+
+        for (let i = 0; i < coins.length; i++) {
+          for (let j = i + 1; j < coins.length; j++) {
+            const c1 = coins[i];
+            const c2 = coins[j];
+            if (c1.arrived || c2.arrived) continue;
+
+            const dx = c2.x - c1.x;
+            const dy = c2.y - c1.y;
+            const dist = Math.hypot(dx, dy);
+            const minDist = c1.radius + c2.radius;
+            if (dist < minDist && dist > 0) {
+              const nx = dx / dist;
+              const ny = dy / dist;
+              const overlap = minDist - dist;
+              c1.x -= nx * overlap * 0.5;
+              c1.y -= ny * overlap * 0.5;
+              c2.x += nx * overlap * 0.5;
+              c2.y += ny * overlap * 0.5;
+
+              const kx = c1.vx - c2.vx;
+              const ky = c1.vy - c2.vy;
+              const pVal = 2 * (nx * kx + ny * ky) / 2;
+              c1.vx -= pVal * nx;
+              c1.vy -= pVal * ny;
+              c2.vx += pVal * nx;
+              c2.vy += pVal * ny;
+            }
+          }
+        }
+
+        // Manual Finish Button Overlay (No auto transition)
+        if (arrivedParticipants.length === participants.length && !raceFinishedSent) {
+          raceFinishedSent = true;
+          const canvasBox = canvas.parentElement;
+          if (canvasBox && !document.getElementById('race-finish-announcement-overlay')) {
+            const overlay = document.createElement('div');
+            overlay.id = 'race-finish-announcement-overlay';
+            overlay.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 100; background: rgba(15, 23, 42, 0.95); border: 3px solid #fbbf24; border-radius: 20px; padding: 24px 32px; text-align: center; box-shadow: 0 0 40px rgba(251, 191, 36, 0.85); width: 85%; max-width: 480px; backdrop-filter: blur(8px);';
+            overlay.innerHTML = `
+              <div style="font-size: 3rem; margin-bottom: 6px;">🏁</div>
+              <h2 style="font-size: 1.6rem; color: #fbbf24; font-weight: 900; margin-bottom: 10px;">전원 결승선 도착 완료!</h2>
+              <p style="color: #cbd5e1; font-size: 1rem; margin-bottom: 20px; line-height: 1.5;">모든 코인이 경주를 마쳤습니다.<br>버튼을 누르면 최종 순위를 공개합니다!</p>
+              <button id="btn-trigger-race-results-now" class="btn btn-primary" style="font-size: 1.25rem; padding: 14px 28px; background: linear-gradient(135deg, #f59e0b, #ec4899); border: none; font-weight: 900; box-shadow: 0 4px 18px rgba(245, 158, 11, 0.6); cursor: pointer; width: 100%;">
+                🏆 최종 순위 발표 & 명예의 전당 보기
+              </button>
+            `;
+            canvasBox.appendChild(overlay);
+
+            document.getElementById('btn-trigger-race-results-now')?.addEventListener('click', async () => {
+              if (coinRaceAnimId) cancelAnimationFrame(coinRaceAnimId);
+              await updateRoomMeta(roomId, { status: 'COIN_RACE_RESULT', coinRaceResults: arrivedParticipants });
+            });
+          }
+        }
+      }
+
+      coins.forEach(c => {
+        if (c.y + c.radius - cameraY > 0 && c.y - c.radius - cameraY < height) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(c.x, c.y - cameraY, c.radius, 0, Math.PI * 2);
+          ctx.fillStyle = c.color;
+          ctx.shadowColor = c.color;
+          ctx.shadowBlur = 6;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '17px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(c.avatar, c.x, c.y - cameraY);
+
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 10px Cafe24Surround, sans-serif';
+          ctx.fillText(c.nickname.slice(0, 4), c.x, c.y - cameraY - c.radius - 3);
+          ctx.restore();
+        }
+      });
+
+      if (countdown > 0) {
+        ctx.fillStyle = 'rgba(9, 13, 22, 0.65)';
+        ctx.fillRect(0, 0, width, height);
+        ctx.fillStyle = '#fbbf24';
+        ctx.font = '900 90px Cafe24Surround, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(countdown > 0 ? countdown : 'GO!', width / 2, height / 2);
+      }
+
+      coinRaceAnimId = requestAnimationFrame(loop);
+    }
+
+    loop();
+
+    document.getElementById('btn-force-finish-coin-race')?.addEventListener('click', async () => {
+      if (coinRaceAnimId) cancelAnimationFrame(coinRaceAnimId);
+      participants.forEach(p => {
+        if (!arrivedNicknames.has(p.nickname)) {
+          arrivedNicknames.add(p.nickname);
+          arrivedParticipants.push({
+            nickname: p.nickname,
+            avatar: p.avatar,
+            rank: arrivedParticipants.length + 1
+          });
+        }
+      });
+      await updateRoomMeta(roomId, { status: 'COIN_RACE_RESULT', coinRaceResults: arrivedParticipants });
+    });
+  }
+
+  // ============================================================
+  // MARBLE ROLLERCOASTER RACE VIEW (Mode 2)
+  // ============================================================
+  let marbleRaceAnimId = null;
+
+  function renderMarbleRaceRunningView(container, roomData, roomId, isTeacherControl) {
+    if (marbleRaceAnimId) {
+      cancelAnimationFrame(marbleRaceAnimId);
+      marbleRaceAnimId = null;
+    }
+    if (coinRaceAnimId) {
+      cancelAnimationFrame(coinRaceAnimId);
+      coinRaceAnimId = null;
+    }
+
+    const participants = Object.values(roomData.participants || {});
+    participants.sort((a, b) => (b.score || 0) - (a.score || 0));
+
+    container.innerHTML = `
+      <div class="quiz-display-container" style="padding: 16px; text-align: center; max-width: 1220px; margin: 0 auto;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+          <h2 style="font-size: 1.6rem; color: #38bdf8; font-weight: 900; margin: 0; display: flex; align-items: center; gap: 8px;">
+            🔮 선착순 구슬 롤러코스터 레이스
+          </h2>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            ${renderBgmVolumeControlHtml('marble-run')}
+            <button id="btn-force-finish-marble-race" class="btn btn-primary" style="background: linear-gradient(135deg, #10b981, #059669); border: none; font-weight: bold;">
+              🏆 레이스 결과 발표
+            </button>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 16px; justify-content: center; align-items: flex-start; flex-wrap: wrap;">
+          <div style="position: relative; background: #090d16; border: 2.5px solid #38bdf8; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 30px rgba(56, 189, 248, 0.25);">
+            <canvas id="coin-race-canvas" width="860" height="640" style="display: block; background: radial-gradient(circle at center, #0f172a 0%, #020617 100%); cursor: grab;"></canvas>
+            <button id="btn-reset-camera" class="btn btn-outline-sm" style="position: absolute; top: 12px; right: 12px; z-index: 10; background: rgba(15, 23, 42, 0.88); border: 1.5px solid #38bdf8; color: #38bdf8; font-weight: 900; cursor: pointer; backdrop-filter: blur(4px); box-shadow: 0 0 14px rgba(56, 189, 248, 0.3);">
+              🎥 1등 구슬 자동 추적
+            </button>
+            <div style="position: absolute; bottom: 12px; left: 12px; z-index: 10; background: rgba(15, 23, 42, 0.85); padding: 6px 14px; border-radius: 10px; font-size: 0.85rem; color: #94a3b8; font-weight: 700; border: 1px solid rgba(255, 255, 255, 0.1); pointer-events: none;">
+              💡 마우스 드래그 / 휠 스크롤로 트랙 위치 자율 조작 가능
+            </div>
+          </div>
+
+          <div style="width: 300px; background: #0f172a; border: 1.5px solid rgba(56, 189, 248, 0.3); border-radius: 20px; padding: 20px; min-height: 640px; display: flex; flex-direction: column; box-shadow: 0 20px 45px rgba(0, 0, 0, 0.6);">
+            <h3 style="font-size: 1.25rem; color: #38bdf8; margin: 0 0 12px 0; border-bottom: 2px solid rgba(56, 189, 248, 0.3); padding-bottom: 10px; text-align: center; font-weight: 900;">
+              🚩 실시간 구슬 도착 현황
+            </h3>
+            <div id="race-live-arrivals-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+              <div style="color: var(--text-muted); font-size: 0.95rem; text-align: center; margin-top: 20px; font-weight: 600;">
+                3-2-1 출발 준비 중...
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    bindBgmVolumeControlEvents(container);
+
+    const canvas = document.getElementById('coin-race-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    const width = canvas.width;
+    const height = canvas.height;
+    const VIRTUAL_HEIGHT = 5500;
+    const finishY = 5250;
+
+    let cameraY = 0;
+    let isManualCamera = false;
+    let isDragging = false;
+    let dragStartY = 0;
+    let startCamY = 0;
+
+    canvas.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      dragStartY = e.clientY;
+      startCamY = cameraY;
+      canvas.style.cursor = 'grabbing';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        isManualCamera = true;
+        const dy = e.clientY - dragStartY;
+        cameraY = Math.max(0, Math.min(VIRTUAL_HEIGHT - height, startCamY - dy));
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
+      if (canvas) canvas.style.cursor = 'grab';
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      isManualCamera = true;
+      cameraY = Math.max(0, Math.min(VIRTUAL_HEIGHT - height, cameraY + e.deltaY * 0.8));
+    }, { passive: false });
+
+    document.getElementById('btn-reset-camera')?.addEventListener('click', () => {
+      isManualCamera = false;
+    });
+
+    const PALETTE = ['#38bdf8', '#ec4899', '#f59e0b', '#10b981', '#a855f7', '#ef4444', '#84cc16', '#06b6d4', '#f97316', '#e11d48'];
+
+    const marbles = [];
+    participants.forEach((p, rankIdx) => {
+      const coinCount = getCoinAllocationForParticipant(p, rankIdx, participants.length);
+      const color = PALETTE[rankIdx % PALETTE.length];
+      for (let c = 0; c < coinCount; c++) {
+        marbles.push({
+          id: p.nickname + '_' + c,
+          nickname: p.nickname,
+          avatar: p.avatar || '🐶',
+          color: color,
+          x: 100 + Math.random() * 200,
+          y: 80 + Math.random() * 20,
+          vx: 1.5 + Math.random() * 1.5,
+          vy: 0.5,
+          radius: 20,
+          arrived: false
+        });
+      }
+    });
+
+    // Generate 16 Continuous Serpentine Racing Road Tiers & U-Turn Elbows
+    const roadStraights = [];
+    const uTurnElbows = [];
+    const reverseSprings = [];
+    const speedBoosters = [];
+    const swirlFunnels = [];
+    const propellers = [];
+    const railNum = 17;
+    const ROAD_WIDTH = 110;
+
+    for (let i = 0; i < railNum; i++) {
+      const yStart = 160 + i * 320;
+      const yEnd = yStart + 220;
+      const isRightDown = i % 2 === 0;
+
+      const x1 = isRightDown ? 110 : 750;
+      const x2 = isRightDown ? 750 : 110;
+
+      roadStraights.push({
+        id: i,
+        x1, y1: yStart,
+        x2, y2: yEnd,
+        isRightDown,
+        dx: x2 - x1,
+        dy: yEnd - yStart,
+        lengthSq: (x2 - x1) ** 2 + (yEnd - yStart) ** 2,
+        length: Math.hypot(x2 - x1, yEnd - yStart),
+        slope: (yEnd - yStart) / (x2 - x1)
+      });
+
+      if (i < railNum - 1) {
+        if (isRightDown) {
+          uTurnElbows.push({
+            id: i,
+            centerX: 750,
+            centerY: yEnd + 50,
+            radius: 50,
+            isRight: true
+          });
+        } else {
+          uTurnElbows.push({
+            id: i,
+            centerX: 110,
+            centerY: yEnd + 50,
+            radius: 50,
+            isRight: false
+          });
+        }
+      }
+
+      // Reverse Springs ON ROAD
+      if (i % 2 === 1 || i === 4 || i === 8 || i === 12) {
+        const springX = isRightDown ? 620 : 240;
+        const springY = yStart + (springX - x1) * ((yEnd - yStart) / (x2 - x1));
+        reverseSprings.push({
+          x: springX,
+          y: springY,
+          r: 24,
+          text: '⚡ 역주행'
+        });
+      }
+
+      // Speed Boosters ON ROAD
+      if (i % 3 === 0) {
+        const boostX = 430;
+        const boostY = yStart + (boostX - x1) * ((yEnd - yStart) / (x2 - x1));
+        speedBoosters.push({
+          x: boostX,
+          y: boostY,
+          r: 26,
+          text: '⏩ SPEED'
+        });
+      }
+
+      // Rotating Propellers ON ROAD (🛸 회전 윈드 프로펠러)
+      if (i === 1 || i === 5 || i === 9 || i === 13) {
+        const propX = isRightDown ? 480 : 380;
+        const propY = yStart + (propX - x1) * ((yEnd - yStart) / (x2 - x1));
+        propellers.push({
+          x: propX,
+          y: propY,
+          r: 38,
+          angle: Math.random() * Math.PI,
+          speed: (i % 2 === 0 ? 0.08 : -0.09),
+          text: '🛸 회전 윈드'
+        });
+      }
+
+      // 360° Loop Roundabout
+      if (i === 3 || i === 7 || i === 11) {
+        swirlFunnels.push({
+          x: 430,
+          y: yStart + 110,
+          r: 45,
+          text: '🌀 360° 루프'
+        });
+      }
+    }
+
+    let countdown = 3;
+    let countdownTimer = setInterval(() => {
+      countdown--;
+      AudioEngine.playCountdownTick(countdown);
+      if (countdown <= 0) {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+      }
+    }, 1000);
+
+    const arrivedParticipants = [];
+    const arrivedNicknames = new Set();
+    let raceFinishedSent = false;
+
+    function updateArrivalsListDOM() {
+      const listEl = document.getElementById('race-live-arrivals-list');
+      if (!listEl) return;
+      if (arrivedParticipants.length === 0) {
+        listEl.innerHTML = `<div style="color: var(--text-muted); font-size: 0.95rem; text-align: center; margin-top: 20px;">구슬 레이스 진행 중...</div>`;
+        return;
+      }
+      listEl.innerHTML = arrivedParticipants.map((p, idx) => `
+        <div style="background: #1e293b; border: 1px solid rgba(255, 255, 255, 0.1); border-left: 5px solid ${idx === 0 ? '#f59e0b' : idx === 1 ? '#94a3b8' : idx === 2 ? '#b45309' : '#38bdf8'}; border-radius: 12px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-weight: 900; font-size: 1.05rem; color: ${idx === 0 ? '#fbbf24' : idx === 1 ? '#cbd5e1' : idx === 2 ? '#f59e0b' : '#38bdf8'};">${idx === 0 ? '🥇 1위' : idx === 1 ? '🥈 2위' : idx === 2 ? '🥉 3위' : (idx + 1) + '위'}</span>
+            ${renderAvatarBadgeHtml(p.avatar || '🐶', 34)}
+            <span style="font-size: 1.05rem; font-weight: 900; color: #ffffff;">${escapeHtml(p.nickname)}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function loop() {
+      if (!isManualCamera) {
+        let maxMarbleY = 0;
+        marbles.forEach(m => {
+          if (!m.arrived && m.y > maxMarbleY) maxMarbleY = m.y;
+        });
+        if (maxMarbleY > 0) {
+          const targetCamY = Math.max(0, Math.min(VIRTUAL_HEIGHT - height, maxMarbleY - 220));
+          cameraY += (targetCamY - cameraY) * 0.12;
+        }
+      }
+
+      ctx.clearRect(0, 0, width, height);
+
+      // Render Grid Lines
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.25)';
+      ctx.lineWidth = 1;
+      const startGridY = Math.floor(cameraY / 40) * 40;
+      for (let y = startGridY; y < cameraY + height; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(0, y - cameraY);
+        ctx.lineTo(width, y - cameraY);
+        ctx.stroke();
+      }
+
+      // Draw Continuous Racing Road Lanes
+      roadStraights.forEach(st => {
+        if (st.y2 - cameraY > -100 && st.y1 - cameraY < height + 100) {
+          // Asphalt Track Surface
+          ctx.strokeStyle = '#1e293b';
+          ctx.lineWidth = ROAD_WIDTH;
+          ctx.beginPath();
+          ctx.moveTo(st.x1, st.y1 - cameraY);
+          ctx.lineTo(st.x2, st.y2 - cameraY);
+          ctx.stroke();
+
+          // Outer Neon Guardrails
+          const angle = Math.atan2(st.dy, st.dx);
+          const nx = -Math.sin(angle) * (ROAD_WIDTH / 2);
+          const ny = Math.cos(angle) * (ROAD_WIDTH / 2);
+
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 5;
+          ctx.shadowColor = '#38bdf8';
+          ctx.shadowBlur = 8;
+          ctx.beginPath();
+          ctx.moveTo(st.x1 + nx, st.y1 + ny - cameraY);
+          ctx.lineTo(st.x2 + nx, st.y2 + ny - cameraY);
+          ctx.moveTo(st.x1 - nx, st.y1 - ny - cameraY);
+          ctx.lineTo(st.x2 - nx, st.y2 - ny - cameraY);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+
+          // Center Dash Line
+          ctx.strokeStyle = 'rgba(203, 213, 225, 0.4)';
+          ctx.lineWidth = 3;
+          ctx.setLineDash([15, 15]);
+          ctx.beginPath();
+          ctx.moveTo(st.x1, st.y1 - cameraY);
+          ctx.lineTo(st.x2, st.y2 - cameraY);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      });
+
+      // Draw U-Turn Elbow Curved Roads
+      uTurnElbows.forEach(ut => {
+        if (ut.centerY + 100 - cameraY > 0 && ut.centerY - 100 - cameraY < height) {
+          ctx.strokeStyle = '#1e293b';
+          ctx.lineWidth = ROAD_WIDTH;
+          ctx.beginPath();
+          const startAngle = ut.isRight ? -Math.PI / 2 : Math.PI / 2;
+          const endAngle = ut.isRight ? Math.PI / 2 : 3 * Math.PI / 2;
+          ctx.arc(ut.centerX, ut.centerY - cameraY, ut.radius, startAngle, endAngle);
+          ctx.stroke();
+
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 5;
+          ctx.shadowColor = '#38bdf8';
+          ctx.shadowBlur = 8;
+          ctx.beginPath();
+          ctx.arc(ut.centerX, ut.centerY - cameraY, ut.radius + ROAD_WIDTH / 2, startAngle, endAngle);
+          ctx.moveTo(ut.centerX + (ut.radius - ROAD_WIDTH / 2) * Math.cos(startAngle), ut.centerY + (ut.radius - ROAD_WIDTH / 2) * Math.sin(startAngle) - cameraY);
+          ctx.arc(ut.centerX, ut.centerY - cameraY, Math.max(10, ut.radius - ROAD_WIDTH / 2), startAngle, endAngle);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+        }
+      });
+
+      // Draw Reverse Springs ON ROAD (펄스 링 연출 포함)
+      reverseSprings.forEach(sp => {
+        if (sp.y + sp.r - cameraY > 0 && sp.y - sp.r - cameraY < height) {
+          if (sp.pulse && sp.pulse > 0) {
+            ctx.fillStyle = `rgba(236, 72, 153, ${sp.pulse * 0.65})`;
+            ctx.beginPath();
+            ctx.arc(sp.x, sp.y - cameraY, sp.r + (1 - sp.pulse) * 35, 0, Math.PI * 2);
+            ctx.fill();
+            sp.pulse -= 0.06;
+          }
+
+          ctx.fillStyle = '#ec4899';
+          ctx.shadowColor = '#ec4899';
+          ctx.shadowBlur = 12;
+          ctx.beginPath();
+          ctx.arc(sp.x, sp.y - cameraY, sp.r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 10px Cafe24Surround, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(sp.text, sp.x, sp.y - cameraY);
+        }
+      });
+
+      // Draw Speed Boosters ON ROAD
+      speedBoosters.forEach(sb => {
+        if (sb.y + sb.r - cameraY > 0 && sb.y - sb.r - cameraY < height) {
+          ctx.fillStyle = '#10b981';
+          ctx.shadowColor = '#10b981';
+          ctx.shadowBlur = 10;
+          ctx.beginPath();
+          ctx.arc(sb.x, sb.y - cameraY, sb.r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 10px Cafe24Surround, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(sb.text, sb.x, sb.y - cameraY);
+        }
+      });
+
+      // Draw Rotating Propeller Gates ON ROAD (🛸 회전 윈드)
+      propellers.forEach(pr => {
+        pr.angle += pr.speed;
+        if (pr.y + pr.r - cameraY > 0 && pr.y - pr.r - cameraY < height) {
+          ctx.save();
+          ctx.translate(pr.x, pr.y - cameraY);
+          ctx.fillStyle = '#f59e0b';
+          ctx.shadowColor = '#f59e0b';
+          ctx.shadowBlur = 10;
+          for (let b = 0; b < 4; b++) {
+            ctx.rotate(Math.PI / 2);
+            ctx.beginPath();
+            ctx.ellipse(pr.r * 0.45, 0, pr.r * 0.4, 6, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.shadowBlur = 0;
+
+          ctx.fillStyle = '#0f172a';
+          ctx.strokeStyle = '#f59e0b';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(0, 0, 13, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 9px Cafe24Surround, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('🛸', 0, 0);
+          ctx.restore();
+        }
+      });
+
+      // Draw Swirl Funnel Bowls ON ROAD
+      swirlFunnels.forEach(sf => {
+        if (sf.y + sf.r - cameraY > 0 && sf.y - sf.r - cameraY < height) {
+          ctx.fillStyle = 'rgba(168, 85, 247, 0.4)';
+          ctx.strokeStyle = '#a855f7';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(sf.x, sf.y - cameraY, sf.r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 11px Cafe24Surround, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(sf.text, sf.x, sf.y - cameraY);
+        }
+      });
+
+      // Finish Line (Checkered Circuit Finish Banner)
+      if (finishY - cameraY < height && finishY + 60 - cameraY > 0) {
+        ctx.fillStyle = 'rgba(234, 88, 12, 0.12)';
+        ctx.fillRect(50, finishY - cameraY, width - 100, 50);
+        ctx.strokeStyle = '#ea580c';
+        ctx.lineWidth = 4;
+        ctx.setLineDash([10, 10]);
+        ctx.beginPath(); ctx.moveTo(50, finishY - cameraY); ctx.lineTo(width - 50, finishY - cameraY); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#c2410c';
+        ctx.font = '900 18px Cafe24Surround, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🏁 FINISH LINE (구슬 롤러코스터 결승선) 🏁', width / 2, finishY - cameraY + 32);
+      }
+
+      if (countdown <= 0) {
+        marbles.forEach(m => {
+          if (m.arrived) return;
+
+          let onRoad = false;
+
+          for (let st of roadStraights) {
+            const minX = Math.min(st.x1, st.x2) - 30;
+            const maxX = Math.max(st.x1, st.x2) + 30;
+            const minY = st.y1 - 30;
+            const maxY = st.y2 + 30;
+
+            if (m.x >= minX && m.x <= maxX && m.y >= minY && m.y <= maxY) {
+              const targetY = st.y1 + (m.x - st.x1) * st.slope;
+              const distFromCenter = Math.abs(m.y - targetY);
+
+              if (distFromCenter <= ROAD_WIDTH / 2) {
+                onRoad = true;
+                const dirX = st.isRightDown ? 1 : -1;
+                m.vx += dirX * 0.45;
+                m.vy = Math.abs(m.vx) * Math.abs(st.slope) + 0.2;
+                break;
+              }
+            }
+          }
+
+          if (!onRoad) {
+            for (let ut of uTurnElbows) {
+              const dx = m.x - ut.centerX;
+              const dy = m.y - ut.centerY;
+              const dist = Math.hypot(dx, dy);
+
+              if (dist >= 10 && dist <= ut.radius + ROAD_WIDTH / 2 + 30) {
+                onRoad = true;
+                const angle = Math.atan2(dy, dx);
+                const speed = Math.max(4.2, Math.hypot(m.vx, m.vy));
+
+                if (ut.isRight) {
+                  m.vx = -speed * Math.sin(angle);
+                  m.vy = speed * Math.cos(angle);
+                } else {
+                  m.vx = speed * Math.sin(angle);
+                  m.vy = -speed * Math.cos(angle);
+                }
+                break;
+              }
+            }
+          }
+
+          if (!onRoad) {
+            m.vy += 0.35;
+          }
+
+          m.vx *= 0.985;
+          m.vy = Math.min(Math.max(m.vy, -10.0), 10.0);
+          m.x += m.vx;
+          m.y += m.vy;
+
+          // ============================================================
+          // 100% STRICT ROAD CONTAINMENT & GUARDRAIL BOUNCE
+          // ============================================================
+          let nearestPoint = null;
+          let minCenterlineDist = 999999;
+
+          roadStraights.forEach(st => {
+            const minX = Math.min(st.x1, st.x2) - 80;
+            const maxX = Math.max(st.x1, st.x2) + 80;
+            const minY = st.y1 - 80;
+            const maxY = st.y2 + 80;
+
+            if (m.x >= minX && m.x <= maxX && m.y >= minY && m.y <= maxY) {
+              const dx = st.x2 - st.x1;
+              const dy = st.y2 - st.y1;
+              const t = Math.max(0, Math.min(1, ((m.x - st.x1) * dx + (m.y - st.y1) * dy) / st.lengthSq));
+              const projX = st.x1 + t * dx;
+              const projY = st.y1 + t * dy;
+              const d = Math.hypot(m.x - projX, m.y - projY);
+
+              if (d < minCenterlineDist) {
+                minCenterlineDist = d;
+                nearestPoint = { x: projX, y: projY };
+              }
+            }
+          });
+
+          uTurnElbows.forEach(ut => {
+            const dx = m.x - ut.centerX;
+            const dy = m.y - ut.centerY;
+            const distToCenter = Math.hypot(dx, dy);
+            const d = Math.abs(distToCenter - ut.radius);
+
+            if (d < minCenterlineDist && ((ut.isRight && m.x >= 640) || (!ut.isRight && m.x <= 220))) {
+              minCenterlineDist = d;
+              const angle = Math.atan2(dy, dx);
+              nearestPoint = { x: ut.centerX + ut.radius * Math.cos(angle), y: ut.centerY + ut.radius * Math.sin(angle) };
+            }
+          });
+
+          const MAX_ALLOWED_DIST = (ROAD_WIDTH / 2) - m.radius - 2;
+          if (nearestPoint && minCenterlineDist > MAX_ALLOWED_DIST) {
+            const dx = m.x - nearestPoint.x;
+            const dy = m.y - nearestPoint.y;
+            const normDist = Math.hypot(dx, dy) || 1;
+            const nx = dx / normDist;
+            const ny = dy / normDist;
+
+            // Clamp marble strictly back inside the road
+            m.x = nearestPoint.x + nx * MAX_ALLOWED_DIST;
+            m.y = nearestPoint.y + ny * MAX_ALLOWED_DIST;
+
+            // Bounce inward off neon guardrail wall
+            const vDotN = m.vx * nx + m.vy * ny;
+            if (vDotN > 0) {
+              m.vx -= 1.7 * vDotN * nx;
+              m.vy -= 1.7 * vDotN * ny;
+              AudioEngine.playTick();
+            }
+          }
+
+          // Anti-Sticking Auto Push
+          if (Math.hypot(m.vx, m.vy) < 1.2) {
+            m.vy += 0.8;
+            m.vx += (m.x < 430 ? 0.5 : -0.5);
+          }
+
+          // Reverse Springs ON ROAD (⚡ 역주행 - 연속 궤적 감지 & 강력 폭발 반발)
+          reverseSprings.forEach(sp => {
+            const dx = m.x - sp.x;
+            const dy = m.y - sp.y;
+            const dist = Math.hypot(dx, dy);
+
+            // 궤적 충돌 감지 (고속 구슬의 터널링 완전 차단)
+            const prevX = m.x - m.vx;
+            const prevY = m.y - m.vy;
+            const segDx = m.x - prevX;
+            const segDy = m.y - prevY;
+            const segLenSq = segDx * segDx + segDy * segDy || 1;
+            const t = Math.max(0, Math.min(1, ((sp.x - prevX) * segDx + (sp.y - prevY) * segDy) / segLenSq));
+            const projX = prevX + t * segDx;
+            const projY = prevY + t * segDy;
+            const trajDist = Math.hypot(sp.x - projX, sp.y - projY);
+
+            if (dist < m.radius + sp.r || trajDist < m.radius + sp.r) {
+              sp.pulse = 1.0;
+              m.vy = -12.0 - Math.random() * 4.0; // 강렬한 역주행 튕김!
+              m.vx = (m.x < sp.x ? -6.0 : 6.0) + (Math.random() - 0.5) * 4.0;
+              AudioEngine.playCorrect();
+            }
+          });
+
+          // Speed Boosters ON ROAD (⏩ SPEED)
+          speedBoosters.forEach(sb => {
+            const dx = m.x - sb.x;
+            const dy = m.y - sb.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < m.radius + sb.r && dist > 0) {
+              m.vx *= 1.8;
+              m.vy *= 1.8;
+              AudioEngine.playTick();
+            }
+          });
+
+          // Rotating Propellers ON ROAD (🛸 회전 윈드 - 아수라장 튕김)
+          propellers.forEach(pr => {
+            const dx = m.x - pr.x;
+            const dy = m.y - pr.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < m.radius + pr.r && dist > 0) {
+              const hitAngle = Math.atan2(dy, dx);
+              const pushSpeed = 7.5;
+              m.vx = Math.cos(pr.angle + hitAngle) * pushSpeed + (dx / dist) * 3;
+              m.vy = Math.sin(pr.angle + hitAngle) * pushSpeed + (dy / dist) * 3;
+              AudioEngine.playTick();
+            }
+          });
+
+          // 360° Loop Roundabout ON ROAD
+          swirlFunnels.forEach(sf => {
+            const dx = m.x - sf.x;
+            const dy = m.y - sf.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < m.radius + sf.r && dist > 0) {
+              m.vx = -dy * 0.15;
+              m.vy = dx * 0.15 + 1.5;
+            }
+          });
+
+          // Finish Line Trigger
+          if (m.y >= finishY && !m.arrived) {
+            m.arrived = true;
+            if (!arrivedNicknames.has(m.nickname)) {
+              arrivedNicknames.add(m.nickname);
+              arrivedParticipants.push({
+                nickname: m.nickname,
+                avatar: m.avatar,
+                rank: arrivedParticipants.length + 1
+              });
+              updateArrivalsListDOM();
+              AudioEngine.playFanfare();
+            }
+          }
+        });
+
+        for (let i = 0; i < marbles.length; i++) {
+          for (let j = i + 1; j < marbles.length; j++) {
+            const m1 = marbles[i];
+            const m2 = marbles[j];
+            if (m1.arrived || m2.arrived) continue;
+
+            const dx = m2.x - m1.x;
+            const dy = m2.y - m1.y;
+            const dist = Math.hypot(dx, dy);
+            const minDist = m1.radius + m2.radius;
+            if (dist < minDist && dist > 0) {
+              const nx = dx / dist;
+              const ny = dy / dist;
+              const overlap = minDist - dist;
+              m1.x -= nx * overlap * 0.5;
+              m1.y -= ny * overlap * 0.5;
+              m2.x += nx * overlap * 0.5;
+              m2.y += ny * overlap * 0.5;
+
+              const kx = m1.vx - m2.vx;
+              const ky = m1.vy - m2.vy;
+              const pVal = 2 * (nx * kx + ny * ky) / 2;
+              m1.vx -= pVal * nx;
+              m1.vy -= pVal * ny;
+              m2.vx += pVal * nx;
+              m2.vy += pVal * ny;
+            }
+          }
+        }
+
+        if (arrivedParticipants.length === participants.length && !raceFinishedSent) {
+          raceFinishedSent = true;
+          const canvasBox = canvas.parentElement;
+          if (canvasBox && !document.getElementById('race-finish-announcement-overlay')) {
+            const overlay = document.createElement('div');
+            overlay.id = 'race-finish-announcement-overlay';
+            overlay.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 100; background: rgba(15, 23, 42, 0.96); border: 2.5px solid #38bdf8; border-radius: 24px; padding: 30px 36px; text-align: center; box-shadow: 0 0 50px rgba(56, 189, 248, 0.6); width: 85%; max-width: 480px; backdrop-filter: blur(8px);';
+            overlay.innerHTML = `
+              <div style="font-size: 3.2rem; margin-bottom: 8px;">🔮</div>
+              <h2 style="font-size: 1.7rem; color: #38bdf8; font-weight: 900; margin-bottom: 10px;">구슬 롤러코스터 전원 도착 완료!</h2>
+              <p style="color: #cbd5e1; font-size: 1.05rem; margin-bottom: 24px; line-height: 1.6; font-weight: 600;">모든 구슬이 결승선을 통과했습니다.<br>버튼을 누르면 최종 순위와 명예의 전당을 공개합니다!</p>
+              <button id="btn-trigger-race-results-now" class="btn btn-primary" style="font-size: 1.25rem; padding: 16px 30px; background: linear-gradient(135deg, #0284c7, #2563eb); border: none; font-weight: 900; box-shadow: 0 5px 0 #1d4ed8, 0 10px 24px rgba(2, 132, 199, 0.35); cursor: pointer; width: 100%; border-radius: 14px;">
+                🏆 최종 순위 발표 & 명예의 전당 보기
+              </button>
+            `;
+            canvasBox.appendChild(overlay);
+
+            document.getElementById('btn-trigger-race-results-now')?.addEventListener('click', async () => {
+              if (marbleRaceAnimId) cancelAnimationFrame(marbleRaceAnimId);
+              await updateRoomMeta(roomId, { status: 'COIN_RACE_RESULT', coinRaceResults: arrivedParticipants });
+            });
+          }
+        }
+      }
+
+      marbles.forEach(m => {
+        if (m.y + m.radius - cameraY > 0 && m.y - m.radius - cameraY < height) {
+          ctx.save();
+          
+          // 1. Ambient Drop Shadow underneath 3D Marble
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+          ctx.beginPath();
+          ctx.ellipse(m.x, m.y - cameraY + 4, m.radius, m.radius * 0.4, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 2. Multi-stop 3D Sphere Radial Gradient
+          const grad = ctx.createRadialGradient(
+            m.x - m.radius * 0.35, m.y - cameraY - m.radius * 0.35, m.radius * 0.1,
+            m.x, m.y - cameraY, m.radius
+          );
+          grad.addColorStop(0, '#ffffff');
+          grad.addColorStop(0.25, m.color);
+          grad.addColorStop(0.75, m.color);
+          grad.addColorStop(1, '#090d16');
+
+          ctx.beginPath();
+          ctx.arc(m.x, m.y - cameraY, m.radius, 0, Math.PI * 2);
+          ctx.fillStyle = grad;
+          ctx.shadowColor = m.color;
+          ctx.shadowBlur = 12;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          // 3. Top Specular Glossy Reflection Arc
+          ctx.save();
+          ctx.beginPath();
+          ctx.ellipse(m.x - m.radius * 0.25, m.y - cameraY - m.radius * 0.3, m.radius * 0.45, m.radius * 0.22, -Math.PI / 6, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+          ctx.fill();
+          ctx.restore();
+
+          // 4. Outer Metallic Glowing Rim
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 2.2;
+          ctx.stroke();
+
+          // 5. 3D Symbol inside Marble
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '18px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.shadowColor = 'rgba(0,0,0,0.5)';
+          ctx.shadowBlur = 3;
+          ctx.fillText(m.avatar, m.x, m.y - cameraY);
+          ctx.shadowBlur = 0;
+
+          // 6. Floating 3D Capsule Pill Name Tag
+          const nameStr = m.nickname.slice(0, 5);
+          ctx.font = 'bold 9px Cafe24Surround, sans-serif';
+          const tw = ctx.measureText(nameStr).width;
+          const pw = tw + 10;
+          const ph = 14;
+          const px = m.x - pw / 2;
+          const py = m.y - cameraY - m.radius - 16;
+
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.roundRect(px, py, pw, ph, 7);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = '#ffffff';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(nameStr, m.x, py + ph / 2);
+
+          ctx.restore();
+        }
+      });
+
+      if (countdown > 0) {
+        ctx.fillStyle = 'rgba(9, 13, 22, 0.65)';
+        ctx.fillRect(0, 0, width, height);
+        ctx.fillStyle = '#38bdf8';
+        ctx.font = '900 90px Cafe24Surround, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(countdown > 0 ? countdown : 'GO!', width / 2, height / 2);
+      }
+
+      marbleRaceAnimId = requestAnimationFrame(loop);
+    }
+
+    loop();
+
+    document.getElementById('btn-force-finish-marble-race')?.addEventListener('click', async () => {
+      if (marbleRaceAnimId) cancelAnimationFrame(marbleRaceAnimId);
+      participants.forEach(p => {
+        if (!arrivedNicknames.has(p.nickname)) {
+          arrivedNicknames.add(p.nickname);
+          arrivedParticipants.push({
+            nickname: p.nickname,
+            avatar: p.avatar,
+            rank: arrivedParticipants.length + 1
+          });
+        }
+      });
+      await updateRoomMeta(roomId, { status: 'COIN_RACE_RESULT', coinRaceResults: arrivedParticipants });
+    });
+  }
+
+  function renderCoinRaceResultView(container, roomData, roomId, isTeacherControl) {
+    if (coinRaceAnimId) {
+      cancelAnimationFrame(coinRaceAnimId);
+      coinRaceAnimId = null;
+    }
+    if (marbleRaceAnimId) {
+      cancelAnimationFrame(marbleRaceAnimId);
+      marbleRaceAnimId = null;
+    }
+
+    const isStandalone = !!roomData.meta?.isStandaloneRace;
+    const isMarble = roomData.meta?.raceType === 'marble';
+    const raceResults = roomData.meta?.coinRaceResults || [];
+    const first = raceResults[0] || {};
+    const second = raceResults[1] || {};
+    const third = raceResults[2] || {};
+
+    if (playedFanfareStateKey !== 'COIN_RACE_RESULT_' + roomId) {
+      playedFanfareStateKey = 'COIN_RACE_RESULT_' + roomId;
+      AudioEngine.playFanfare();
+    }
+
+    container.innerHTML = `
+      <div class="quiz-display-container" id="coin-race-result-card" style="padding: 36px 30px; max-width: 1000px; margin: 0 auto; text-align: center; background: #0f172a; border: 2px solid rgba(56, 189, 248, 0.3); border-radius: 24px; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7), 0 0 40px rgba(56, 189, 248, 0.15);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+          <h2 style="font-size: 2.2rem; background: linear-gradient(135deg, #ea580c, #d97706); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 900; margin: 0;">
+            🏆 ${isMarble ? '선착순 구슬 롤러코스터' : '선착순 핑퐁 낙하'} 레이스 최종 명예의 전당!
+          </h2>
+          ${renderBgmVolumeControlHtml('coin-result')}
+        </div>
+
+        <div class="podium-wrapper" style="margin: 30px 0;">
+          <div class="podium-step podium-2">
+            <div style="display: flex; justify-content: center; margin-bottom: 6px;">${renderAvatarBadgeHtml(second.avatar || '🥈', 64)}</div>
+            <div style="font-size: 1.2rem;">${escapeHtml(second.nickname || '-')}</div>
+            <div style="font-size: 1rem; color: #e2e8f0; margin-top: 4px;">🥈 레이스 2위</div>
+          </div>
+
+          <div class="podium-step podium-1">
+            <div style="font-size: 1.2rem; color: #fef08a;">👑 레이스 챔피언 👑</div>
+            <div style="display: flex; justify-content: center; margin-bottom: 6px;">${renderAvatarBadgeHtml(first.avatar || '🥇', 84)}</div>
+            <div style="font-size: 1.4rem; color: #fff;">${escapeHtml(first.nickname || '-')}</div>
+            <div style="font-size: 1.2rem; color: #fef08a; margin-top: 4px;">🥇 레이스 1위 우승!</div>
+          </div>
+
+          <div class="podium-step podium-3">
+            <div style="display: flex; justify-content: center; margin-bottom: 6px;">${renderAvatarBadgeHtml(third.avatar || '🥉', 64)}</div>
+            <div style="font-size: 1.2rem;">${escapeHtml(third.nickname || '-')}</div>
+            <div style="font-size: 1rem; color: #fde68a; margin-top: 4px;">🥉 레이스 3위</div>
+          </div>
+        </div>
+
+        <h3 style="font-size: 1.5rem; color: #38bdf8; font-weight: 900; margin: 28px 0 14px 0;">전체 레이스 순위</h3>
+        <div style="max-width: 620px; margin: 0 auto 32px auto; display: flex; flex-direction: column; gap: 10px;">
+          ${raceResults.map((r, idx) => `
+            <div class="leaderboard-row ${idx === 0 ? 'rank-1' : ''}">
+              <div style="display: flex; align-items: center; gap: 14px;">
+                <div class="rank-badge">${idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : (idx + 1)}</div>
+                ${renderAvatarBadgeHtml(r.avatar || '🐶', 34, 'margin-right: 4px;')}
+                <span style="font-size: 1.15rem; font-weight: 800;">${escapeHtml(r.nickname)}</span>
+              </div>
+              <span style="color: #ea580c; font-weight: 900; font-size: 1.05rem;">최종 ${idx + 1}위 도착</span>
+            </div>
+          `).join('')}
+        </div>
+
+        <div style="display: flex; justify-content: center; gap: 16px; flex-wrap: wrap;">
+          <button id="btn-replay-coin-race" class="btn btn-primary" style="font-size: 1.15rem; padding: 14px 28px; background: linear-gradient(135deg, #f97316, #ea580c); border: none; font-weight: 900; box-shadow: 0 4px 0 #9a3412, 0 8px 20px rgba(234, 88, 12, 0.35); cursor: pointer;">
+            🔄 레이스 재경기 (대기실로)
+          </button>
+          <button id="btn-finish-race-to-lobby" class="btn btn-danger" style="font-size: 1.15rem; padding: 14px 28px; box-shadow: 0 4px 0 #991b1b; cursor: pointer;">
+            ${isStandalone ? '🏠 선착순 게임 마감 & 메인으로' : '🏁 퀴즈 완료 및 대기실로 방 초기화'}
+          </button>
+          ${isStandalone ? `
+            <button id="btn-exit-standalone-main" class="btn btn-secondary" style="font-size: 1.1rem; padding: 12px 20px;">
+              🏠 메인 화면으로 이동
+            </button>
+          ` : `
+            <button id="btn-back-to-quiz-podium" class="btn btn-secondary" style="font-size: 1.1rem; padding: 12px 20px;">
+              📊 퀴즈 점수 시상식 보기
+            </button>
+          `}
+        </div>
+      </div>
+    `;
+
+    bindBgmVolumeControlEvents(container);
+
+    document.getElementById('btn-replay-coin-race')?.addEventListener('click', async () => {
+      await updateRoomMeta(state.roomId, { status: 'COIN_RACE_LOBBY' });
+    });
+
+    document.getElementById('btn-exit-standalone-main')?.addEventListener('click', () => {
+      window.location.search = '';
+    });
+
+    document.getElementById('btn-finish-race-to-lobby')?.addEventListener('click', async () => {
+          sessionStorage.setItem('trigger_splash_after_game', 'true');
+      if (isStandalone) {
+        if (confirm('선착순 게임을 완료하고 메인 화면으로 이동하시겠습니까?')) {
+          window.location.search = '';
+        }
+      } else {
+        if (confirm('대기실(LOBBY) 상태로 방을 초기화하시겠습니까?')) {
+          await updateRoomMeta(state.roomId, { status: 'LOBBY', currentQuestionIndex: 0 });
+          if (db) {
+            try {
+              await db.ref(`rooms/${state.roomId}/participants`).remove();
+              await db.ref(`rooms/${state.roomId}/responses`).remove();
+            } catch (e) {}
+          } else {
+            await putFirebaseRest(`rooms/${state.roomId}/participants`, {});
+            await putFirebaseRest(`rooms/${state.roomId}/responses`, {});
+          }
+        }
+      }
+    });
+
+    document.getElementById('btn-back-to-quiz-podium')?.addEventListener('click', async () => {
+      await updateRoomMeta(state.roomId, { status: 'FINISHED' });
+    });
+  }
+
+  function renderStudentPadView(container, roomData, roomId, studentId, nickname, avatar = '🐶') {
+    const meta = roomData.meta || {};
+    const status = meta.status || 'LOBBY';
+    const qIndex = meta.currentQuestionIndex || 0;
+    const questions = roomData.questions || [];
+    const currentQ = questions[qIndex] || {};
+    const myResponse = (roomData.responses && roomData.responses[qIndex] && roomData.responses[qIndex][studentId]);
+    const myParticipant = (roomData.participants && roomData.participants[studentId]) || {};
+
+    if (status === 'COIN_RACE_LOBBY') {
+      if (document.getElementById('student-coin-race-lobby-card')) return;
+      const allP = Object.values(roomData.participants || {});
+      allP.sort((a, b) => (b.score || 0) - (a.score || 0));
+      const myRank = allP.findIndex(p => p.nickname === nickname) + 1;
+      const coins = getCoinAllocation(myRank, allP.length);
+      container.innerHTML = `
+        <div class="mobile-view" id="student-coin-race-lobby-card">
+          <div class="mobile-card" style="text-align: center; border-color: #f59e0b;">
+            <div style="font-size: 3.5rem; margin-bottom: 10px;">🎰</div>
+            <h2 style="font-size: 1.5rem; color: #f59e0b;">선착순 코인 핑퐁 낙하 레이스 대기 중!</h2>
+            <div style="font-size: 2rem; margin: 16px 0;">${'🪙'.repeat(coins)}</div>
+            <p style="font-size: 1.2rem; font-weight: bold; color: #38bdf8;">
+              ${myRank > 0 ? myRank + '위 달성' : ''} → 코인 <span style="color: #fbbf24; font-size: 1.4rem;">${coins}개</span> 획득!
+            </p>
+            <p style="color: var(--text-muted); margin-top: 14px; font-size: 0.95rem;">
+              전자칠판/선생님 화면에서 레이스가 출발합니다.<br>본인의 코인 낙하를 응원하세요!
+            </p>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    if (status === 'COIN_RACE_RUNNING') {
+      if (document.getElementById('student-coin-race-running-card')) return;
+      container.innerHTML = `
+        <div class="mobile-view" id="student-coin-race-running-card">
+          <div class="mobile-card" style="text-align: center; border-color: #ec4899;">
+            <div style="font-size: 3.5rem; margin-bottom: 10px;" class="countdown-badge-pulse">🏎️💨</div>
+            <h2 style="font-size: 1.5rem; color: #ec4899;">핑퐁 낙하 레이스 진행 중!</h2>
+            <p style="color: #475569; font-size: 1.1rem; margin-top: 12px; font-weight: 700;">
+              ${avatar} <strong>${escapeHtml(nickname)}</strong> 님의 코인이 장애물을 튕기며 떨어지고 있습니다!
+            </p>
+            <p style="color: var(--text-muted); margin-top: 14px; font-size: 0.95rem;">
+              전자칠판 화면을 보며 실시간 낙하 순위를 확인해 보세요!
+            </p>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    if (status === 'COIN_RACE_RESULT') {
+      if (document.getElementById('student-coin-race-result-card')) return;
+      const raceResults = roomData.meta?.coinRaceResults || [];
+      const myRaceEntry = raceResults.find(r => r.nickname === nickname);
+      const myRaceRank = myRaceEntry ? myRaceEntry.rank : '집계 중';
+      container.innerHTML = `
+        <div class="mobile-view" id="student-coin-race-result-card">
+          <div class="mobile-card" style="text-align: center; border-color: #f59e0b;">
+            <div style="font-size: 3.5rem; margin-bottom: 10px;">🏆</div>
+            <h2 style="font-size: 1.6rem; color: #fbbf24;">핑퐁 낙하 레이스 종료!</h2>
+            <div style="font-size: 2.2rem; font-weight: 900; color: #38bdf8; margin: 16px 0;">
+              최종 ${typeof myRaceRank === 'number' ? myRaceRank + '위' : myRaceRank}!
+            </div>
+            <p style="color: var(--text-muted); font-size: 1rem;">
+              레이스에 열심히 참여해 주셔서 감사합니다! 👏
+            </p>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    if (status === 'LOBBY') {
+      if (document.getElementById('student-lobby-card')) return;
+      container.innerHTML = `
+        <div class="mobile-view" id="student-lobby-card">
+          <div class="mobile-card">
+            <div style="display: flex; justify-content: center; margin-bottom: 12px;">${renderAvatarBadgeHtml(avatar, 84)}</div>
+            <h2 style="font-size: 1.6rem; color: #38bdf8;">${avatar} ${escapeHtml(nickname)} 님, 대기 중!</h2>
+            <p style="color: var(--text-muted); margin-top: 10px; font-size: 1.1rem; line-height: 1.5;">
+              입장이 완료되었습니다!<br>선생님이 퀴즈를 시작할 때까지 잠시 기다려 주세요.
+            </p>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    if (status === 'COUNTDOWN') {
+      const countNum = meta.countdownNumber !== undefined ? meta.countdownNumber : 3;
+      container.innerHTML = `
+        <div class="mobile-view" id="student-countdown-card">
+          <div class="mobile-card" style="text-align: center; border-color: #f59e0b; padding: 40px 20px;">
+            <div style="font-size: 1.2rem; color: #38bdf8; font-weight: bold; margin-bottom: 10px;">Q${qIndex + 1} / ${questions.length} 문제 준비!</div>
+            <h3 style="font-size: 1.35rem; color: #1e293b; margin-bottom: 16px; font-weight: 800;">${parseMath(currentQ.question || '')}</h3>
+            <div class="countdown-badge-pulse" style="font-size: 5.5rem; font-weight: 900; color: #fbbf24; text-shadow: 0 0 30px rgba(251, 191, 36, 0.7); margin: 15px 0;">
+              ${countNum > 0 ? countNum : '🚀 START!'}
+            </div>
+            <p style="color: var(--text-muted); font-size: 0.95rem;">마음의 준비를 하세요!</p>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    if (status === 'SHOW_RANKING') {
+      const existingRankCard = document.getElementById('student-ranking-card');
+      if (existingRankCard && existingRankCard.dataset.qindex == qIndex) return;
+
+      const allP = Object.values(roomData.participants || {});
+      allP.sort((a, b) => (b.score || 0) - (a.score || 0));
+      const myRank = allP.findIndex(p => p.nickname === nickname) + 1;
+      container.innerHTML = `
+        <div class="mobile-view" id="student-ranking-card" data-qindex="${qIndex}">
+          <div class="mobile-card" style="text-align: center; border-color: #f59e0b;">
+            <div style="font-size: 3.5rem; margin-bottom: 12px;">${avatar}</div>
+            <h2 style="font-size: 1.5rem; color: #fbbf24;">현재 ${myRank > 0 ? myRank + '위' : '순위 집계 중'} / 총 ${allP.length}명</h2>
+            <p style="font-size: 1.3rem; font-weight: bold; color: #38bdf8; margin-top: 8px;">총 점수: ${myParticipant.score || 0}점</p>
+            <p style="color: var(--text-muted); margin-top: 14px; font-size: 0.95rem;">선생님이 다음 문제를 시작할 때까지 대기해 주세요!</p>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    if (status === 'FINISHED') {
+      if (document.getElementById('student-final-card')) return;
+      renderStudentFinalFeedback(container, roomData, studentId, nickname, avatar);
+      return;
+    }
+
+    const existingPadCard = document.getElementById('student-pad-card');
+    const renderedQIndex = existingPadCard ? Number(existingPadCard.dataset.qindex) : -1;
+    const renderedStatus = existingPadCard ? existingPadCard.dataset.status : '';
+    const hasMyResponseAlready = existingPadCard ? existingPadCard.dataset.submitted === 'true' : false;
+
+    if (existingPadCard && renderedQIndex === qIndex && renderedStatus === status) {
+      if (!myResponse) {
+        return;
+      } else if (hasMyResponseAlready) {
+        return;
+      }
+    }
+
+    container.innerHTML = `
+      <div class="mobile-view" id="student-pad-card" data-qindex="${qIndex}" data-status="${status}" data-submitted="${!!myResponse}">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <span class="room-badge" style="font-size: 0.95rem;">Q${qIndex + 1} / ${questions.length}</span>
+          <span style="font-weight: 800; color: #38bdf8; font-size: 1.1rem;">${avatar} ${escapeHtml(nickname)} (${myParticipant.score || 0}점)</span>
+        </div>
+        <div class="mobile-card">
+          <h3 style="font-size: 1.3rem; margin-bottom: 8px;">${parseMath(currentQ.question)}</h3>
+          ${currentQ.imageUrl ? `<div style="text-align: center; margin: 10px 0;"><img src="${currentQ.imageUrl}" style="max-height: 200px; max-width: 100%; border-radius: 8px; border: 1px solid var(--border);"></div>` : ''}
+          ${currentQ.isDoublePoints ? `<span style="color: #fbbf24; font-weight: bold; font-size: 0.95rem;">⚡ 점수 2배 이벤트!</span>` : ''}
+        </div>
+        ${myResponse ? renderSubmittedLockView(myResponse, currentQ, status) : renderPadControls(currentQ)}
+      </div>
+    `;
+
+    if (!myResponse) {
+      if ((currentQ.type === 'choice' || currentQ.type === 'poll') && currentQ.isMultiSelect && currentQ.isScoring === false) {
+        const selectedIndices = new Set();
+        const maxSelect = currentQ.maxSelect || 0;
+        container.querySelectorAll('.btn-poll-multi').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            const choiceIdx = Number(e.currentTarget.dataset.idx);
+            if (selectedIndices.has(choiceIdx)) {
+              selectedIndices.delete(choiceIdx);
+              e.currentTarget.style.border = 'none';
+              e.currentTarget.style.boxShadow = 'none';
+              e.currentTarget.style.opacity = '1';
+            } else {
+              if (maxSelect > 0 && selectedIndices.size >= maxSelect) {
+                alert(`최대 ${maxSelect}개까지 선택할 수 있습니다.`);
+                return;
+              }
+              selectedIndices.add(choiceIdx);
+              e.currentTarget.style.border = '4px solid #fbbf24';
+              e.currentTarget.style.boxShadow = '0 0 12px rgba(251, 191, 36, 0.6)';
+              e.currentTarget.style.opacity = '0.95';
+            }
+          });
+        });
+
+        document.getElementById('btn-submit-poll-multi')?.addEventListener('click', async () => {
+          if (selectedIndices.size === 0) return alert('최소 1개 이상의 항목을 선택해 주세요.');
+          await submitResponse(roomId, qIndex, studentId, { answer: Array.from(selectedIndices) });
+        });
+      }
+
+      container.querySelectorAll('.btn-pad').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          if (e.currentTarget.classList.contains('btn-poll-multi')) return;
+          const choiceIdx = Number(e.currentTarget.dataset.idx);
+          await submitResponse(roomId, qIndex, studentId, { answer: choiceIdx });
+        });
+      });
+
+      document.getElementById('btn-submit-text')?.addEventListener('click', async () => {
+        const textVal = document.getElementById('input-student-text').value.trim();
+        if (!textVal) return alert('답안을 입력해 주세요!');
+        await submitResponse(roomId, qIndex, studentId, { answer: textVal });
+      });
+
+      if (currentQ.type === 'postit') {
+        const tabText = document.getElementById('tab-text');
+        const tabCanvas = document.getElementById('tab-canvas');
+        const secText = document.getElementById('postit-text-section');
+        const secCanvas = document.getElementById('postit-canvas-section');
+        const canvas = document.getElementById('postit-canvas');
+
+        if (tabText && tabCanvas && secText && secCanvas && canvas) {
+          tabText.addEventListener('click', () => {
+            secText.style.display = 'block';
+            secCanvas.style.display = 'none';
+            tabText.style.background = 'var(--primary)';
+            tabText.style.color = '#fff';
+            tabCanvas.style.background = 'transparent';
+            tabCanvas.style.color = 'var(--text-muted)';
+          });
+          tabCanvas.addEventListener('click', () => {
+            secText.style.display = 'none';
+            secCanvas.style.display = 'block';
+            tabCanvas.style.background = 'var(--primary)';
+            tabCanvas.style.color = '#fff';
+            tabText.style.background = 'transparent';
+            tabText.style.color = 'var(--text-muted)';
+          });
+
+          const ctx = canvas.getContext('2d');
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 6;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+
+          let isDrawing = false;
+          let hasDrawn = false;
+
+          const getPos = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return {
+              x: (clientX - rect.left) * (canvas.width / rect.width),
+              y: (clientY - rect.top) * (canvas.height / rect.height)
+            };
+          };
+
+          const startDraw = (e) => {
+            isDrawing = true;
+            hasDrawn = true;
+            const pos = getPos(e);
+            ctx.beginPath();
+            ctx.moveTo(pos.x, pos.y);
+          };
+          const draw = (e) => {
+            if (!isDrawing) return;
+            const pos = getPos(e);
+            ctx.lineTo(pos.x, pos.y);
+            ctx.stroke();
+          };
+          const stopDraw = () => {
+            if (isDrawing) {
+              ctx.closePath();
+              isDrawing = false;
+            }
+          };
+
+          canvas.addEventListener('mousedown', startDraw);
+          canvas.addEventListener('mousemove', draw);
+          canvas.addEventListener('mouseup', stopDraw);
+          canvas.addEventListener('mouseleave', stopDraw);
+
+          canvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDraw(e); }, { passive: false });
+          canvas.addEventListener('touchmove', (e) => { e.preventDefault(); draw(e); }, { passive: false });
+          canvas.addEventListener('touchend', stopDraw);
+
+          document.getElementById('draw-color')?.addEventListener('change', (e) => ctx.strokeStyle = e.target.value);
+          document.getElementById('draw-width')?.addEventListener('change', (e) => ctx.lineWidth = Number(e.target.value));
+          document.getElementById('btn-clear-canvas')?.addEventListener('click', () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            hasDrawn = false;
+          });
+
+          document.getElementById('btn-submit-postit')?.addEventListener('click', async () => {
+            const textVal = document.getElementById('input-student-text').value.trim();
+            const drawingData = hasDrawn ? canvas.toDataURL('image/png') : null;
+            if (!textVal && !drawingData) return alert('의견 텍스트를 입력하거나 그림을 그려주세요!');
+            await submitResponse(roomId, qIndex, studentId, { answer: textVal, drawing: drawingData });
+          });
+        }
+      }
+    }
+  }
+
+  function renderPadControls(currentQ) {
+    if ((currentQ.type === 'choice' || currentQ.type === 'poll') && currentQ.isMultiSelect && currentQ.isScoring === false) {
+      const rawOptions = currentQ.options || [];
+      const validOptions = [];
+      rawOptions.forEach((opt, idx) => {
+        if (String(opt || '').trim() !== '') {
+          validOptions.push({ opt, idx });
+        }
+      });
+      const maxText = currentQ.maxSelect > 0 ? `최대 ${currentQ.maxSelect}개 선택 가능` : '자유 중복 선택';
+      return `
+        <div class="mobile-card">
+          <div style="font-size: 0.95rem; color: #fbbf24; font-weight: bold; margin-bottom: 12px; text-align: center;">
+            ☑️ 중복 투표 가능 (${maxText})
+          </div>
+          <div class="mobile-pad-grid" style="margin-bottom: 14px;">
+            ${validOptions.map(item => `
+              <button type="button" class="btn-pad pad-${item.idx} btn-poll-multi" data-idx="${item.idx}">
+                ${parseMath(item.opt)}
+              </button>
+            `).join('')}
+          </div>
+          <button id="btn-submit-poll-multi" class="btn btn-primary" style="width: 100%; font-size: 1.2rem;">📌 선택 항목 제출하기</button>
+        </div>
+      `;
+    } else if (currentQ.type === 'ox' || currentQ.type === 'choice' || currentQ.type === 'poll') {
+      const rawOptions = currentQ.options || [];
+      const validOptions = [];
+      rawOptions.forEach((opt, idx) => {
+        if (String(opt || '').trim() !== '') {
+          validOptions.push({ opt, idx });
+        }
+      });
+      return `
+        <div class="mobile-pad-grid">
+          ${validOptions.map(item => `
+            <button class="btn-pad pad-${item.idx}" data-idx="${item.idx}">
+              ${parseMath(item.opt)}
+            </button>
+          `).join('')}
+        </div>
+      `;
+    } else if (currentQ.type === 'postit') {
+      return `
+        <div class="mobile-card">
+          <div style="display: flex; gap: 8px; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
+            <button type="button" id="tab-text" class="btn btn-outline-sm" style="flex:1; background: var(--primary); color: #fff; font-weight: bold;">✏️ 텍스트</button>
+            <button type="button" id="tab-canvas" class="btn btn-outline-sm" style="flex:1; color: var(--text-muted); font-weight: bold;">🎨 그림 그리기</button>
+          </div>
+          <div id="postit-text-section">
+            <input type="text" id="input-student-text" class="input-nickname" placeholder="포스트잇 의견을 입력하세요" style="margin-top: 4px;">
+          </div>
+          <div id="postit-canvas-section" style="display: none;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <span style="font-size: 0.8rem; color: var(--text-muted);">색상:</span>
+                <input type="color" id="draw-color" value="#000000" style="width: 28px; height: 28px; border: none; border-radius: 4px; cursor: pointer; background: transparent;">
+                <span style="font-size: 0.8rem; color: var(--text-muted); margin-left: 4px;">굵기:</span>
+                <select id="draw-width" style="padding: 2px 6px; border-radius: 4px; background: #0f172a; color: #fff; border: 1px solid var(--border); font-size: 0.8rem;">
+                  <option value="3">얇게</option>
+                  <option value="6" selected>보통</option>
+                  <option value="12">굵게</option>
+                </select>
+              </div>
+              <button type="button" id="btn-clear-canvas" class="btn btn-outline-sm" style="padding: 4px 8px; font-size: 0.8rem; color: #ef4444; border-color: #ef4444;">🧹 지우기</button>
+            </div>
+            <div style="background: #ffffff; border-radius: 8px; padding: 4px; border: 2px solid var(--primary); touch-action: none; width: 100%;">
+              <canvas id="postit-canvas" width="600" height="400" style="width: 100%; height: 50vh; max-height: 380px; min-height: 220px; display: block; border-radius: 6px; cursor: crosshair; background: #ffffff; touch-action: none;"></canvas>
+            </div>
+          </div>
+          <button id="btn-submit-postit" class="btn btn-primary" style="width: 100%; font-size: 1.2rem; margin-top: 14px;">📌 포스트잇 제출하기</button>
+        </div>
+      `;
+    } else {
+      return `
+        <div class="mobile-card">
+          <input type="text" id="input-student-text" class="input-nickname" placeholder="답안을 입력해 주세요" style="margin-top: 10px;">
+          <button id="btn-submit-text" class="btn btn-primary" style="width: 100%; font-size: 1.2rem; margin-top: 10px;">제출하기</button>
+        </div>
+      `;
+    }
+  }
+
+  function renderSubmittedLockView(myResponse, currentQ, status) {
+    const showAnswer = status === 'SHOW_ANSWER';
+    if (!showAnswer) {
+      return `
+        <div class="mobile-card" style="border-color: var(--primary);">
+          <div style="font-size: 3rem; margin-bottom: 10px;">✅</div>
+          <h2 style="font-size: 1.5rem; color: #10b981;">제출 완료!</h2>
+          <p style="color: var(--text-muted); margin-top: 8px;">선생님이 정답을 공개할 때까지 대기해 주세요.</p>
+        </div>
+      `;
+    }
+
+    let isCorrect = false;
+    if (currentQ.type === 'ox' || currentQ.type === 'choice') {
+      isCorrect = (Number(myResponse.answer) === Number(currentQ.correctAnswer));
+    } else if (currentQ.type === 'short') {
+      isCorrect = (String(myResponse.answer).trim().toLowerCase() === String(currentQ.correctText).trim().toLowerCase());
+    } else {
+      return `
+        <div class="mobile-card" style="border-color: #38bdf8;">
+          <div style="font-size: 3rem; margin-bottom: 10px;">👏</div>
+          <h2 style="font-size: 1.5rem; color: #38bdf8;">의견이 공유되었습니다!</h2>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="mobile-card" style="border-color: ${isCorrect ? 'var(--accent-green)' : 'var(--accent-red)'};">
+        <div style="font-size: 3.5rem; margin-bottom: 10px;">${isCorrect ? '🎉' : '😅'}</div>
+        <h2 style="font-size: 1.8rem; color: ${isCorrect ? '#10b981' : '#ef4444'};">
+          ${isCorrect ? (currentQ.isDoublePoints ? '정답입니다! (⚡ 2배 점수!)' : '정답입니다!') : '아쉽게 틀렸습니다'}
+        </h2>
+        ${currentQ.explanation ? `<p style="color: var(--text-muted); margin-top: 10px;">💡 ${escapeHtml(currentQ.explanation)}</p>` : ''}
+      </div>
+    `;
+  }
+
+  function renderStudentFinalFeedback(container, roomData, studentId, nickname, avatar) {
+    const participants = Object.values(roomData.participants || {});
+    participants.sort((a, b) => (b.score || 0) - (a.score || 0));
+    const myRank = participants.findIndex(p => p.nickname === nickname) + 1;
+    const myP = (roomData.participants && roomData.participants[studentId]) || {};
+
+    container.innerHTML = `
+      <div class="mobile-view" id="student-final-card">
+        <div class="mobile-card" style="text-align: center;">
+          <div style="font-size: 3.5rem; margin-bottom: 10px;">${avatar}</div>
+          <h1 style="font-size: 2.2rem; color: #fbbf24; margin-bottom: 12px;">🏆 수고하셨습니다!</h1>
+          <h2 style="font-size: 1.5rem; color: #1e293b; font-weight: 900;">${avatar} ${escapeHtml(nickname)} 님의 최종 결과</h2>
+          <div style="font-size: 2rem; font-weight: 900; color: #38bdf8; margin: 16px 0;">
+            ${myP.score || 0}점 (전체 ${myRank}위 / ${participants.length}명)
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 24px;">
+            <button class="btn btn-primary" id="btn-student-join-new" style="font-size: 1.1rem; padding: 12px;">🚀 다른 퀴즈 참여하기 (PIN 입력)</button>
+            <button class="btn btn-secondary" id="btn-student-finish-home" style="font-size: 1.1rem; padding: 12px;">🏁 퀴즈 종료 (메인 홈으로)</button>
+          </div>
+
+          <div id="pin-modal-student" style="display: none; margin-top: 20px; background: #0f172a; padding: 16px; border-radius: 12px; border: 1px solid #38bdf8;">
+            <h4 style="font-size: 1.1rem; color: #38bdf8; margin-bottom: 10px;">새로운 퀴즈 방 PIN 번호 입력</h4>
+            <input type="text" id="input-new-pin-student" placeholder="6자리 PIN 번호" maxlength="6" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: #1e293b; color: #fff; text-align: center; font-size: 1.3rem; font-weight: bold; margin-bottom: 10px;">
+            <button class="btn btn-primary" id="btn-submit-new-pin-student" style="width: 100%; font-size: 1.1rem;">접속 및 참여하기</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('btn-student-finish-home')?.addEventListener('click', () => {
+      window.location.search = '';
+    });
+
+    document.getElementById('btn-student-join-new')?.addEventListener('click', () => {
+      const modal = document.getElementById('pin-modal-student');
+      if (modal) {
+        modal.style.display = modal.style.display === 'none' ? 'block' : 'none';
+        if (modal.style.display === 'block') {
+          document.getElementById('input-new-pin-student')?.focus();
+        }
+      }
+    });
+
+    document.getElementById('btn-submit-new-pin-student')?.addEventListener('click', () => {
+      const pin = document.getElementById('input-new-pin-student').value.trim();
+      if (pin.length === 6) {
+        window.location.search = `?room=${pin}&role=student`;
+      } else {
+        alert('6자리 PIN 번호를 입력해 주세요.');
+      }
+    });
+  }
+
+  function openFirebaseInfoModal() {
+    const modal = document.getElementById('firebase-info-modal');
+    if (modal) modal.classList.remove('hidden');
+  }
+
+  function closeFirebaseInfoModal() {
+    const modal = document.getElementById('firebase-info-modal');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  function openFirebaseCustomModal() {
+    closeFirebaseInfoModal();
+    const modal = document.getElementById('firebase-custom-modal');
+    if (!modal) return;
+
+    const savedCustom = localStorage.getItem('class_quiz_fb_config');
+    if (savedCustom) {
+      try {
+        const parsed = JSON.parse(savedCustom);
+        document.getElementById('fb-apiKey').value = parsed.apiKey || '';
+        document.getElementById('fb-dbUrl').value = parsed.databaseURL || '';
+        document.getElementById('fb-projectId').value = parsed.projectId || '';
+      } catch (e) {}
+    } else {
+      document.getElementById('fb-apiKey').value = '';
+      document.getElementById('fb-dbUrl').value = '';
+      document.getElementById('fb-projectId').value = '';
+    }
+    modal.classList.remove('hidden');
+  }
+
+  function closeFirebaseCustomModal() {
+    const modal = document.getElementById('firebase-custom-modal');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  document.getElementById('btn-close-fb-info')?.addEventListener('click', closeFirebaseInfoModal);
+  document.getElementById('btn-open-custom-fb')?.addEventListener('click', openFirebaseCustomModal);
+  document.getElementById('btn-close-fb-custom')?.addEventListener('click', closeFirebaseCustomModal);
+
+  document.getElementById('btn-save-fb')?.addEventListener('click', () => {
+    const apiKey = document.getElementById('fb-apiKey').value.trim();
+    const databaseURL = document.getElementById('fb-dbUrl').value.trim();
+    const projectId = document.getElementById('fb-projectId').value.trim();
+    if (!apiKey || !databaseURL) return alert('API Key와 Database URL은 필수입니다.');
+    saveFirebaseConfig({ apiKey, databaseURL, projectId });
+    alert('개인 Firebase 설정이 저장되었습니다. 페이지를 새로고침합니다.');
+    window.location.reload();
+  });
+
+  document.getElementById('btn-reset-fb')?.addEventListener('click', () => {
+    if (confirm('기본 탑재 클라우드 DB 연결로 복원하시겠습니까?')) {
+      localStorage.removeItem('class_quiz_fb_config');
+      alert('기본 연결로 복원되었습니다. 새로고침합니다.');
+      window.location.reload();
+    }
+  });
+
+  function escapeHtml(str) {
+    return String(str || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function unescapeHtml(str) {
+    return String(str || '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  }
+
+  function parseMath(str) {
+    if (!str) return '';
+    if (typeof str !== 'string') return str;
+    let text = escapeHtml(str);
+
+    // Markdown bold & italic formatting
+    text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
+
+    if (window.katex) {
+      text = text.replace(/\$\$(.*?)\$\$/g, (match, math) => {
+        try { return window.katex.renderToString(unescapeHtml(math), { displayMode: true, throwOnError: false }); } catch (e) { return match; }
+      });
+      text = text.replace(/\\\[(.*?)\\\]/g, (match, math) => {
+        try { return window.katex.renderToString(unescapeHtml(math), { displayMode: true, throwOnError: false }); } catch (e) { return match; }
+      });
+      text = text.replace(/\$(.*?)\$/g, (match, math) => {
+        try { return window.katex.renderToString(unescapeHtml(math), { displayMode: false, throwOnError: false }); } catch (e) { return match; }
+      });
+      text = text.replace(/\\\((.*?)\\\)/g, (match, math) => {
+        try { return window.katex.renderToString(unescapeHtml(math), { displayMode: false, throwOnError: false }); } catch (e) { return match; }
+      });
+    }
+    return text;
+  }
+
+  function compressImage(file, maxWidth, callback) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const img = new Image();
+      img.onload = function() {
+        const canvas = document.createElement('canvas');
+        let w = img.width;
+        let h = img.height;
+        if (w > maxWidth) {
+          h = Math.round((h * maxWidth) / w);
+          w = maxWidth;
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        callback(dataUrl);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function openFormulaEditorModal(targetInput, questionsRef, onUpdateRef) {
+    let activeInput = targetInput || document.activeElement;
+    const qList = questionsRef || currentEditingQuestions;
+    const updateFn = onUpdateRef || currentEditingUpdateFn;
+    const modalHtml = `
+      <div id="formula-helper-modal" class="modal-overlay" style="z-index: 9999;">
+        <div class="modal-box" style="max-width: 680px; width: 92%; background: #0f172a; border: 2px solid #38bdf8;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
+            <h3 style="margin: 0; color: #38bdf8; font-size: 1.3rem;">∑ 수식 & 서식 보조 편집 도구</h3>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button id="btn-modal-open-graph" class="btn btn-outline-sm" style="padding: 4px 10px; font-size: 0.82rem; border-color: #10b981; color: #10b981; background: rgba(16, 185, 129, 0.15); font-weight: bold;">📈 함수 그래프 그리기</button>
+              <button id="btn-close-formula-modal" class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.9rem;">✕ 닫기</button>
+            </div>
+          </div>
+          <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 12px;">
+            LaTeX 문법을 몰라도 아래 기호/공식 버튼을 클릭하면 수식이 자동 생성됩니다. 입력 시 아래에 실시간 결과가 렌더링됩니다.
+          </p>
+
+          <div style="background: #1e293b; border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 14px;">
+            <div style="font-size: 0.8rem; font-weight: bold; color: #fbbf24; margin-bottom: 8px;">자주 쓰는 수식 & 기호 팔레트 (클릭 시 자동 입력)</div>
+            
+            <div style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 4px;">[분수 / 거듭제곱 / 근호 / 공식]</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\frac{a}{b}" style="font-size: 0.8rem; padding: 4px 8px;">분수 \\frac{a}{b}</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="x^{2}" style="font-size: 0.8rem; padding: 4px 8px;">거듭제곱 x²</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="x_{1}" style="font-size: 0.8rem; padding: 4px 8px;">아래첨자 x₁</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\sqrt{x}" style="font-size: 0.8rem; padding: 4px 8px;">제곱근 √x</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\sqrt[n]{x}" style="font-size: 0.8rem; padding: 4px 8px;">n제곱근</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\sum_{i=1}^{n}" style="font-size: 0.8rem; padding: 4px 8px;">시그마 ∑</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\int_{a}^{b}" style="font-size: 0.8rem; padding: 4px 8px;">적분 ∫</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\lim_{x \\to 0}" style="font-size: 0.8rem; padding: 4px 8px;">극한 lim</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\sin\\theta" style="font-size: 0.8rem; padding: 4px 8px;">sinθ</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\cos\\theta" style="font-size: 0.8rem; padding: 4px 8px;">cosθ</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\tan\\theta" style="font-size: 0.8rem; padding: 4px 8px;">tanθ</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\log x" style="font-size: 0.8rem; padding: 4px 8px;">log x</button>
+            </div>
+
+            <div style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 4px;">[도형 및 연산 기호]</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\triangle" style="font-size: 0.8rem; padding: 4px 8px;">△ 삼각형</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\bigcirc" style="font-size: 0.8rem; padding: 4px 8px;">◯ 원</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\square" style="font-size: 0.8rem; padding: 4px 8px;">□ 사각형</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\star" style="font-size: 0.8rem; padding: 4px 8px;">★ 별</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\angle" style="font-size: 0.8rem; padding: 4px 8px;">∠ 각도</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\perp" style="font-size: 0.8rem; padding: 4px 8px;">⊥ 수직</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\parallel" style="font-size: 0.8rem; padding: 4px 8px;">∥ 평행</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\alpha" style="font-size: 0.8rem; padding: 4px 8px;">α</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\beta" style="font-size: 0.8rem; padding: 4px 8px;">β</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\theta" style="font-size: 0.8rem; padding: 4px 8px;">θ</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\pi" style="font-size: 0.8rem; padding: 4px 8px;">π</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\times" style="font-size: 0.8rem; padding: 4px 8px;">×</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\div" style="font-size: 0.8rem; padding: 4px 8px;">÷</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\pm" style="font-size: 0.8rem; padding: 4px 8px;">±</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\neq" style="font-size: 0.8rem; padding: 4px 8px;">≠</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\le" style="font-size: 0.8rem; padding: 4px 8px;">≤</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\ge" style="font-size: 0.8rem; padding: 4px 8px;">≥</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\approx" style="font-size: 0.8rem; padding: 4px 8px;">≈</button>
+              <button type="button" class="btn btn-outline-sm btn-f-sym" data-insert="\\infty" style="font-size: 0.8rem; padding: 4px 8px;">∞</button>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label style="font-weight: bold; font-size: 0.9rem; color: #fff;">LaTeX / 수식 텍스트 입력:</label>
+            <input type="text" id="formula-latex-input" class="input-nickname" placeholder="예: \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}" style="margin-top: 4px; font-family: monospace; font-size: 1.05rem;">
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <label style="font-weight: bold; font-size: 0.9rem; color: #fff;">📐 실시간 수식 미리보기:</label>
+            <div id="formula-live-preview" style="background: #ffffff; color: #000; border-radius: 8px; padding: 16px; min-height: 60px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; overflow-x: auto; margin-top: 4px;">
+              <span style="color: #94a3b8; font-size: 0.95rem;">수식을 입력하면 이곳에 완성된 모습이 보입니다.</span>
+            </div>
+          </div>
+
+          <div class="modal-actions" style="justify-content: flex-end; gap: 10px;">
+            <button class="btn btn-secondary" id="btn-cancel-formula">취소</button>
+            <button class="btn btn-primary" id="btn-apply-formula">📥 문제/입력창에 수식 완료 삽입</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    const inputEl = document.getElementById('formula-latex-input');
+    const previewEl = document.getElementById('formula-live-preview');
+
+    const updatePreview = () => {
+      const val = inputEl.value.trim();
+      if (!val) {
+        previewEl.innerHTML = `<span style="color: #94a3b8; font-size: 0.95rem;">수식을 입력하면 이곳에 완성된 모습이 보입니다.</span>`;
+      } else {
+        previewEl.innerHTML = parseMath('$' + val + '$');
+      }
+    };
+
+    inputEl.addEventListener('input', updatePreview);
+
+    document.querySelectorAll('.btn-f-sym').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const insertText = e.currentTarget.dataset.insert;
+        const start = inputEl.selectionStart || inputEl.value.length;
+        const end = inputEl.selectionEnd || inputEl.value.length;
+        const oldVal = inputEl.value;
+        inputEl.value = oldVal.substring(0, start) + insertText + oldVal.substring(end);
+        inputEl.focus();
+        inputEl.setSelectionRange(start + insertText.length, start + insertText.length);
+        updatePreview();
+      });
+    });
+
+    document.getElementById('btn-close-formula-modal')?.addEventListener('click', () => {
+      document.getElementById('formula-helper-modal')?.remove();
+    });
+    document.getElementById('btn-cancel-formula')?.addEventListener('click', () => {
+      document.getElementById('formula-helper-modal')?.remove();
+    });
+
+    document.getElementById('btn-modal-open-graph')?.addEventListener('click', () => {
+      let qIdx = 0;
+      if (activeInput && activeInput.id) {
+        const m = activeInput.id.match(/\d+/);
+        if (m) qIdx = Number(m[0]);
+      }
+      document.getElementById('formula-helper-modal')?.remove();
+      openGraphEditorModal(qIdx, qList, updateFn);
+    });
+
+    document.getElementById('btn-apply-formula')?.addEventListener('click', () => {
+      const val = inputEl.value.trim();
+      if (!val) return alert('수식을 먼저 입력해 주세요.');
+      const formatted = ` $${val}$ `;
+      if (activeInput && (activeInput.tagName === 'INPUT' || activeInput.tagName === 'TEXTAREA')) {
+        const start = activeInput.selectionStart || activeInput.value.length;
+        const end = activeInput.selectionEnd || activeInput.value.length;
+        const oldVal = activeInput.value;
+        activeInput.value = oldVal.substring(0, start) + formatted + oldVal.substring(end);
+        activeInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      document.getElementById('formula-helper-modal')?.remove();
+    });
+  }
+
+  // ============================================================
+  // FUNCTION GRAPH COMPILER & HIGH-RES CANVAS PLOTTER
+  // ============================================================
+  function compileMathExpr(expr) {
+    if (!expr || typeof expr !== 'string') return null;
+    let s = expr.trim();
+    if (!s) return null;
+
+    s = s.replace(/−/g, '-');
+    s = s.replace(/\^/g, '**');
+
+    // Strip leading f(x)= or y= if user typed it
+    s = s.replace(/^[fghFGH]\s*\(\s*x\s*\)\s*=\s*/, '');
+    s = s.replace(/^[yY]\s*=\s*/, '');
+
+    // Implicit multiplication: 2x -> 2*x, 3( -> 3*(, )x -> )*x, )( -> )*(, x( -> x*(
+    s = s.replace(/(\d)\s*([xX\(])/g, '$1*$2');
+    s = s.replace(/(\))\s*(\d|[xX\(])/g, '$1*$2');
+    s = s.replace(/\b([xX])\s*([\(])/g, '$1*$2');
+
+    // Placeholders for ln and log
+    s = s.replace(/\bln\b/gi, '__LN__');
+    s = s.replace(/\blog10\b/gi, '__LOG10__');
+    s = s.replace(/\blog\b/gi, '__LOG10__');
+
+    // Standard Math functions
+    const mathFuncs = ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'sqrt', 'cbrt', 'abs', 'exp', 'floor', 'ceil', 'round'];
+    mathFuncs.forEach(fn => {
+      const re = new RegExp('\\b' + fn + '\\b', 'gi');
+      s = s.replace(re, 'Math.' + fn);
+    });
+
+    s = s.replace(/__LN__/g, 'Math.log');
+    s = s.replace(/__LOG10__/g, 'Math.log10');
+
+    s = s.replace(/\bpi\b/gi, 'Math.PI');
+    s = s.replace(/\be\b/gi, 'Math.E');
+
+    try {
+      const fn = new Function('x', 'Math', 'return (' + s + ');');
+      // Test execution to catch any syntax issues
+      fn(1, Math);
+      return fn;
+    } catch(err) {
+      return null;
+    }
+  }
+
+  function drawFunctionGraphToCanvas(canvas, options) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+
+    const xMin = Number(options.xMin ?? -5);
+    const xMax = Number(options.xMax ?? 5);
+    const yMin = Number(options.yMin ?? -5);
+    const yMax = Number(options.yMax ?? 5);
+    const showGrid = options.showGrid !== false;
+    const showAxes = options.showAxes !== false;
+    const showLabels = options.showLabels !== false;
+    const showLegend = options.showLegend !== false;
+    const lineWidth = options.lineWidth || 3.5;
+
+    // 1. Crisp white background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+
+    const pad = 42;
+    const plotW = w - pad * 2;
+    const plotH = h - pad * 2;
+
+    const toPx = (x) => pad + ((x - xMin) / (xMax - xMin)) * plotW;
+    const toPy = (y) => h - pad - ((y - yMin) / (yMax - yMin)) * plotH;
+
+    // Step calculation for grid and ticks
+    const xSpan = Math.max(0.1, xMax - xMin);
+    const ySpan = Math.max(0.1, yMax - yMin);
+
+    let xStep = 1;
+    if (xSpan > 40) xStep = 5;
+    else if (xSpan > 20) xStep = 2;
+    else if (xSpan <= 4) xStep = 0.5;
+
+    let yStep = 1;
+    if (ySpan > 40) yStep = 5;
+    else if (ySpan > 20) yStep = 2;
+    else if (ySpan <= 4) yStep = 0.5;
+
+    // 2. Grid lines
+    if (showGrid) {
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#e2e8f0';
+
+      const startX = Math.ceil(xMin / xStep) * xStep;
+      for (let x = startX; x <= xMax + 0.0001; x += xStep) {
+        const px = toPx(x);
+        ctx.beginPath();
+        ctx.moveTo(px, pad);
+        ctx.lineTo(px, h - pad);
+        ctx.stroke();
+      }
+
+      const startY = Math.ceil(yMin / yStep) * yStep;
+      for (let y = startY; y <= yMax + 0.0001; y += yStep) {
+        const py = toPy(y);
+        ctx.beginPath();
+        ctx.moveTo(pad, py);
+        ctx.lineTo(w - pad, py);
+        ctx.stroke();
+      }
+    }
+
+    // 3. Axes
+    if (showAxes) {
+      ctx.lineWidth = 2.2;
+      ctx.strokeStyle = '#1e293b';
+
+      const originX = Math.max(pad, Math.min(w - pad, toPx(0)));
+      const originY = Math.max(pad, Math.min(h - pad, toPy(0)));
+
+      // X-Axis
+      ctx.beginPath();
+      ctx.moveTo(pad - 12, originY);
+      ctx.lineTo(w - pad + 18, originY);
+      ctx.stroke();
+
+      // X Arrowhead
+      ctx.beginPath();
+      ctx.moveTo(w - pad + 18, originY);
+      ctx.lineTo(w - pad + 8, originY - 5);
+      ctx.lineTo(w - pad + 8, originY + 5);
+      ctx.fillStyle = '#1e293b';
+      ctx.fill();
+
+      // Y-Axis
+      ctx.beginPath();
+      ctx.moveTo(originX, h - pad + 12);
+      ctx.lineTo(originX, pad - 18);
+      ctx.stroke();
+
+      // Y Arrowhead
+      ctx.beginPath();
+      ctx.moveTo(originX, pad - 18);
+      ctx.lineTo(originX - 5, pad - 8);
+      ctx.lineTo(originX + 5, pad - 8);
+      ctx.fillStyle = '#1e293b';
+      ctx.fill();
+
+      // Origin 'O'
+      ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillStyle = '#334155';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'top';
+      if (0 >= xMin && 0 <= xMax && 0 >= yMin && 0 <= yMax) {
+        ctx.fillText('O', originX - 6, originY + 4);
+      }
+
+      // Axis labels: x and y
+      ctx.font = 'italic bold 17px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillText('x', w - pad + 24, originY + 6);
+      ctx.fillText('y', originX + 16, pad - 18);
+
+      // Ticks & Numbers
+      if (showLabels) {
+        ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.fillStyle = '#64748b';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+
+        const startX = Math.ceil(xMin / xStep) * xStep;
+        for (let x = startX; x <= xMax + 0.0001; x += xStep) {
+          if (Math.abs(x) < 0.001) continue;
+          const px = toPx(x);
+          ctx.beginPath();
+          ctx.moveTo(px, originY - 3);
+          ctx.lineTo(px, originY + 3);
+          ctx.strokeStyle = '#475569';
+          ctx.stroke();
+          ctx.fillText(Number(x.toFixed(2)).toString(), px, originY + 6);
+        }
+
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        const startY = Math.ceil(yMin / yStep) * yStep;
+        for (let y = startY; y <= yMax + 0.0001; y += yStep) {
+          if (Math.abs(y) < 0.001) continue;
+          const py = toPy(y);
+          ctx.beginPath();
+          ctx.moveTo(originX - 3, py);
+          ctx.lineTo(originX + 3, py);
+          ctx.strokeStyle = '#475569';
+          ctx.stroke();
+          ctx.fillText(Number(y.toFixed(2)).toString(), originX - 7, py);
+        }
+      }
+    }
+
+    // 4. Function Curves
+    const plotCurve = (fn, color, width) => {
+      if (!fn) return;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+
+      const samples = 1000;
+      const dx = (xMax - xMin) / samples;
+      let inPath = false;
+      let prevY = null;
+      let prevPy = null;
+
+      ctx.beginPath();
+      for (let i = 0; i <= samples; i++) {
+        const x = xMin + i * dx;
+        let y;
+        try {
+          y = fn(x, Math);
+        } catch (e) {
+          y = NaN;
+        }
+
+        if (typeof y !== 'number' || isNaN(y) || !isFinite(y) || y < yMin - (ySpan * 2) || y > yMax + (ySpan * 2)) {
+          inPath = false;
+          prevY = null;
+          prevPy = null;
+          continue;
+        }
+
+        const px = toPx(x);
+        const py = toPy(y);
+
+        // Discontinuity / Asymptote check
+        if (prevY !== null && prevPy !== null) {
+          const dyPx = Math.abs(py - prevPy);
+          if (dyPx > h * 0.6 && ((prevY > 0 && y < 0) || (prevY < 0 && y > 0))) {
+            inPath = false;
+          }
+        }
+
+        if (!inPath) {
+          ctx.moveTo(px, py);
+          inPath = true;
+        } else {
+          ctx.lineTo(px, py);
+        }
+
+        prevY = y;
+        prevPy = py;
+      }
+      ctx.stroke();
+    };
+
+    if (options.fn1) {
+      plotCurve(options.fn1, options.fn1Color || '#2563eb', lineWidth);
+    }
+    if (options.fn2) {
+      plotCurve(options.fn2, options.fn2Color || '#ea580c', lineWidth);
+    }
+
+    // 5. Legend Badges in top-left
+    if (showLegend) {
+      let legendY = pad + 10;
+      if (options.formula1) {
+        ctx.fillStyle = 'rgba(37, 99, 235, 0.08)';
+        ctx.strokeStyle = '#2563eb';
+        ctx.lineWidth = 1.5;
+        const txt = 'f(x) = ' + options.formula1;
+        ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        const tw = ctx.measureText(txt).width;
+        ctx.fillRect(pad + 12, legendY, tw + 18, 26);
+        ctx.strokeRect(pad + 12, legendY, tw + 18, 26);
+        ctx.fillStyle = '#1d4ed8';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(txt, pad + 21, legendY + 13);
+        legendY += 34;
+      }
+      if (options.formula2) {
+        ctx.fillStyle = 'rgba(234, 88, 12, 0.08)';
+        ctx.strokeStyle = '#ea580c';
+        ctx.lineWidth = 1.5;
+        const txt = 'g(x) = ' + options.formula2;
+        ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        const tw = ctx.measureText(txt).width;
+        ctx.fillRect(pad + 12, legendY, tw + 18, 26);
+        ctx.strokeRect(pad + 12, legendY, tw + 18, 26);
+        ctx.fillStyle = '#c2410c';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(txt, pad + 21, legendY + 13);
+      }
+    }
+
+    // 6. Crisp border
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(1, 1, w - 2, h - 2);
+  }
+
+  function openGraphEditorModal(qIdx, questionsRef, onUpdateRef) {
+    const qList = questionsRef || currentEditingQuestions || [];
+    const updateFn = onUpdateRef || currentEditingUpdateFn;
+    const q = qList[qIdx] || {};
+
+    const initialFormula = q.graphFormula || 'x^2 - 4';
+
+    const modalHtml = `
+      <div id="graph-helper-modal" class="modal-overlay" style="z-index: 9999;">
+        <div class="modal-box" style="max-width: 960px; width: 95%; max-height: 92vh; overflow-y: auto; background: #0f172a; border: 2px solid #10b981; padding: 22px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 1.5rem;">📈</span>
+              <h3 style="margin: 0; color: #10b981; font-size: 1.3rem;">함수 그래프 생성 & 문항 삽입 도구 (Q${qIdx + 1})</h3>
+            </div>
+            <button id="btn-close-graph-modal" class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.9rem;">✕ 닫기</button>
+          </div>
+          <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 14px; line-height: 1.5;">
+            수식으로 함수를 입력하면 좌표평면 위에 함수의 그래프가 실시간으로 렌더링됩니다. 완성된 고화질 그래프 이미지를 <strong>[📥 이 그래프를 문제에 첨부하기]</strong> 버튼을 눌러 문제에 즉시 삽입할 수 있습니다.
+          </p>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 18px; margin-bottom: 16px;">
+            <!-- 좌측: 수식 입력 및 설정 컨트롤 -->
+            <div style="background: #1e293b; border: 1px solid var(--border); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 12px;">
+              <!-- 1. 기본 함수 f(x) -->
+              <div>
+                <label style="font-weight: bold; font-size: 0.88rem; color: #38bdf8; display: flex; justify-content: space-between; align-items: center;">
+                  <span>🔹 기본 함수 f(x) [파란색]:</span>
+                  <span id="f1-status-badge" style="font-size: 0.75rem; color: #10b981;">● 실시간 렌더링 중</span>
+                </label>
+                <input type="text" id="graph-f1-input" class="input-nickname" value="${escapeHtml(initialFormula)}" placeholder="예: x^2 - 4, sin(x), 2x+1, 1/x, sqrt(x+2)" style="margin-top: 4px; font-family: monospace; font-size: 1.05rem; border-color: #38bdf8;">
+              </div>
+
+              <!-- 2. 보조 함수 g(x) 토글 -->
+              <div style="background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid var(--border);">
+                <label style="font-size: 0.85rem; font-weight: bold; color: #ea580c; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                  <input type="checkbox" id="graph-f2-enable">
+                  <span>🔸 보조 함수 g(x) 함께 표시 (교점/비교 분석) [주황색]</span>
+                </label>
+                <div id="graph-f2-wrap" style="display: none; margin-top: 8px;">
+                  <input type="text" id="graph-f2-input" class="input-nickname" value="2x - 1" placeholder="예: 2x - 1, cos(x)" style="font-family: monospace; font-size: 0.95rem; border-color: #ea580c;">
+                </div>
+              </div>
+
+              <!-- 3. 원클릭 대표 함수 프리셋 -->
+              <div>
+                <div style="font-size: 0.8rem; font-weight: bold; color: #fbbf24; margin-bottom: 6px;">자주 출제되는 대표 함수 프리셋 (클릭 시 자동 적용):</div>
+                <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="2x - 1" data-xmin="-5" data-xmax="5" data-ymin="-5" data-ymax="5">일차: 2x-1</button>
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="x^2 - 4" data-xmin="-5" data-xmax="5" data-ymin="-6" data-ymax="6">이차: x²-4</button>
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="-x^2 + 2x + 3" data-xmin="-4" data-xmax="6" data-ymin="-5" data-ymax="6">이차(위): -x²+2x+3</button>
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="x^3 - 3x" data-xmin="-4" data-xmax="4" data-ymin="-5" data-ymax="5">삼차: x³-3x</button>
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="1/x" data-xmin="-5" data-xmax="5" data-ymin="-5" data-ymax="5">유리: 1/x</button>
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="sqrt(x+2)" data-xmin="-3" data-xmax="7" data-ymin="-1" data-ymax="5">무리: √(x+2)</button>
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="sin(x)" data-xmin="-7" data-xmax="7" data-ymin="-2.5" data-ymax="2.5">삼각: sin(x)</button>
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="cos(2x)" data-xmin="-7" data-xmax="7" data-ymin="-2.5" data-ymax="2.5">삼각: cos(2x)</button>
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="2^x" data-xmin="-5" data-xmax="5" data-ymin="-1" data-ymax="9">지수: 2ˣ</button>
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="ln(x)" data-xmin="-1" data-xmax="8" data-ymin="-4" data-ymax="4">로그: ln(x)</button>
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="abs(x) - 2" data-xmin="-6" data-xmax="6" data-ymin="-4" data-ymax="5">절댓값: |x|-2</button>
+                  <button type="button" class="btn btn-outline-sm btn-g-preset" data-f1="x^2 - 2" data-f2="x" data-f2enable="true" data-xmin="-4" data-xmax="4" data-ymin="-4" data-ymax="6">연립: x²-2 & x</button>
+                </div>
+              </div>
+
+              <!-- 4. 좌표축 범위 설정 -->
+              <div>
+                <div style="font-size: 0.8rem; font-weight: bold; color: var(--text-muted); margin-bottom: 6px;">좌표축 범위 설정:</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                  <div>
+                    <label style="font-size: 0.75rem; color: #94a3b8;">X축 범위 (최소 ~ 최대):</label>
+                    <div style="display: flex; gap: 4px; align-items: center; margin-top: 2px;">
+                      <input type="number" id="graph-xmin" value="-5" step="1" style="width: 100%; padding: 4px 6px; border-radius: 4px; border: 1px solid var(--border); background: #0f172a; color: #fff;">
+                      <span>~</span>
+                      <input type="number" id="graph-xmax" value="5" step="1" style="width: 100%; padding: 4px 6px; border-radius: 4px; border: 1px solid var(--border); background: #0f172a; color: #fff;">
+                    </div>
+                  </div>
+                  <div>
+                    <label style="font-size: 0.75rem; color: #94a3b8;">Y축 범위 (최소 ~ 최대):</label>
+                    <div style="display: flex; gap: 4px; align-items: center; margin-top: 2px;">
+                      <input type="number" id="graph-ymin" value="-5" step="1" style="width: 100%; padding: 4px 6px; border-radius: 4px; border: 1px solid var(--border); background: #0f172a; color: #fff;">
+                      <span>~</span>
+                      <input type="number" id="graph-ymax" value="5" step="1" style="width: 100%; padding: 4px 6px; border-radius: 4px; border: 1px solid var(--border); background: #0f172a; color: #fff;">
+                    </div>
+                  </div>
+                </div>
+                <div style="display: flex; gap: 4px; margin-top: 6px;">
+                  <button type="button" class="btn btn-outline-sm btn-quick-range" data-range="-5,5,-5,5" style="padding: 2px 6px; font-size: 0.75rem;">[-5, 5]</button>
+                  <button type="button" class="btn btn-outline-sm btn-quick-range" data-range="-10,10,-10,10" style="padding: 2px 6px; font-size: 0.75rem;">[-10, 10]</button>
+                  <button type="button" class="btn btn-outline-sm btn-quick-range" data-range="-3,3,-3,3" style="padding: 2px 6px; font-size: 0.75rem;">[-3, 3]</button>
+                  <button type="button" class="btn btn-outline-sm btn-quick-range" data-range="0,10,-1,9" style="padding: 2px 6px; font-size: 0.75rem;">양수 [0, 10]</button>
+                </div>
+              </div>
+
+              <!-- 5. 시각적 옵션 -->
+              <div style="display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.8rem; color: var(--text-muted); border-top: 1px solid var(--border); padding-top: 8px;">
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                  <input type="checkbox" id="graph-opt-grid" checked> 보조 눈금 격자선
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                  <input type="checkbox" id="graph-opt-labels" checked> 원점(O) 및 축 눈금
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                  <input type="checkbox" id="graph-opt-legend" checked> 함수식 범례 뱃지
+                </label>
+              </div>
+            </div>
+
+            <!-- 우측: 실시간 캔버스 렌더링 미리보기 -->
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: #1e293b; border: 1px solid var(--border); border-radius: 10px; padding: 14px;">
+              <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-weight: bold; font-size: 0.88rem; color: #10b981;">📐 실시간 그래프 미리보기</span>
+                <span style="font-size: 0.75rem; color: var(--text-muted);">고해상도 600×450 벡터 렌더링</span>
+              </div>
+              <div style="width: 100%; display: flex; justify-content: center; background: #ffffff; border-radius: 8px; padding: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+                <canvas id="graph-live-canvas" width="600" height="450" style="width: 100%; max-width: 520px; aspect-ratio: 4/3; display: block; border-radius: 4px;"></canvas>
+              </div>
+              <div id="graph-error-msg" style="color: #ef4444; font-size: 0.8rem; margin-top: 8px; min-height: 20px; text-align: center;"></div>
+            </div>
+          </div>
+
+          <!-- 하단 버튼 바 -->
+          <div class="modal-actions" style="justify-content: space-between; gap: 10px; border-top: 1px solid var(--border); padding-top: 12px;">
+            <button class="btn btn-secondary" id="btn-cancel-graph">취소</button>
+            <button class="btn btn-primary" id="btn-apply-graph" style="background: #10b981; border-color: #059669; font-size: 1rem; padding: 10px 20px;">
+              📥 이 그래프를 문제(Q${qIdx + 1})에 첨부하기
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    const canvas = document.getElementById('graph-live-canvas');
+    const f1Input = document.getElementById('graph-f1-input');
+    const f2Input = document.getElementById('graph-f2-input');
+    const f2Enable = document.getElementById('graph-f2-enable');
+    const f2Wrap = document.getElementById('graph-f2-wrap');
+    const xMinInput = document.getElementById('graph-xmin');
+    const xMaxInput = document.getElementById('graph-xmax');
+    const yMinInput = document.getElementById('graph-ymin');
+    const yMaxInput = document.getElementById('graph-ymax');
+    const optGrid = document.getElementById('graph-opt-grid');
+    const optLabels = document.getElementById('graph-opt-labels');
+    const optLegend = document.getElementById('graph-opt-legend');
+    const errorMsg = document.getElementById('graph-error-msg');
+    const statusBadge = document.getElementById('f1-status-badge');
+
+    let currentFn1 = null;
+
+    const updateGraph = () => {
+      const f1Val = f1Input.value.trim();
+      const f2Val = f2Input.value.trim();
+      const isF2 = f2Enable.checked;
+
+      const xMin = parseFloat(xMinInput.value) || -5;
+      const xMax = parseFloat(xMaxInput.value) || 5;
+      const yMin = parseFloat(yMinInput.value) || -5;
+      const yMax = parseFloat(yMaxInput.value) || 5;
+
+      const fn1 = compileMathExpr(f1Val);
+      currentFn1 = fn1;
+      const fn2 = isF2 ? compileMathExpr(f2Val) : null;
+
+      if (!fn1 && f1Val) {
+        errorMsg.textContent = '⚠️ f(x) 수식 형식을 확인해 주세요. (예: x^2 - 4, sin(x), 2x+1)';
+        statusBadge.textContent = '⚠️ 수식 오류';
+        statusBadge.style.color = '#ef4444';
+      } else {
+        errorMsg.textContent = '';
+        statusBadge.textContent = '● 실시간 렌더링 중';
+        statusBadge.style.color = '#10b981';
+      }
+
+      drawFunctionGraphToCanvas(canvas, {
+        xMin, xMax, yMin, yMax,
+        showGrid: optGrid.checked,
+        showAxes: true,
+        showLabels: optLabels.checked,
+        showLegend: optLegend.checked,
+        fn1,
+        fn1Color: '#2563eb',
+        formula1: fn1 ? f1Val : null,
+        fn2,
+        fn2Color: '#ea580c',
+        formula2: (isF2 && fn2) ? f2Val : null,
+        lineWidth: 3.5
+      });
+    };
+
+    // Event listeners
+    f1Input.addEventListener('input', updateGraph);
+    f2Input.addEventListener('input', updateGraph);
+    f2Enable.addEventListener('change', () => {
+      f2Wrap.style.display = f2Enable.checked ? 'block' : 'none';
+      updateGraph();
+    });
+    [xMinInput, xMaxInput, yMinInput, yMaxInput].forEach(inp => inp.addEventListener('input', updateGraph));
+    [optGrid, optLabels, optLegend].forEach(cb => cb.addEventListener('change', updateGraph));
+
+    // Preset buttons
+    document.querySelectorAll('.btn-g-preset').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const ds = e.currentTarget.dataset;
+        if (ds.f1) f1Input.value = ds.f1;
+        if (ds.xmin) xMinInput.value = ds.xmin;
+        if (ds.xmax) xMaxInput.value = ds.xmax;
+        if (ds.ymin) yMinInput.value = ds.ymin;
+        if (ds.ymax) yMaxInput.value = ds.ymax;
+        if (ds.f2) {
+          f2Input.value = ds.f2;
+          f2Enable.checked = true;
+          f2Wrap.style.display = 'block';
+        } else {
+          f2Enable.checked = false;
+          f2Wrap.style.display = 'none';
+        }
+        updateGraph();
+      });
+    });
+
+    // Quick range buttons
+    document.querySelectorAll('.btn-quick-range').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const [xmin, xmax, ymin, ymax] = e.currentTarget.dataset.range.split(',');
+        xMinInput.value = xmin;
+        xMaxInput.value = xmax;
+        yMinInput.value = ymin;
+        yMaxInput.value = ymax;
+        updateGraph();
+      });
+    });
+
+    // Close / Cancel
+    document.getElementById('btn-close-graph-modal')?.addEventListener('click', () => {
+      document.getElementById('graph-helper-modal')?.remove();
+    });
+    document.getElementById('btn-cancel-graph')?.addEventListener('click', () => {
+      document.getElementById('graph-helper-modal')?.remove();
+    });
+
+    // Apply to question
+    document.getElementById('btn-apply-graph')?.addEventListener('click', () => {
+      const f1Val = f1Input.value.trim();
+      if (!currentFn1) {
+        alert('올바른 함수 수식을 먼저 입력해 주세요. (예: x^2 - 4)');
+        f1Input.focus();
+        return;
+      }
+
+      // Convert canvas to PNG dataUrl
+      const dataUrl = canvas.toDataURL('image/png');
+      if (qList[qIdx]) {
+        qList[qIdx].imageUrl = dataUrl;
+        qList[qIdx].graphFormula = f1Val;
+      }
+
+      if (typeof updateFn === 'function') {
+        updateFn();
+      }
+      document.getElementById('graph-helper-modal')?.remove();
+    });
+
+    // Initial render
+    setTimeout(updateGraph, 30);
+  }
+
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(initRouter, 10);
+  } else {
+    document.addEventListener('DOMContentLoaded', initRouter);
+  }
+})();
