@@ -2807,7 +2807,9 @@
     if (status === 'COIN_RACE_LOBBY') {
       if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
       activeTimerQIndex = -1;
-      if (container.querySelector('#coin-race-lobby-card')) return;
+      const existingLobbyCard = container.querySelector('#coin-race-lobby-card');
+      const currentRenderedRaceType = existingLobbyCard ? existingLobbyCard.dataset.racetype : null;
+      if (existingLobbyCard && currentRenderedRaceType === (roomData.meta?.raceType || 'pinball')) return;
       renderCoinRaceLobbyView(container, roomData, roomId, isTeacherControl);
       return;
     }
@@ -3499,7 +3501,7 @@
     participants.sort((a, b) => (b.score || 0) - (a.score || 0));
 
     container.innerHTML = `
-      <div class="quiz-display-container" id="coin-race-lobby-card" style="padding: 36px 30px; max-width: 1080px; margin: 0 auto; text-align: center; background: #0f172a; border: 2px solid rgba(56, 189, 248, 0.3); border-radius: 24px; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7), 0 0 40px rgba(56, 189, 248, 0.15);">
+      <div class="quiz-display-container" id="coin-race-lobby-card" data-racetype="${isMarble ? 'marble' : 'pinball'}" style="padding: 36px 30px; max-width: 1080px; margin: 0 auto; text-align: center; background: #0f172a; border: 2px solid rgba(56, 189, 248, 0.3); border-radius: 24px; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7), 0 0 40px rgba(56, 189, 248, 0.15);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
           <h2 style="font-size: 2.2rem; background: ${isMarble ? 'linear-gradient(135deg, #0284c7, #2563eb)' : 'linear-gradient(135deg, #ea580c, #d97706)'}; -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 900; margin: 0;">
             ${isMarble ? '🔮 선착순 구슬 롤러코스터 대기실' : '🎰 선착순 코인 핑퐁 낙하 대기실'}
@@ -3549,7 +3551,10 @@
     bindBgmVolumeControlEvents(container);
 
     document.getElementById('btn-toggle-race-type')?.addEventListener('click', async () => {
-      await updateRoomMeta(state.roomId, { raceType: isMarble ? 'pinball' : 'marble' });
+      const nextType = isMarble ? 'pinball' : 'marble';
+      if (roomData.meta) roomData.meta.raceType = nextType;
+      await updateRoomMeta(state.roomId, { raceType: nextType });
+      renderCoinRaceLobbyView(container, roomData, roomId, isTeacherControl);
     });
 
     document.getElementById('btn-start-coin-race-run')?.addEventListener('click', async () => {
@@ -4428,14 +4433,20 @@
         }
       }
 
-      // Reverse Springs ON ROAD
-      if (i % 2 === 1 || i === 4 || i === 8 || i === 12) {
-        const springX = isRightDown ? 620 : 240;
-        const springY = yStart + (springX - x1) * ((yEnd - yStart) / (x2 - x1));
+      // Reverse Springs ON ROAD (한쪽 갓길 쪽으로 오프셋 배치하여 60px 이상의 추월로 개방)
+      if (i === 3 || i === 7 || i === 11 || i === 14) {
+        const springBaseX = isRightDown ? 560 : 300;
+        const springBaseY = yStart + (springBaseX - x1) * ((yEnd - yStart) / (x2 - x1));
+        const trackAngle = Math.atan2(yEnd - yStart, x2 - x1);
+        // 중심선에서 한쪽 가드레일 방향으로 26px 오프셋 -> 반대편에 60px 이상 넓은 통과로 확보
+        const offsetSign = (i % 2 === 0) ? 1 : -1;
+        const offNx = -Math.sin(trackAngle) * (26 * offsetSign);
+        const offNy = Math.cos(trackAngle) * (26 * offsetSign);
+
         reverseSprings.push({
-          x: springX,
-          y: springY,
-          r: 24,
+          x: springBaseX + offNx,
+          y: springBaseY + offNy,
+          r: 18,
           text: '⚡ 역주행'
         });
       }
@@ -4621,7 +4632,7 @@
           ctx.stroke();
 
           ctx.fillStyle = '#fff';
-          ctx.font = 'bold 10px Cafe24Surround, sans-serif';
+          ctx.font = 'bold 8.5px Cafe24Surround, sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText(sp.text, sp.x, sp.y - cameraY);
@@ -4643,7 +4654,7 @@
           ctx.stroke();
 
           ctx.fillStyle = '#fff';
-          ctx.font = 'bold 10px Cafe24Surround, sans-serif';
+          ctx.font = 'bold 8.5px Cafe24Surround, sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText(sb.text, sb.x, sb.y - cameraY);
@@ -4843,8 +4854,14 @@
             m.vx += (m.x < 430 ? 0.5 : -0.5);
           }
 
-          // Reverse Springs ON ROAD (⚡ 역주행 - 연속 궤적 감지 & 강력 폭발 반발)
+          if (m.reverseCooldown && m.reverseCooldown > 0) {
+            m.reverseCooldown--;
+          }
+
+          // Reverse Springs ON ROAD (⚡ 역주행 - 연속 궤적 감지 & 면역 쿨다운 & 슬림 반발)
           reverseSprings.forEach(sp => {
+            if (m.reverseCooldown && m.reverseCooldown > 0) return;
+
             const dx = m.x - sp.x;
             const dy = m.y - sp.y;
             const dist = Math.hypot(dx, dy);
@@ -4862,8 +4879,9 @@
 
             if (dist < m.radius + sp.r || trajDist < m.radius + sp.r) {
               sp.pulse = 1.0;
-              m.vy = -12.0 - Math.random() * 4.0; // 강렬한 역주행 튕김!
-              m.vx = (m.x < sp.x ? -6.0 : 6.0) + (Math.random() - 0.5) * 4.0;
+              m.reverseCooldown = 40; // 40프레임 동안 역주행 면역으로 무한 정체 탈출 보장!
+              m.vy = -4.0 - Math.random() * 2.0; // 다이나믹한 순간 감속/역주행 튕김
+              m.vx = (m.x < sp.x ? -4.5 : 4.5) + (Math.random() - 0.5) * 2.0;
               AudioEngine.playCorrect();
             }
           });
