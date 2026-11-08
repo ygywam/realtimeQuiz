@@ -534,6 +534,17 @@
 
   let firebaseCloudStatus = 'checking'; // 'connected' | 'unauthorized' | 'offline'
 
+  function hasCustomFirebaseConfig() {
+    const saved = localStorage.getItem('class_quiz_fb_config');
+    if (!saved) return false;
+    try {
+      const parsed = JSON.parse(saved);
+      return Boolean(parsed && parsed.databaseURL && parsed.databaseURL.trim());
+    } catch (e) {
+      return false;
+    }
+  }
+
   function getPublicWebUrl() {
     return localStorage.getItem('class_quiz_public_web_url') || '';
   }
@@ -589,7 +600,7 @@
         homeBadge.style.background = 'rgba(239, 68, 68, 0.2)';
         homeBadge.style.borderColor = '#ef4444';
         homeBadge.style.color = '#fca5a5';
-        homeBadge.innerHTML = '🔴 클라우드 DB 설정 필요 (타 기기/학생 연동용 - 클릭하여 1분 무료 연결)';
+        homeBadge.innerHTML = '🔴 클라우드 DB 권한 만료 (규칙 .read: true, .write: true 설정 필요 - 클릭)';
       } else if (firebaseCloudStatus === 'offline') {
         homeBadge.style.background = 'rgba(245, 158, 11, 0.2)';
         homeBadge.style.borderColor = '#f59e0b';
@@ -604,6 +615,15 @@
         lobbyAlert.style.display = 'inline-flex';
       } else {
         lobbyAlert.style.display = 'none';
+      }
+    }
+
+    const lobbyBanner = document.getElementById('lobby-fb-alert-banner');
+    if (lobbyBanner) {
+      if (firebaseCloudStatus === 'unauthorized') {
+        lobbyBanner.style.display = 'flex';
+      } else {
+        lobbyBanner.style.display = 'none';
       }
     }
   }
@@ -624,7 +644,10 @@
       const url = getFirebaseRestUrl(path);
       const res = await fetch(url);
       if (res.ok) {
+        firebaseCloudStatus = 'connected';
         return await res.json();
+      } else if (res.status === 401 || res.status === 403) {
+        firebaseCloudStatus = 'unauthorized';
       }
     } catch (e) {
       console.warn('Firebase REST Fetch 경고:', e);
@@ -640,16 +663,16 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
-      if (!res.ok) {
-        if (res.status === 401 || res.status === 403) firebaseCloudStatus = 'unauthorized';
-        console.warn('Firebase REST Put 실패 [' + res.status + ']:', res.statusText);
-        return false;
+      if (res.ok) {
+        firebaseCloudStatus = 'connected';
+        return true;
+      } else if (res.status === 401 || res.status === 403) {
+        firebaseCloudStatus = 'unauthorized';
       }
-      return true;
     } catch (e) {
       console.warn('Firebase REST Put 경고:', e);
-      return false;
     }
+    return false;
   }
 
   async function patchFirebaseRest(path, data) {
@@ -660,16 +683,16 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
-      if (!res.ok) {
-        if (res.status === 401 || res.status === 403) firebaseCloudStatus = 'unauthorized';
-        console.warn('Firebase REST Patch 실패 [' + res.status + ']:', res.statusText);
-        return false;
+      if (res.ok) {
+        firebaseCloudStatus = 'connected';
+        return true;
+      } else if (res.status === 401 || res.status === 403) {
+        firebaseCloudStatus = 'unauthorized';
       }
-      return true;
     } catch (e) {
       console.warn('Firebase REST Patch 경고:', e);
-      return false;
     }
+    return false;
   }
 
   function initRealtimeEngine() {
@@ -731,14 +754,14 @@
     let unsubscribed = false;
     let hasData = false;
 
-    // 0. 로컬 스토리지 데이터 즉시 우선 송출 (0ms 초고속 렌더링)
+    // 0. 로컬 스토리지 데이터 즉시 확인
     const localInit = getLocalRoom(roomId);
     if (localInit) {
       hasData = true;
       callback(localInit);
     }
 
-    // BroadcastChannel 실시간 메시지 수신 (창/탭 간 0ms 통신)
+    // BroadcastChannel 실시간 메시지 수신 (동일 기기 창/탭 간 0ms 통신)
     const handleBroadcast = (event) => {
       if (unsubscribed) return;
       if (event.data?.type === 'ROOM_UPDATED' && event.data?.roomId === roomId && event.data?.data) {
@@ -774,7 +797,12 @@
             callback(val);
           }
         };
-        roomRef.on('value', handler);
+        roomRef.on('value', handler, (err) => {
+          if (err && (err.code === 'PERMISSION_DENIED' || String(err).includes('permission_denied'))) {
+            firebaseCloudStatus = 'unauthorized';
+            updateFirebaseStatusUI();
+          }
+        });
       } catch (e) {
         console.warn('SDK 구독 오류:', e);
       }
@@ -782,14 +810,15 @@
 
     // 2. REST API 즉시 조회
     fetchFirebaseRest(`rooms/${roomId}`).then(data => {
-      if (!unsubscribed && data) {
+      if (unsubscribed) return;
+      if (data) {
         hasData = true;
         saveLocalRoom(roomId, data);
         callback(data);
       }
     });
 
-    // 3. REST API 백업 주기적 폴링 (1.5초) - 네트워크/클라우드 장애 시 로컬 데이터 자동 유지
+    // 3. REST API 백업 주기적 폴링 (1.5초)
     const intervalId = setInterval(async () => {
       if (unsubscribed) return;
       const data = await fetchFirebaseRest(`rooms/${roomId}`);
@@ -797,9 +826,12 @@
         hasData = true;
         saveLocalRoom(roomId, data);
         callback(data);
-      } else if (!unsubscribed) {
+      } else if (!unsubscribed && !hasData) {
         const raw = getLocalRoom(roomId);
-        if (raw) callback(raw);
+        if (raw) {
+          hasData = true;
+          callback(raw);
+        }
       }
     }, 1500);
 
@@ -2122,6 +2154,21 @@
           </div>
         </div>
 
+        <div id="lobby-fb-alert-banner" style="${firebaseCloudStatus === 'unauthorized' ? 'display: flex;' : 'display: none;'} background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(185, 28, 28, 0.3)); border: 2px solid #ef4444; border-radius: 12px; padding: 14px 18px; margin-top: 14px; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);">
+          <div>
+            <div style="font-size: 1.05rem; font-weight: 800; color: #fca5a5; display: flex; align-items: center; gap: 6px;">
+              🚨 실시간 클라우드 DB 미연결 (학생 스마트폰 접속 불가 상태)
+            </div>
+            <div style="font-size: 0.88rem; color: #fecaca; margin-top: 4px; line-height: 1.5;">
+              현재 방은 선생님 PC 브라우저에만 저장되어 있어, <strong>학생 스마트폰이 QR코드를 찍어도 접속되지 않습니다.</strong><br>
+              구글 무료 Firebase Realtime Database URL을 1분 만에 연결하시면 즉시 학생 전원 접속이 가능합니다!
+            </div>
+          </div>
+          <button type="button" id="btn-lobby-open-fb-setup" class="btn btn-primary" style="background: #ef4444; border: none; font-weight: 900; padding: 8px 16px; font-size: 0.92rem; cursor: pointer; white-space: nowrap; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);">
+            ⚙️ 1분 무료 클라우드 DB 연결하기
+          </button>
+        </div>
+
         ${questions.length === 0 ? `
           <div style="background: rgba(245, 158, 11, 0.15); border: 1px dashed #f59e0b; padding: 14px 20px; border-radius: 12px; margin-top: 20px; color: #fbbf24; font-weight: bold; text-align: center; font-size: 1.1rem;">
             💡 출제된 문제가 아직 없습니다. 우측 상단의 <strong>[📝 문제 출제 / 편집]</strong> 버튼을 누르고 질문을 자유롭게 추가해 주세요!
@@ -2182,7 +2229,9 @@
       new window.QRCode(qrContainer, { text: studentJoinUrl, width: 200, height: 200 });
     }
 
+    checkFirebaseCloudConnection().then(() => updateFirebaseStatusUI());
     document.getElementById('btn-lobby-fb-alert')?.addEventListener('click', openFirebaseCustomModal);
+    document.getElementById('btn-lobby-open-fb-setup')?.addEventListener('click', openFirebaseCustomModal);
 
     const handleSetPublicWebUrlPrompt = () => {
       const cur = getPublicWebUrl();
@@ -2316,6 +2365,31 @@
     `).join('');
   }
 
+  function renderStudentConnectionErrorView(app, errorReason) {
+    const isUnauthorized = errorReason === 'unauthorized' || firebaseCloudStatus === 'unauthorized';
+    app.innerHTML = `
+      <div class="mobile-view">
+        <div class="mobile-card" style="text-align: center; padding: 32px 20px;">
+          <div style="font-size: 3.2rem; margin-bottom: 12px;">${isUnauthorized ? '🔒📡' : '🔎'}</div>
+          <h2 style="font-size: 1.4rem; color: ${isUnauthorized ? '#ef4444' : '#fbbf24'}; margin-bottom: 8px;">
+            ${isUnauthorized ? '퀴즈 방에 연결할 수 없습니다' : '퀴즈 방을 찾을 수 없습니다'}
+          </h2>
+          <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid #ef4444; border-radius: 12px; padding: 16px; text-align: left; margin: 16px 0; font-size: 0.92rem; line-height: 1.6; color: #fecaca;">
+            <strong>원인 안내:</strong><br>
+            ${isUnauthorized 
+              ? '선생님 컴퓨터에서 <strong>실시간 클라우드 DB(Firebase)</strong> 연결이 필요합니다.<br><br>교사 화면 상단의 <strong>[🔴 클라우드 DB 설정 필요]</strong>를 누르고 1분 무료 Firebase Database URL을 연결하시면 스마트폰에서 즉시 입장할 수 있습니다.'
+              : `입력하신 방 PIN(<strong>${state.roomId}</strong>)이 존재하지 않거나, 교사 PC에서 아직 방 생성이 완료되지 않았습니다.`}
+          </div>
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 18px;">방 PIN: <strong>${state.roomId}</strong></p>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn btn-secondary" onclick="window.location.search=''" style="flex: 1;">메인으로</button>
+            <button class="btn btn-primary" onclick="window.location.reload()" style="flex: 1.4;">🔄 다시 연결 시도</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   function initStudentFlow(app) {
     const studentId = getOrCreateStudentId();
 
@@ -2325,30 +2399,33 @@
           <div style="font-size: 3rem; margin-bottom: 16px;">⚡</div>
           <h2 style="font-size: 1.4rem; color: #38bdf8; margin-bottom: 8px;">퀴즈 방 연결 중...</h2>
           <p style="color: var(--text-muted); font-size: 0.95rem;">방 PIN: <strong>${state.roomId}</strong></p>
+          <div style="margin-top: 14px; font-size: 0.85rem; color: #64748b; line-height: 1.5;" id="student-connect-status">
+            선생님 퀴즈 방과 실시간 연결을 확인하는 중입니다...
+          </div>
         </div>
       </div>
     `;
 
-    let receiveCount = 0;
-    subscribeRoom(state.roomId, (roomData) => {
-      receiveCount++;
-      if (!roomData) {
-        if (receiveCount < 2) return;
-        app.innerHTML = `
-          <div class="mobile-view">
-            <div class="mobile-card">
-              <div style="font-size: 3.5rem; margin-bottom: 12px;">🔎</div>
-              <h2 style="font-size: 1.5rem; color: #fbbf24;">퀴즈 방을 찾을 수 없습니다</h2>
-              <p style="color: var(--text-muted); margin-top: 10px; font-size: 1rem; line-height: 1.5;">
-                입력하신 방 PIN(<strong>${state.roomId}</strong>)이 존재하지 않거나,<br>교사 PC에서 아직 퀴즈 방 생성이 완료되지 않은 상태입니다.
-              </p>
-              <button class="btn btn-primary" onclick="window.location.search=''" style="width: 100%; margin-top: 20px;">메인 화면으로 이동</button>
-            </div>
-          </div>
-        `;
-        return;
-      }
+    let hasLoaded = false;
 
+    // 만약 5초 이상 연결되지 않고 Firebase 권한이 닫혀있는 경우 친절한 안내 표시
+    const timeoutTimer = setTimeout(() => {
+      if (hasLoaded) return;
+      const statusEl = document.getElementById('student-connect-status');
+      if (statusEl) {
+        if (firebaseCloudStatus === 'unauthorized') {
+          statusEl.innerHTML = `<span style="color: #f87171; font-weight: bold;">⚠️ 교사 PC의 파이어베이스 클라우드 DB 규칙이 만료되었습니다.<br>선생님께 화면의 [규칙 설정]을 확인해 달라고 말씀해 주세요.</span>`;
+        } else {
+          statusEl.innerHTML = `선생님 컴퓨터에서 퀴즈 방 생성을 완료할 때까지 대기 중입니다.<br>잠시만 기다려 주세요...`;
+        }
+      }
+    }, 5000);
+
+    subscribeRoom(state.roomId, (roomData) => {
+      if (!roomData) return;
+
+      hasLoaded = true;
+      clearTimeout(timeoutTimer);
       state.roomData = roomData;
       const myParticipant = roomData.participants && roomData.participants[studentId];
       if (myParticipant) {
