@@ -1134,53 +1134,75 @@ body.theme-woodlock h1, body.theme-woodlock h2, body.theme-woodlock h3 {
 
   <!-- 1. Firebase 실시간 클라우드 DB 안내 모달 -->
   <div id="firebase-info-modal" class="modal-overlay hidden">
-    <div class="modal-box" style="max-width: 600px;">
-      <h3 style="color: #10b981; font-size: 1.5rem; margin-bottom: 14px;">☁️ 실시간 클라우드 DB 연동 안내</h3>
-      <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; padding: 20px; border-radius: 14px; margin-bottom: 24px; line-height: 1.6; color: #f8fafc;">
-        <p style="margin-bottom: 12px; font-weight: bold; font-size: 1.08rem; color: #6ee7b7;">
-          ⚡ 별도 설정 없이 바로 100여 명의 학생들과 즉시 수업이 가능합니다!
+    <div class="modal-box" style="max-width: 640px; text-align: left;">
+      <h3 style="color: #38bdf8; font-size: 1.5rem; margin-bottom: 14px; display: flex; align-items: center; gap: 8px;">
+        ☁️ 실시간 클라우드 DB 및 학생 접속 안내
+      </h3>
+      <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid #38bdf8; padding: 20px; border-radius: 14px; margin-bottom: 20px; line-height: 1.6; color: #f8fafc;">
+        <p style="margin-bottom: 10px; font-weight: bold; font-size: 1.05rem; color: #38bdf8;">
+          💡 다른 컴퓨터와 학생 스마트폰이 함께 참여하려면?
         </p>
-        <p style="font-size: 0.95rem; color: #cbd5e1; margin-bottom: 12px;">
-          본 시스템에는 전용 실시간 클라우드 데이터베이스가 기본 연동되어 있어, 교사 PC와 학생 스마트폰 간에 0.1초 반응속도로 문제를 풀고 브레인스토밍을 공유하실 수 있습니다.
+        <p style="font-size: 0.93rem; color: #cbd5e1; margin-bottom: 10px;">
+          1. <strong>실시간 클라우드 DB</strong>: 교사 PC와 학생 스마트폰 간 실시간 문제 전송/응답을 위해 무료 Firebase Realtime Database URL이 필요합니다.<br>
+          2. <strong>웹 호스팅 주소</strong>: 로컬 파일(file://)이 아닌 인터넷 웹 주소(예: Vercel 배포 주소)로 QR코드가 생성되어야 스마트폰에서 열립니다.
         </p>
-        <p style="font-size: 0.9rem; color: #94a3b8;">
-          🔒 학생들의 인적사항(학번/연락처 등)은 클라우드에 일절 저장되지 않으며, 세션 종료 시 실시간 방 정보는 안전하게 자동 정제됩니다.
+        <p style="font-size: 0.88rem; color: #94a3b8; margin: 0;">
+          🔒 학생 개인정보(이름/연락처 등)는 절대 저장되지 않으며, 누구나 구글 무료 Firebase를 1분 만에 연결할 수 있습니다.
         </p>
       </div>
 
       <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-top: 1px solid var(--border); padding-top: 16px;">
-        <button id="btn-open-custom-fb" class="btn btn-outline-sm" style="border-color: #475569; color: #94a3b8;">
-          ⚙️ 나만의 Firebase 개인화 설정
+        <button id="btn-open-custom-fb" class="btn btn-primary" style="background: linear-gradient(135deg, #0284c7, #2563eb); border: none; font-weight: bold;">
+          ⚙️ 1분 무료 클라우드 DB 및 웹 주소 설정
         </button>
-        <button id="btn-close-fb-info" class="btn btn-primary">확인 (닫기)</button>
+        <button id="btn-close-fb-info" class="btn btn-secondary">닫기</button>
       </div>
     </div>
   </div>
 
-  <!-- 2. 나만의 Firebase DB 개인화 설정 모달 -->
+  <!-- 2. 나만의 Firebase DB 및 웹 주소 설정 모달 -->
   <div id="firebase-custom-modal" class="modal-overlay hidden">
-    <div class="modal-box" style="max-width: 620px;">
-      <h3 style="margin-bottom: 8px;">⚙️ 나만의 Firebase DB 개인화 설정</h3>
-      <p class="modal-desc" style="margin-bottom: 20px; color: var(--text-muted); font-size: 0.95rem;">
-        본인 소유의 Firebase Realtime Database 키로 교체하여 사용하실 수 있습니다. (입력한 설정값은 본인 브라우저에만 안전하게 저장됩니다)
+    <div class="modal-box" style="max-width: 660px; text-align: left; max-height: 85vh; overflow-y: auto;">
+      <h3 style="margin-bottom: 8px; color: #38bdf8;">⚙️ 클라우드 DB & 학생 접속 웹 주소 설정</h3>
+      <p class="modal-desc" style="margin-bottom: 18px; color: var(--text-muted); font-size: 0.93rem;">
+        다른 컴퓨터에서 퀴즈 방을 불러오고, 학생 스마트폰이 QR코드로 접속할 수 있도록 설정합니다.
       </p>
-      <div class="form-group">
-        <label style="font-weight: bold;">API Key</label>
-        <input type="password" id="fb-apiKey" placeholder="개인 키 입력 시 작성 (미입력 시 기본 탑재 DB 연결)" autocomplete="off">
+
+      <div style="background: #0f172a; border: 1px solid var(--border); padding: 14px 16px; border-radius: 12px; margin-bottom: 18px;">
+        <h4 style="color: #fbbf24; font-size: 0.98rem; margin: 0 0 8px 0;">⚡ 1분 만에 무료 Firebase DB 연결하는 방법</h4>
+        <ol style="margin: 0; padding-left: 20px; font-size: 0.88rem; color: #cbd5e1; line-height: 1.6;">
+          <li><a href="https://console.firebase.google.com" target="_blank" style="color: #38bdf8; text-decoration: underline; font-weight: bold;">Firebase 콘솔</a>에 구글 로그인 후 [프로젝트 추가]</li>
+          <li>좌측 메뉴 [빌드] > [Realtime Database] > [데이터베이스 만들기] 클릭</li>
+          <li>[규칙] 탭에서 <code style="background: rgba(255,255,255,0.1); padding: 2px 4px; border-radius: 4px; color: #f59e0b;">".read": true, ".write": true</code>로 변경 후 [게시]</li>
+          <li>화면 상단 Database URL(<code style="color: #38bdf8;">https://xxxx.firebaseio.com</code>)을 복사해 아래에 붙여넣기 끝!</li>
+        </ol>
       </div>
-      <div class="form-group">
-        <label style="font-weight: bold;">Database URL (Realtime Database URL)</label>
-        <input type="text" id="fb-dbUrl" placeholder="https://your-project-default-rtdb.firebaseio.com">
+
+      <div class="form-group" style="margin-bottom: 14px;">
+        <label style="font-weight: bold; color: #38bdf8;">1. Database URL (Realtime Database URL) <span style="color: #ec4899;">*필수</span></label>
+        <input type="text" id="fb-dbUrl" placeholder="https://your-project-default-rtdb.firebaseio.com" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: #1e293b; color: #fff; font-size: 0.95rem;">
+        <small style="color: var(--text-muted); font-size: 0.82rem; margin-top: 4px; display: block;">* API Key 없이 Database URL만 입력해도 REST API로 모든 기기간 100% 실시간 연동됩니다.</small>
       </div>
-      <div class="form-group">
-        <label style="font-weight: bold;">Project ID</label>
-        <input type="text" id="fb-projectId" placeholder="your-project-id">
+
+      <div class="form-group" style="margin-bottom: 14px;">
+        <label style="font-weight: bold; color: #10b981;">2. 학생 스마트폰 접속용 웹 배포 주소 (Public Web URL) <span style="color: var(--text-muted); font-size: 0.82rem;">(선택)</span></label>
+        <input type="text" id="fb-publicWebUrl" placeholder="예: https://my-quiz.vercel.app 또는 http://192.168.0.x:5173" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: #1e293b; color: #fff; font-size: 0.95rem;">
+        <small style="color: var(--text-muted); font-size: 0.82rem; margin-top: 4px; display: block;">* 교사 컴퓨터에서 file://로 열었을 때, 학생들이 접속할 수 있는 인터넷 웹 주소로 QR코드를 생성합니다.</small>
       </div>
-      <div class="modal-actions" style="justify-content: space-between; margin-top: 24px;">
-        <button id="btn-reset-fb" class="btn btn-danger btn-outline-sm" style="font-size: 0.9rem;">🔄 기본 연결로 복원</button>
+
+      <details style="margin-bottom: 18px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px; padding: 10px;">
+        <summary style="font-size: 0.88rem; color: var(--text-muted); cursor: pointer; font-weight: bold;">+ 고급 설정: Firebase API Key & Project ID (SDK 직접 구독용)</summary>
+        <div style="margin-top: 10px; display: flex; flex-direction: column; gap: 10px;">
+          <input type="password" id="fb-apiKey" placeholder="API Key (선택)" autocomplete="off" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: #fff; font-size: 0.9rem;">
+          <input type="text" id="fb-projectId" placeholder="Project ID (선택)" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: #fff; font-size: 0.9rem;">
+        </div>
+      </details>
+
+      <div class="modal-actions" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; border-top: 1px solid var(--border); padding-top: 16px;">
+        <button id="btn-reset-fb" class="btn btn-outline-sm" style="font-size: 0.85rem; border-color: #ef4444; color: #f87171;">🔄 설정 초기화</button>
         <div style="display: flex; gap: 10px;">
           <button id="btn-close-fb-custom" class="btn btn-secondary">취소</button>
-          <button id="btn-save-fb" class="btn btn-primary">개인 설정 저장 및 반영</button>
+          <button id="btn-save-fb" class="btn btn-primary" style="font-weight: 900;">설정 저장 및 반영</button>
         </div>
       </div>
     </div>

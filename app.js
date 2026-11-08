@@ -532,6 +532,82 @@
     return DEFAULT_FIREBASE_CONFIG;
   }
 
+  let firebaseCloudStatus = 'checking'; // 'connected' | 'unauthorized' | 'offline'
+
+  function getPublicWebUrl() {
+    return localStorage.getItem('class_quiz_public_web_url') || '';
+  }
+
+  function setPublicWebUrl(url) {
+    if (url && url.trim()) {
+      localStorage.setItem('class_quiz_public_web_url', url.trim());
+    } else {
+      localStorage.removeItem('class_quiz_public_web_url');
+    }
+  }
+
+  function getStudentJoinUrl(roomId) {
+    const customUrl = getPublicWebUrl();
+    if (customUrl) {
+      const clean = customUrl.replace(/\/$/, '');
+      return `${clean}/?room=${roomId}&role=student`;
+    }
+    if (window.location.protocol === 'file:') {
+      return '';
+    }
+    const baseUrl = window.location.origin + window.location.pathname;
+    return `${baseUrl}?room=${roomId}&role=student`;
+  }
+
+  async function checkFirebaseCloudConnection() {
+    try {
+      const probeUrl = getFirebaseRestUrl('_connection_probe');
+      const res = await fetch(probeUrl, { method: 'GET' });
+      if (res.status === 200 || res.status === 204) {
+        firebaseCloudStatus = 'connected';
+      } else if (res.status === 401 || res.status === 403) {
+        firebaseCloudStatus = 'unauthorized';
+      } else {
+        firebaseCloudStatus = 'offline';
+      }
+    } catch (e) {
+      firebaseCloudStatus = 'offline';
+    }
+    updateFirebaseStatusUI();
+    return firebaseCloudStatus;
+  }
+
+  function updateFirebaseStatusUI() {
+    const homeBadge = document.getElementById('btn-open-fb-info');
+    if (homeBadge) {
+      if (firebaseCloudStatus === 'connected') {
+        homeBadge.style.background = 'rgba(16, 185, 129, 0.2)';
+        homeBadge.style.borderColor = '#10b981';
+        homeBadge.style.color = '#10b981';
+        homeBadge.innerHTML = '🟢 실시간 클라우드 DB 정상 연동 중 (기기간 동기화 활성)';
+      } else if (firebaseCloudStatus === 'unauthorized') {
+        homeBadge.style.background = 'rgba(239, 68, 68, 0.2)';
+        homeBadge.style.borderColor = '#ef4444';
+        homeBadge.style.color = '#fca5a5';
+        homeBadge.innerHTML = '🔴 클라우드 DB 설정 필요 (타 기기/학생 연동용 - 클릭하여 1분 무료 연결)';
+      } else if (firebaseCloudStatus === 'offline') {
+        homeBadge.style.background = 'rgba(245, 158, 11, 0.2)';
+        homeBadge.style.borderColor = '#f59e0b';
+        homeBadge.style.color = '#fbbf24';
+        homeBadge.innerHTML = '🟡 클라우드 DB 오프라인 (클릭하여 연결 확인)';
+      }
+    }
+
+    const lobbyAlert = document.getElementById('btn-lobby-fb-alert');
+    if (lobbyAlert) {
+      if (firebaseCloudStatus === 'unauthorized' || firebaseCloudStatus === 'offline') {
+        lobbyAlert.style.display = 'inline-flex';
+      } else {
+        lobbyAlert.style.display = 'none';
+      }
+    }
+  }
+
   function saveFirebaseConfig(config) {
     localStorage.setItem('class_quiz_fb_config', JSON.stringify(config));
   }
@@ -559,11 +635,16 @@
   async function putFirebaseRest(path, data) {
     try {
       const url = getFirebaseRestUrl(path);
-      await fetch(url, {
+      const res = await fetch(url, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) firebaseCloudStatus = 'unauthorized';
+        console.warn('Firebase REST Put 실패 [' + res.status + ']:', res.statusText);
+        return false;
+      }
       return true;
     } catch (e) {
       console.warn('Firebase REST Put 경고:', e);
@@ -574,11 +655,16 @@
   async function patchFirebaseRest(path, data) {
     try {
       const url = getFirebaseRestUrl(path);
-      await fetch(url, {
+      const res = await fetch(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) firebaseCloudStatus = 'unauthorized';
+        console.warn('Firebase REST Patch 실패 [' + res.status + ']:', res.statusText);
+        return false;
+      }
       return true;
     } catch (e) {
       console.warn('Firebase REST Patch 경고:', e);
@@ -989,19 +1075,19 @@
     URL.revokeObjectURL(url);
   }
 
+  let introVideoAnimInterval = null;
+
   function showAppSplashScreen(force = false) {
-    const isFirstVisit = !sessionStorage.getItem('splash_shown_initial');
-    const isAfterGameFinish = sessionStorage.getItem('trigger_splash_after_game') === 'true';
+    const params = new URLSearchParams(window.location.search);
+    // 방 접속 모드(role=student, role=teacher, role=display 등)일 때는 스플래시 화면 절대 금지!
+    if (params.has('room') && !force) return;
 
-    // 처음 접속할 때랑 게임 종료 후 대시보드 들어갈 때만 표시
-    if (!force && !isFirstVisit && !isAfterGameFinish) return;
+    // '다시 보지 않기' 설정 시 스플래시 화면 0초 차단!
+    const hideIntro = localStorage.getItem('class_quiz_hide_intro') === 'true';
+    if (hideIntro && !force) return;
 
-    if (isFirstVisit) {
-      sessionStorage.setItem('splash_shown_initial', 'true');
-    }
-    if (isAfterGameFinish) {
-      sessionStorage.removeItem('trigger_splash_after_game');
-    }
+    // 이미 떠 있으면 중복 방지
+    if (document.getElementById('app-splash-screen')) return;
 
     const overlay = document.createElement('div');
     overlay.id = 'app-splash-screen';
@@ -1015,34 +1101,255 @@
       align-items: center;
       justify-content: center;
       box-sizing: border-box;
-      padding: 24px;
-      transition: opacity 0.8s ease, transform 0.8s ease;
-      box-shadow: inset 0 0 100px rgba(56, 189, 248, 0.25);
+      padding: 16px;
+      transition: opacity 0.5s ease, transform 0.5s ease;
+      overflow-y: auto;
     `;
 
+    // 6개 씬 타이포그래피 모션 데이터
+    const promoScenes = [
+      {
+        badge: '⚡ CLASS LIVE QUIZ',
+        title: '교실을 뒤흔드는 실시간 퀴즈 배틀!',
+        desc: '스마트폰 QR 스캔 한 번으로 전원 1초 동시 접속!',
+        color: '#38bdf8',
+        icon: '📱',
+        bg: 'radial-gradient(circle at center, rgba(56, 189, 248, 0.22) 0%, transparent 70%)'
+      },
+      {
+        badge: '💡 6종 인터랙티브 문항',
+        title: '수업 형태에 맞춰 자유롭게 출제!',
+        desc: 'OX · 선다형 · 단답형 · 실시간 워드클라우드 & 포스트잇 보드',
+        color: '#ec4899',
+        icon: '📝',
+        bg: 'radial-gradient(circle at center, rgba(236, 72, 153, 0.22) 0%, transparent 70%)'
+      },
+      {
+        badge: '⏱️ 0.1초의 숨막히는 승부',
+        title: '스피드 가산점 & 실시간 결과 차트!',
+        desc: '제출 즉시 집계되는 막대·그리드·원형 차트와 소신 응답 가림 모드',
+        color: '#f59e0b',
+        icon: '⚡',
+        bg: 'radial-gradient(circle at center, rgba(245, 158, 11, 0.22) 0%, transparent 70%)'
+      },
+      {
+        badge: '🏆 3D 챔피언 포디움 시상식',
+        title: '금·은·동 나팔소리와 학급 스타 탄생!',
+        desc: '동물 3D 입체 아바타 배지와 화려한 팡파르 포디움 연출',
+        color: '#10b981',
+        icon: '🥇',
+        bg: 'radial-gradient(circle at center, rgba(16, 185, 129, 0.22) 0%, transparent 70%)'
+      },
+      {
+        badge: '🎰 끝날 때까지 끝난 게 아니다!',
+        title: '최후의 대역전 선착순 낙하 레이스!',
+        desc: '핑퐁 핀볼 낙하 & 구슬 롤러코스터 트랙 경주로 전원 환호!',
+        color: '#a855f7',
+        icon: '🔮',
+        bg: 'radial-gradient(circle at center, rgba(168, 85, 247, 0.22) 0%, transparent 70%)'
+      },
+      {
+        badge: '🚀 수업의 판을 바꾸는 단 하나의 플랫폼',
+        title: '지금 바로 교실에서 시작해 보세요!',
+        desc: '전자칠판 · 교사 PC · 학생 스마트폰 실시간 완벽 연동',
+        color: '#38bdf8',
+        icon: '🎉',
+        bg: 'radial-gradient(circle at center, rgba(56, 189, 248, 0.3) 0%, transparent 70%)'
+      }
+    ];
+
+    let currentSceneIdx = 0;
+    let isPlaying = true;
+    let activeTab = 'video'; // 'video' | 'poster'
+
     overlay.innerHTML = `
-      <div style="max-width: 820px; width: 100%; text-align: center;">
-        <div style="position: relative; border-radius: 20px; overflow: hidden; border: 3px solid #38bdf8; box-shadow: 0 0 50px rgba(56, 189, 248, 0.6); margin-bottom: 24px; background: #090d16;">
-          <img src="./src/assets/splash_cover.jpg" onerror="this.onerror=null; this.src='splash_cover.jpg';" alt="Class Live Quiz" style="width: 100%; max-height: 440px; object-fit: cover; display: block;">
+      <div style="max-width: 860px; width: 100%; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;">
+        
+        <!-- 상단 탭 전환 -->
+        <div style="display: flex; gap: 10px; background: rgba(15, 23, 42, 0.8); padding: 5px; border-radius: 999px; border: 1px solid var(--border);">
+          <button type="button" id="btn-tab-intro-video" style="padding: 7px 18px; border-radius: 999px; border: none; font-size: 0.92rem; font-weight: 900; cursor: pointer; background: #38bdf8; color: #020617; transition: all 0.2s ease;">
+            🎬 모션 타이포그래피 홍보 영상
+          </button>
+          <button type="button" id="btn-tab-intro-poster" style="padding: 7px 18px; border-radius: 999px; border: none; font-size: 0.92rem; font-weight: 700; cursor: pointer; background: transparent; color: var(--text-muted); transition: all 0.2s ease;">
+            🖼️ 포스터 보기
+          </button>
         </div>
-        <h1 style="font-size: 2.3rem; color: #38bdf8; font-weight: 900; margin: 0 0 10px 0; text-shadow: 0 0 20px rgba(56, 189, 248, 0.8); font-family: Cafe24Surround, sans-serif;">
-          ⚡ CLASS LIVE QUIZ
-        </h1>
-        <p style="font-size: 1.15rem; color: #cbd5e1; font-weight: bold; margin: 0; line-height: 1.6;">
-          교실 전자칠판 · 교사 PC · 학생 스마트폰을 실시간 클라우드로 이어주는 참여형 퀴즈 플랫폼
-        </p>
+
+        <!-- 1. 타이포그래피 모션 영상 컨테이너 -->
+        <div id="intro-video-container" style="width: 100%; border-radius: 20px; overflow: hidden; border: 2.5px solid #38bdf8; box-shadow: 0 0 50px rgba(56, 189, 248, 0.4); background: #090d16; position: relative; min-height: 420px; display: flex; flex-direction: column; justify-content: space-between; padding: 36px 28px; box-sizing: border-box;">
+          
+          <div id="promo-scene-box" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: all 0.4s ease;">
+            <div id="promo-scene-badge" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 999px; font-size: 0.95rem; font-weight: 900; background: rgba(56, 189, 248, 0.15); border: 1px solid #38bdf8; color: #38bdf8; margin-bottom: 20px; letter-spacing: 1px;">
+              ⚡ CLASS LIVE QUIZ
+            </div>
+            <div id="promo-scene-icon" style="font-size: 4.5rem; margin-bottom: 18px; filter: drop-shadow(0 0 20px rgba(56, 189, 248, 0.6));">
+              📱
+            </div>
+            <h2 id="promo-scene-title" style="font-size: 2.3rem; font-weight: 900; color: #ffffff; margin: 0 0 14px 0; text-shadow: 0 2px 10px rgba(0,0,0,0.8); line-height: 1.3; word-break: keep-all; font-family: Cafe24Surround, sans-serif;">
+              교실을 뒤흔드는 실시간 퀴즈 배틀!
+            </h2>
+            <p id="promo-scene-desc" style="font-size: 1.25rem; font-weight: 700; color: #cbd5e1; margin: 0; line-height: 1.5; word-break: keep-all; max-width: 680px;">
+              스마트폰 QR 스캔 한 번으로 전원 1초 동시 접속!
+            </p>
+          </div>
+
+          <!-- 영상 프로그레스 바 & 컨트롤 -->
+          <div style="width: 100%; margin-top: 24px;">
+            <div style="width: 100%; height: 6px; background: rgba(255, 255, 255, 0.15); border-radius: 999px; overflow: hidden; margin-bottom: 14px;">
+              <div id="promo-progress-bar" style="width: 16.6%; height: 100%; background: linear-gradient(90deg, #38bdf8, #ec4899); border-radius: 999px; transition: width 0.3s ease;"></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" id="btn-toggle-promo-play" class="btn btn-outline-sm" style="padding: 4px 10px; font-size: 0.82rem; border-color: #38bdf8; color: #38bdf8; font-weight: bold; border-radius: 6px;">
+                  ⏸️ 일시정지
+                </button>
+                <button type="button" id="btn-restart-promo" class="btn btn-outline-sm" style="padding: 4px 10px; font-size: 0.82rem; border-color: #475569; color: #94a3b8; border-radius: 6px;">
+                  🔄 처음부터
+                </button>
+                <span id="promo-scene-counter" style="font-size: 0.85rem; color: var(--text-muted); font-weight: bold; margin-left: 6px;">1 / 6</span>
+              </div>
+              <div style="display: flex; gap: 6px;">
+                <button type="button" class="btn-step-scene" data-step="-1" style="background: rgba(255,255,255,0.08); border: 1px solid var(--border); color: #fff; border-radius: 6px; padding: 4px 10px; font-size: 0.82rem; cursor: pointer;">◀ 이전 씬</button>
+                <button type="button" class="btn-step-scene" data-step="1" style="background: rgba(255,255,255,0.08); border: 1px solid var(--border); color: #fff; border-radius: 6px; padding: 4px 10px; font-size: 0.82rem; cursor: pointer;">다음 씬 ▶</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. 기존 포스터 이미지 뷰 (탭 전환 시) -->
+        <div id="intro-poster-container" style="display: none; width: 100%; border-radius: 20px; overflow: hidden; border: 2.5px solid #38bdf8; box-shadow: 0 0 50px rgba(56, 189, 248, 0.4); background: #090d16;">
+          <img src="./src/assets/splash_cover.jpg" onerror="this.onerror=null; this.src='splash_cover.jpg';" alt="Class Live Quiz" style="width: 100%; max-height: 420px; object-fit: cover; display: block;">
+        </div>
+
+        <!-- 하단 본 화면 들어가기 & 다시 보지 않기 컨트롤 -->
+        <div style="width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 6px;">
+          <button type="button" id="btn-enter-main-app" class="btn btn-primary" style="font-size: 1.35rem; padding: 14px 48px; font-weight: 900; background: linear-gradient(135deg, #0284c7, #2563eb); border: none; border-radius: 14px; box-shadow: 0 6px 0 #1d4ed8, 0 12px 28px rgba(2, 132, 199, 0.45); cursor: pointer; letter-spacing: 0.5px;">
+            🚀 클래스 라이브 퀴즈 시작하기 (들어가기)
+          </button>
+          
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 0.95rem; color: #94a3b8; cursor: pointer; margin-top: 2px;">
+            <input type="checkbox" id="cb-never-show-splash" style="width: 17px; height: 17px; cursor: pointer;">
+            <span>☑️ 다음 접속부터 이 인트로 화면 다시 보지 않기</span>
+          </label>
+        </div>
       </div>
     `;
 
     document.body.appendChild(overlay);
 
-    setTimeout(() => {
+    const closeSplash = (neverAgain = false) => {
+      if (introVideoAnimInterval) {
+        clearInterval(introVideoAnimInterval);
+        introVideoAnimInterval = null;
+      }
+      if (neverAgain) {
+        localStorage.setItem('class_quiz_hide_intro', 'true');
+      }
       overlay.style.opacity = '0';
-      overlay.style.transform = 'scale(1.05)';
+      overlay.style.transform = 'scale(1.04)';
+      setTimeout(() => overlay.remove(), 400);
+    };
+
+    const updateSceneDOM = (idx) => {
+      currentSceneIdx = ((idx % promoScenes.length) + promoScenes.length) % promoScenes.length;
+      const scene = promoScenes[currentSceneIdx];
+      const box = document.getElementById('promo-scene-box');
+      const badge = document.getElementById('promo-scene-badge');
+      const icon = document.getElementById('promo-scene-icon');
+      const title = document.getElementById('promo-scene-title');
+      const desc = document.getElementById('promo-scene-desc');
+      const pBar = document.getElementById('promo-progress-bar');
+      const counter = document.getElementById('promo-scene-counter');
+
+      if (!box || !badge || !icon || !title || !desc || !pBar || !counter) return;
+
+      box.style.transform = 'scale(0.96)';
+      box.style.opacity = '0.5';
+
       setTimeout(() => {
-        overlay.remove();
-      }, 800);
-    }, 2300);
+        badge.textContent = scene.badge;
+        badge.style.borderColor = scene.color;
+        badge.style.color = scene.color;
+        badge.style.background = scene.color + '22';
+
+        icon.textContent = scene.icon;
+        title.textContent = scene.title;
+        desc.textContent = scene.desc;
+
+        pBar.style.width = ((currentSceneIdx + 1) / promoScenes.length * 100) + '%';
+        pBar.style.background = `linear-gradient(90deg, ${scene.color}, #ec4899)`;
+        counter.textContent = `${currentSceneIdx + 1} / ${promoScenes.length}`;
+
+        box.style.transform = 'scale(1)';
+        box.style.opacity = '1';
+      }, 150);
+    };
+
+    // 3.2초마다 다음 씬 자동 전환 (모션 그래픽 재생)
+    introVideoAnimInterval = setInterval(() => {
+      if (isPlaying) {
+        updateSceneDOM(currentSceneIdx + 1);
+      }
+    }, 3200);
+
+    // 탭 전환
+    const videoCont = document.getElementById('intro-video-container');
+    const posterCont = document.getElementById('intro-poster-container');
+    const tabVideoBtn = document.getElementById('btn-tab-intro-video');
+    const tabPosterBtn = document.getElementById('btn-tab-intro-poster');
+
+    tabVideoBtn?.addEventListener('click', () => {
+      activeTab = 'video';
+      videoCont.style.display = 'flex';
+      posterCont.style.display = 'none';
+      tabVideoBtn.style.background = '#38bdf8';
+      tabVideoBtn.style.color = '#020617';
+      tabPosterBtn.style.background = 'transparent';
+      tabPosterBtn.style.color = 'var(--text-muted)';
+    });
+
+    tabPosterBtn?.addEventListener('click', () => {
+      activeTab = 'poster';
+      videoCont.style.display = 'none';
+      posterCont.style.display = 'block';
+      tabPosterBtn.style.background = '#38bdf8';
+      tabPosterBtn.style.color = '#020617';
+      tabVideoBtn.style.background = 'transparent';
+      tabVideoBtn.style.color = 'var(--text-muted)';
+    });
+
+    // 영상 컨트롤러
+    const togglePlayBtn = document.getElementById('btn-toggle-promo-play');
+    togglePlayBtn?.addEventListener('click', () => {
+      isPlaying = !isPlaying;
+      togglePlayBtn.textContent = isPlaying ? '⏸️ 일시정지' : '▶️ 재생';
+    });
+
+    document.getElementById('btn-restart-promo')?.addEventListener('click', () => {
+      updateSceneDOM(0);
+    });
+
+    overlay.querySelectorAll('.btn-step-scene').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const step = Number(e.currentTarget.dataset.step);
+        updateSceneDOM(currentSceneIdx + step);
+      });
+    });
+
+    // 들어가기 버튼
+    document.getElementById('btn-enter-main-app')?.addEventListener('click', () => {
+      const neverAgain = document.getElementById('cb-never-show-splash')?.checked || false;
+      closeSplash(neverAgain);
+    });
+
+    // 다시 보지 않기 체크박스 클릭 즉시 반영 옵션
+    document.getElementById('cb-never-show-splash')?.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        localStorage.setItem('class_quiz_hide_intro', 'true');
+      } else {
+        localStorage.removeItem('class_quiz_hide_intro');
+      }
+    });
   }
 
   function initRouter() {
@@ -1188,9 +1495,10 @@
         <p class="home-subtitle">전자칠판과 학생 스마트폰을 실시간으로 잇는 반응형 퀴즈</p>
 
         <div style="margin-bottom: 25px; display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;">
-          <span class="room-badge" style="font-size: 0.95rem; cursor: pointer; background: rgba(16, 185, 129, 0.2); border-color: #10b981; color: #10b981;" id="btn-open-fb-info">
-            🟢 Firebase 실시간 DB 자동 연결됨 (클릭 시 사용 안내)
+          <span class="room-badge" style="font-size: 0.95rem; cursor: pointer; ${firebaseCloudStatus === 'unauthorized' ? 'background: rgba(239, 68, 68, 0.2); border-color: #ef4444; color: #fca5a5;' : (firebaseCloudStatus === 'connected' ? 'background: rgba(16, 185, 129, 0.2); border-color: #10b981; color: #10b981;' : 'background: rgba(245, 158, 11, 0.2); border-color: #f59e0b; color: #fbbf24;')}" id="btn-open-fb-info">
+            ${firebaseCloudStatus === 'unauthorized' ? '🔴 클라우드 DB 설정 필요 (타 기기/학생 연동용 - 클릭하여 1분 무료 연결)' : (firebaseCloudStatus === 'connected' ? '🟢 실시간 클라우드 DB 정상 연동 중 (기기간 동기화 활성)' : '🟡 클라우드 DB 연결 확인 중...')}
           </span>
+          <button type="button" id="btn-reopen-intro" class="btn btn-outline-sm" style="border-radius: 999px; border-color: #38bdf8; color: #38bdf8; font-weight: bold; padding: 6px 14px; font-size: 0.88rem; cursor: pointer; background: rgba(56, 189, 248, 0.1);">🎬 인트로/홍보영상 다시보기</button>
           <select class="select-theme-dropdown" id="select-theme-home" style="padding: 8px 14px; border-radius: 999px; background: var(--color-surface); color: var(--color-text); border: 1px solid var(--primary); font-size: 0.9rem; font-weight: bold; cursor: pointer;">
             <option value="tv" ${getSavedTheme() === 'tv' ? 'selected' : ''}>📺 스마트 TV 테마</option>
             <option value="chalkboard" ${getSavedTheme() === 'chalkboard' ? 'selected' : ''}>🧹 초록 칠판 테마</option>
@@ -1235,10 +1543,14 @@
             <h2 style="font-size: 1.3rem; color: #38bdf8; display: flex; align-items: center; gap: 8px; margin: 0;">
               📁 내가 생성한 퀴즈 방 목록 <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: normal;">(이 기기 전용 / 3일 지나면 자동 정리)</span>
             </h2>
-            <div style="display: flex; gap: 10px; align-items: center;">
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
               <button type="button" id="btn-import-remote-room" class="btn btn-outline-sm" style="font-size: 0.85rem; padding: 6px 14px; color: #38bdf8; border-color: #38bdf8; background: rgba(56, 189, 248, 0.12); cursor: pointer; font-weight: bold; border-radius: 8px;">
                 🔑 다른 기기 퀴즈 방 가져오기 (PIN 등록)
               </button>
+              <label class="btn btn-outline-sm" style="font-size: 0.85rem; padding: 6px 14px; color: #10b981; border-color: #10b981; background: rgba(16, 185, 129, 0.12); cursor: pointer; font-weight: bold; border-radius: 8px; margin: 0; display: inline-flex; align-items: center;">
+                📥 문항 파일(.json)로 새 방 만들기
+                <input type="file" id="input-import-quiz-file-home" accept=".json" style="display: none;">
+              </label>
               <span style="font-size: 0.9rem; color: #fbbf24; font-weight: bold;">보관: ${localRooms.length}개</span>
             </div>
           </div>
@@ -1475,7 +1787,48 @@
 
     document.getElementById('btn-create-room')?.addEventListener('click', handleCreateRoom);
     document.getElementById('btn-standalone-coin-race')?.addEventListener('click', () => openStandaloneCoinRaceModal());
-    document.getElementById('btn-open-fb-info')?.addEventListener('click', openFirebaseInfoModal);
+    checkFirebaseCloudConnection().then(() => updateFirebaseStatusUI());
+
+    document.getElementById('btn-reopen-intro')?.addEventListener('click', () => {
+      showAppSplashScreen(true);
+    });
+
+    document.getElementById('btn-open-fb-info')?.addEventListener('click', () => {
+      if (firebaseCloudStatus === 'unauthorized') {
+        openFirebaseCustomModal();
+      } else {
+        openFirebaseInfoModal();
+      }
+    });
+
+    document.getElementById('input-import-quiz-file-home')?.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        try {
+          const parsed = JSON.parse(ev.target.result);
+          const qList = Array.isArray(parsed.questions) ? parsed.questions : (Array.isArray(parsed) ? parsed : []);
+          if (qList.length === 0) return alert('❌ 파일 안에 문항이 없습니다.');
+          const newRoomId = generateRoomId();
+          state.roomId = newRoomId;
+          const newTitle = parsed.title || '가져온 퀴즈';
+          const newPass = parsed.adminPassword || '';
+          const initialRoomData = {
+            meta: { title: newTitle, adminPassword: newPass, createdAt: Date.now(), status: 'LOBBY', currentQuestionIndex: 0, questionCount: qList.length },
+            questions: qList,
+            participants: {}
+          };
+          await createRoom(newRoomId, initialRoomData);
+          saveMyLocalQuizRoom({ roomId: newRoomId, title: newTitle, adminPassword: newPass, questionCount: qList.length, createdAt: Date.now() });
+          alert(`✅ [${newTitle}] (${qList.length}문항) 퀴즈 방이 새로 생성되었습니다!`);
+          window.location.search = `?room=${newRoomId}&role=teacher`;
+        } catch (err) {
+          alert('❌ 파일 읽기 실패: 올바른 JSON 파일인지 확인해 주세요.');
+        }
+      };
+      reader.readAsText(file);
+    });
     document.getElementById('select-theme-home')?.addEventListener('change', (e) => setTheme(e.target.value));
     document.getElementById('btn-enter-display')?.addEventListener('click', () => {
       const pin = document.getElementById('input-display-pin').value.trim();
@@ -1661,7 +2014,12 @@
       }
 
       if (!roomData || !roomData.meta) {
-        alert(`❌ PIN [${cleanPin}] 퀴즈 방을 찾을 수 없습니다.\nPIN 번호를 다시 확인해 주세요.`);
+        if (firebaseCloudStatus === 'unauthorized') {
+          alert(`❌ PIN [${cleanPin}] 퀴즈 방을 찾을 수 없습니다.\n\n⚠️ 현재 실시간 클라우드 DB 연결 권한이 닫혀 있어 다른 기기에서 생성된 방을 가져올 수 없습니다.\n상단의 [🔴 클라우드 DB 설정 필요]를 클릭해 1분 무료 Firebase DB를 연결해 주세요.`);
+          openFirebaseCustomModal();
+        } else {
+          alert(`❌ PIN [${cleanPin}] 퀴즈 방을 찾을 수 없습니다.\nPIN 번호를 다시 확인하거나, 방을 생성한 컴퓨터가 클라우드 DB에 연결되어 있는지 확인해 주세요.`);
+        }
         return;
       }
 
@@ -1726,8 +2084,8 @@
   }
 
   function renderHostLobbyView(app, isTeacherControl) {
-    const baseUrl = window.location.origin + window.location.pathname;
-    const studentJoinUrl = `${baseUrl}?room=${state.roomId}&role=student`;
+    const studentJoinUrl = getStudentJoinUrl(state.roomId);
+    const isFileProtocol = !studentJoinUrl;
     const questions = state.roomData?.questions || [];
 
     const existingLobby = document.getElementById('lobby-layout-box');
@@ -1741,19 +2099,22 @@
     app.innerHTML = `
       <div class="lobby-layout" id="lobby-layout-box">
         <div class="lobby-header">
-          <div style="display: flex; align-items: center;">
+          <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px;">
             <span class="room-badge">방 PIN : ${state.roomId}</span>
-            <button class="btn btn-secondary" id="btn-go-home-lobby" style="margin-left: 12px; font-weight: bold; padding: 6px 14px; font-size: 0.9rem;">🏠 메인으로</button>
-            <select id="select-theme-lobby" class="select-theme-dropdown" style="margin-left: 12px; padding: 6px 12px; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid var(--border); font-size: 0.9rem; font-weight: bold; cursor: pointer;">
+            <button class="btn btn-secondary" id="btn-go-home-lobby" style="font-weight: bold; padding: 6px 14px; font-size: 0.9rem;">🏠 메인으로</button>
+            <select id="select-theme-lobby" class="select-theme-dropdown" style="padding: 6px 12px; border-radius: 8px; background: #1e293b; color: #fff; border: 1px solid var(--border); font-size: 0.9rem; font-weight: bold; cursor: pointer;">
               <option value="tv" ${getSavedTheme() === 'tv' ? 'selected' : ''}>📺 스마트 TV</option>
               <option value="chalkboard" ${getSavedTheme() === 'chalkboard' ? 'selected' : ''}>🧹 초록 칠판</option>
               <option value="marble" ${getSavedTheme() === 'marble' ? 'selected' : ''}>🏛️ 깔끔 대리석</option>
               <option value="woodlock" ${getSavedTheme() === 'woodlock' ? 'selected' : ''}>🪵 우드락 보드</option>
             </select>
-            <div style="margin-left: 12px; display: inline-flex;">
+            <div style="display: inline-flex;">
               ${renderBgmVolumeControlHtml('lobby')}
             </div>
-            ${!isTeacherControl ? '<span style="margin-left: 12px; color: #38bdf8; font-weight: bold;">[전자칠판 디스플레이 모드]</span>' : ''}
+            <button type="button" id="btn-lobby-fb-alert" class="btn btn-danger" style="font-size: 0.85rem; padding: 6px 12px; font-weight: bold; border-radius: 8px; cursor: pointer; ${firebaseCloudStatus === 'unauthorized' ? 'display: inline-flex;' : 'display: none;'}">
+              🔴 클라우드 DB 미연결 (학생 접속 불가 - 클릭하여 1분 해결)
+            </button>
+            ${!isTeacherControl ? '<span style="color: #38bdf8; font-weight: bold;">[전자칠판 디스플레이 모드]</span>' : ''}
           </div>
           <div style="display: flex; gap: 12px;">
             <button class="btn btn-secondary" id="btn-open-edit">📝 문제 출제 / 편집 (${questions.length}개)</button>
@@ -1771,16 +2132,37 @@
           <div class="qr-box">
             <h2>스마트폰으로 참여하세요</h2>
             <div class="pin-number">${state.roomId}</div>
-            <div class="qr-canvas-container" id="qr-canvas-container" style="background:#fff; padding:10px; border-radius:12px;"></div>
-            <div style="color: var(--text-muted); font-size: 0.95rem; word-break: break-all; margin-top: 12px;">
-              <span>접속 주소:</span>
-              <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 6px; flex-wrap: wrap;">
-                <strong style="color: #38bdf8; font-size: 0.95rem; word-break: break-all; user-select: all; background: #0f172a; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);">${studentJoinUrl}</strong>
-                <button type="button" id="btn-copy-student-url" class="btn btn-outline-sm" style="padding: 6px 12px; font-size: 0.85rem; border-color: #38bdf8; color: #38bdf8; font-weight: bold; cursor: pointer; white-space: nowrap; background: rgba(56, 189, 248, 0.15);">
-                  📋 URL 복사
+            
+            ${isFileProtocol ? `
+              <div id="qr-canvas-container" style="background: #0f172a; border: 2px dashed #f59e0b; border-radius: 12px; padding: 20px 16px; margin: 10px 0; text-align: center; color: #fbbf24;">
+                <div style="font-size: 2.2rem; margin-bottom: 6px;">📱⚠️</div>
+                <div style="font-weight: 800; font-size: 1.05rem; margin-bottom: 8px; color: #ffffff;">로컬 파일(file://)로 실행 중입니다</div>
+                <p style="font-size: 0.88rem; color: #cbd5e1; margin-bottom: 14px; line-height: 1.5;">
+                  학생 스마트폰은 선생님 컴퓨터의 로컬 파일에 직접 접속할 수 없습니다.<br>
+                  웹 배포 주소(Vercel 등)를 등록하시면 <strong>즉시 스마트폰 접속용 QR코드</strong>가 생성됩니다!
+                </p>
+                <button type="button" id="btn-set-lobby-public-url" class="btn btn-primary" style="background: linear-gradient(135deg, #0284c7, #2563eb); border: none; font-weight: bold; padding: 8px 18px; font-size: 0.95rem; cursor: pointer;">
+                  🌐 학생 접속용 웹 주소 등록하기
                 </button>
               </div>
-            </div>
+              <div style="color: var(--text-muted); font-size: 0.88rem; margin-top: 8px;">
+                💡 또는 학생이 웹 주소로 접속 후 위 <strong>PIN [${state.roomId}]</strong>을 입력해도 참여할 수 있습니다.
+              </div>
+            ` : `
+              <div class="qr-canvas-container" id="qr-canvas-container" style="background:#fff; padding:10px; border-radius:12px; display: inline-block;"></div>
+              <div style="color: var(--text-muted); font-size: 0.95rem; word-break: break-all; margin-top: 12px;">
+                <span>접속 주소:</span>
+                <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 6px; flex-wrap: wrap;">
+                  <strong style="color: #38bdf8; font-size: 0.95rem; word-break: break-all; user-select: all; background: #0f172a; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);">${studentJoinUrl}</strong>
+                  <button type="button" id="btn-copy-student-url" class="btn btn-outline-sm" style="padding: 6px 12px; font-size: 0.85rem; border-color: #38bdf8; color: #38bdf8; font-weight: bold; cursor: pointer; white-space: nowrap; background: rgba(56, 189, 248, 0.15);">
+                    📋 URL 복사
+                  </button>
+                  <button type="button" id="btn-edit-student-weburl" class="btn btn-outline-sm" style="padding: 6px 10px; font-size: 0.82rem; border-color: #a855f7; color: #c084fc; font-weight: bold; cursor: pointer; white-space: nowrap;">
+                    ✏️ 웹 주소 변경
+                  </button>
+                </div>
+              </div>
+            `}
           </div>
 
           <div class="participants-box">
@@ -1795,10 +2177,23 @@
     `;
 
     const qrContainer = document.getElementById('qr-canvas-container');
-    if (qrContainer && window.QRCode) {
+    if (!isFileProtocol && qrContainer && window.QRCode) {
       qrContainer.innerHTML = '';
       new window.QRCode(qrContainer, { text: studentJoinUrl, width: 200, height: 200 });
     }
+
+    document.getElementById('btn-lobby-fb-alert')?.addEventListener('click', openFirebaseCustomModal);
+
+    const handleSetPublicWebUrlPrompt = () => {
+      const cur = getPublicWebUrl();
+      const input = prompt('학생 스마트폰이 접속할 웹 배포 주소(예: https://my-quiz.vercel.app 또는 http://192.168.0.x:5173)를 입력해 주세요:', cur);
+      if (input !== null) {
+        setPublicWebUrl(input.trim());
+        renderHostLobbyView(app, isTeacherControl);
+      }
+    };
+    document.getElementById('btn-set-lobby-public-url')?.addEventListener('click', handleSetPublicWebUrlPrompt);
+    document.getElementById('btn-edit-student-weburl')?.addEventListener('click', handleSetPublicWebUrlPrompt);
 
     updateParticipantList(state.roomData?.participants || {});
 
@@ -2095,6 +2490,20 @@
             </div>
             <button type="button" class="btn btn-primary btn-open-batch-modal-2" style="background: linear-gradient(135deg, #8b5cf6, #ec4899); border: none; font-size: 0.9rem; padding: 8px 16px; font-weight: bold; cursor: pointer;">⚡ 텍스트 1초 일괄 출제</button>
           </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding: 10px 14px; background: rgba(56, 189, 248, 0.08); border: 1px dashed #38bdf8; border-radius: 8px; flex-wrap: wrap; gap: 8px;">
+            <span style="font-size: 0.88rem; color: #cbd5e1; font-weight: bold;">
+              💾 오프라인 백업 / 기기 간 수동 이동:
+            </span>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" id="btn-export-quiz-json" class="btn btn-outline-sm" style="font-size: 0.82rem; padding: 5px 12px; border-color: #38bdf8; color: #38bdf8; font-weight: bold; cursor: pointer;">
+                📥 문항 파일 다운로드 (.json)
+              </button>
+              <label class="btn btn-outline-sm" style="font-size: 0.82rem; padding: 5px 12px; border-color: #10b981; color: #10b981; font-weight: bold; cursor: pointer; margin: 0; display: inline-flex; align-items: center;">
+                📤 문항 파일 불러오기
+                <input type="file" id="input-import-quiz-json" accept=".json" style="display: none;">
+              </label>
+            </div>
+          </div>
           <div class="modal-actions">
             <button class="btn btn-secondary" id="btn-cancel-admin">닫기</button>
             <button class="btn btn-primary" id="btn-save-questions">저장 및 반영하기</button>
@@ -2358,6 +2767,55 @@
     });
     document.getElementById('btn-cancel-admin').addEventListener('click', () => {
       document.getElementById('admin-modal').remove();
+    });
+
+    document.getElementById('btn-export-quiz-json')?.addEventListener('click', () => {
+      const currentTitleInput = document.getElementById('input-admin-room-title');
+      const fileTitle = (currentTitleInput?.value.trim() || currentTitle || '퀴즈').replace(/[^\w가-힣]/g, '_');
+      const exportData = {
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+        title: currentTitleInput?.value.trim() || currentTitle || '실시간 수업 퀴즈',
+        adminPassword: document.getElementById('input-admin-password')?.value.trim() || '',
+        questions: questions
+      };
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `퀴즈_${fileTitle}_문항백업.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+
+    document.getElementById('input-import-quiz-json')?.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const data = JSON.parse(event.target.result);
+          if (Array.isArray(data.questions)) {
+            questions = data.questions;
+            if (data.title && document.getElementById('input-admin-room-title')) {
+              document.getElementById('input-admin-room-title').value = data.title;
+            }
+            if (data.adminPassword && document.getElementById('input-admin-password')) {
+              document.getElementById('input-admin-password').value = data.adminPassword;
+            }
+            renderEditorList();
+            alert(`✅ [${questions.length}개]의 문항을 파일에서 성공적으로 불러왔습니다!\n[저장 및 반영하기]를 누르면 방에 저장됩니다.`);
+          } else if (Array.isArray(data)) {
+            questions = data;
+            renderEditorList();
+            alert(`✅ [${questions.length}개]의 문항을 불러왔습니다!`);
+          } else {
+            alert('❌ 올바른 퀴즈 JSON 형식이 아닙니다.');
+          }
+        } catch (err) {
+          alert('❌ 파일 읽기 실패: 올바른 JSON 파일인지 확인해 주세요.');
+        }
+      };
+      reader.readAsText(file);
     });
     document.getElementById('btn-save-questions').addEventListener('click', async () => {
       const newTitleInput = document.getElementById('input-admin-room-title');
@@ -5712,6 +6170,9 @@
     if (!modal) return;
 
     const savedCustom = localStorage.getItem('class_quiz_fb_config');
+    const publicWebUrlInput = document.getElementById('fb-publicWebUrl');
+    if (publicWebUrlInput) publicWebUrlInput.value = getPublicWebUrl();
+
     if (savedCustom) {
       try {
         const parsed = JSON.parse(savedCustom);
@@ -5737,19 +6198,27 @@
   document.getElementById('btn-close-fb-custom')?.addEventListener('click', closeFirebaseCustomModal);
 
   document.getElementById('btn-save-fb')?.addEventListener('click', () => {
-    const apiKey = document.getElementById('fb-apiKey').value.trim();
     const databaseURL = document.getElementById('fb-dbUrl').value.trim();
+    const publicWebUrl = document.getElementById('fb-publicWebUrl')?.value.trim() || '';
+    const apiKey = document.getElementById('fb-apiKey').value.trim();
     const projectId = document.getElementById('fb-projectId').value.trim();
-    if (!apiKey || !databaseURL) return alert('API Key와 Database URL은 필수입니다.');
+
+    if (!databaseURL) {
+      return alert('Database URL(Realtime Database URL)을 입력해 주세요.\n(예: https://xxxx-default-rtdb.firebaseio.com)');
+    }
+
     saveFirebaseConfig({ apiKey, databaseURL, projectId });
-    alert('개인 Firebase 설정이 저장되었습니다. 페이지를 새로고침합니다.');
+    setPublicWebUrl(publicWebUrl);
+
+    alert('✅ 설정이 성공적으로 저장되었습니다!\n페이지를 새로고침하여 클라우드 DB 연결을 시작합니다.');
     window.location.reload();
   });
 
   document.getElementById('btn-reset-fb')?.addEventListener('click', () => {
-    if (confirm('기본 탑재 클라우드 DB 연결로 복원하시겠습니까?')) {
+    if (confirm('클라우드 DB 및 웹 주소 설정을 초기화하시겠습니까?')) {
       localStorage.removeItem('class_quiz_fb_config');
-      alert('기본 연결로 복원되었습니다. 새로고침합니다.');
+      localStorage.removeItem('class_quiz_public_web_url');
+      alert('설정이 초기화되었습니다. 새로고침합니다.');
       window.location.reload();
     }
   });
