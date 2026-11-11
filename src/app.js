@@ -359,6 +359,7 @@
     document.querySelectorAll('.select-theme-dropdown').forEach(sel => {
       sel.value = selected;
     });
+    updateHwfThemePalette(selected);
   }
 
   const defaultQuestions = [];
@@ -1391,6 +1392,7 @@
     showAppSplashScreen();
 
     setTheme(getSavedTheme());
+    initHalftoneWordmarkFooter();
 
     const params = new URLSearchParams(window.location.search);
     const roomId = params.get('room');
@@ -7064,6 +7066,368 @@
 
     // Initial render
     setTimeout(updateGraph, 30);
+  }
+
+  // 하프톤 워드마크 푸터(Halftone Wordmark Footer) 순수 수학 헬퍼 & Canvas 2D 엔진
+  const HWF_SANS_STACK = '"Inter Tight", "Inter", "Pretendard", "Helvetica Neue", "Segoe UI", Arial, system-ui, sans-serif';
+  const HWF_THEME_PALETTES = {
+    tv: { background: '#0c0c0b', ink: '#e9e4da', warm: '#e9762b' },
+    chalkboard: { background: '#091f13', ink: '#e8efe9', warm: '#fde047' },
+    marble: { background: '#0d1b4d', ink: '#dfe7ff', warm: '#ffcd3c' },
+    woodlock: { background: '#160a06', ink: '#f2c48c', warm: '#ff5a1f' }
+  };
+  let hwfController = null;
+
+  function hwfHex(hex) {
+    const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec((hex || '').trim());
+    if (!m) return null;
+    const h = m[1].length === 3 ? m[1].split('').map((c) => c + c).join('') : m[1];
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  }
+
+  function hwfRadius(coverage, gap) {
+    const c = coverage < 0 ? 0 : coverage > 1 ? 1 : coverage;
+    return Math.sqrt(c) * gap * 0.56;
+  }
+
+  function hwfStep(x, y, vx, vy, hx, hy, px, py, r) {
+    const dx = x - px;
+    const dy = y - py;
+    const d2 = dx * dx + dy * dy;
+    if (r > 0 && d2 < r * r) {
+      const d = Math.sqrt(d2) + 0.001;
+      const f = (1 - d / r) * 2.6;
+      vx += (dx / d) * f;
+      vy += (dy / d) * f;
+    }
+    vx = (vx + (hx - x) * 0.05) * 0.84;
+    vy = (vy + (hy - y) * 0.05) * 0.84;
+    return [x + vx, y + vy, vx, vy];
+  }
+
+  function hwfWarmth(x, y, hx, hy, span) {
+    const d = Math.hypot(x - hx, y - hy);
+    return span > 0 ? Math.min(1, d / span) : 0;
+  }
+
+  function hwfFitSize(measured, width) {
+    return measured > 0 ? (width / measured) * 100 : 0;
+  }
+
+  function updateHwfThemePalette(themeName) {
+    if (hwfController && typeof hwfController.setTheme === 'function') {
+      hwfController.setTheme(themeName);
+    }
+  }
+
+  function initHalftoneWordmarkFooter() {
+    const root = document.getElementById('hwf-footer');
+    const canvas = document.getElementById('hwf-canvas');
+    if (!root || !canvas || hwfController) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // 푸터 내비게이션 버튼 및 링크 동작 연결
+    const scrollTopSmooth = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+    document.getElementById('hwf-back-to-top')?.addEventListener('click', scrollTopSmooth);
+    document.getElementById('hwf-btn-creator-info')?.addEventListener('click', scrollTopSmooth);
+
+    document.getElementById('hwf-btn-create')?.addEventListener('click', () => {
+      const btn = document.getElementById('btn-create-room');
+      if (btn) {
+        btn.click();
+      } else if (confirm('메인 화면으로 이동해 새 퀴즈 방을 만드시겠습니까?')) {
+        window.location.search = '';
+      }
+    });
+
+    document.getElementById('hwf-btn-race')?.addEventListener('click', () => {
+      openStandaloneCoinRaceModal();
+    });
+
+    document.getElementById('hwf-btn-join')?.addEventListener('click', () => {
+      const input = document.getElementById('input-student-pin');
+      if (input) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        setTimeout(() => input.focus(), 350);
+      } else {
+        window.location.search = '';
+      }
+    });
+
+    document.getElementById('hwf-btn-intro')?.addEventListener('click', () => {
+      showAppSplashScreen(true);
+    });
+
+    document.getElementById('hwf-btn-cloud')?.addEventListener('click', () => {
+      openFirebaseCustomModal();
+    });
+
+    document.getElementById('hwf-btn-guide')?.addEventListener('click', () => {
+      const divider = document.querySelector('.landing-scroll-divider');
+      if (divider) {
+        divider.scrollIntoView({ behavior: 'smooth' });
+      } else {
+        scrollTopSmooth();
+      }
+    });
+
+    // 레퍼런스 규격 하프톤 도트 워드마크 캔버스 엔진
+    const wordmark = 'Class Live Quiz';
+    const crop = 0.2;
+    const grain = 0.5;
+    const fontWeight = 800;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    let palette = HWF_THEME_PALETTES[getSavedTheme()] || HWF_THEME_PALETTES.tv;
+    let inkRgb = hwfHex(palette.ink) || [233, 228, 218];
+    let warmRgb = hwfHex(palette.warm) || [233, 118, 43];
+
+    let w = 0;
+    let h = 0;
+    let dpr = 1;
+    let px = -1e5;
+    let py = -1e5;
+    let raf = 0;
+    let visible = true;
+    let awake = true;
+    let ring = { x: 0, y: 0, t: -1 };
+    let dots = new Float32Array(0);
+    let count = 0;
+    let grainTile = null;
+
+    const applyRootPaletteVars = () => {
+      root.style.setProperty('--hwf-bg', palette.background);
+      root.style.setProperty('--hwf-ink', palette.ink);
+      root.style.setProperty('--hwf-warm', palette.warm);
+      inkRgb = hwfHex(palette.ink) || [233, 228, 218];
+      warmRgb = hwfHex(palette.warm) || [233, 118, 43];
+    };
+    applyRootPaletteVars();
+
+    const layout = () => {
+      const rect = root.getBoundingClientRect();
+      w = Math.max(1, Math.round(rect.width));
+      h = Math.max(1, Math.round(rect.height));
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+
+      const mask = document.createElement('canvas');
+      mask.width = w;
+      mask.height = h;
+      const m = mask.getContext('2d', { willReadFrequently: true });
+      if (!m) return;
+
+      m.font = fontWeight + ' 100px ' + HWF_SANS_STACK;
+      const fit = hwfFitSize(m.measureText(wordmark).width, w * 0.99);
+      m.font = fontWeight + ' ' + fit + 'px ' + HWF_SANS_STACK;
+      const box = m.measureText(wordmark);
+      const cap = box.actualBoundingBoxAscent || fit * 0.72;
+      const c = Math.max(0, Math.min(0.6, crop));
+
+      m.fillStyle = '#000';
+      m.textBaseline = 'alphabetic';
+      m.fillText(wordmark, (w - box.width) / 2, h + cap * c);
+      const img = m.getImageData(0, 0, w, h).data;
+
+      // 모바일 소형 폭에서도 획이 선명하게 맺히도록 간격 자동 보정
+      const gap = w < 640 ? 3 : (w < 960 ? 5 : 6);
+      const cols = Math.ceil(w / gap);
+      const rows = Math.ceil(h / gap);
+      const tmp = [];
+
+      for (let gy = 0; gy < rows; gy++) {
+        for (let gx = 0; gx < cols; gx++) {
+          let sum = 0;
+          for (let sy = 0; sy < 3; sy++) {
+            for (let sx = 0; sx < 3; sx++) {
+              const x = Math.min(w - 1, Math.floor(gx * gap + ((sx + 0.5) * gap) / 3));
+              const y = Math.min(h - 1, Math.floor(gy * gap + ((sy + 0.5) * gap) / 3));
+              sum += img[(y * w + x) * 4 + 3];
+            }
+          }
+          const cov = sum / (9 * 255);
+          if (cov < 0.06) continue;
+          const hx = gx * gap + gap / 2;
+          const hy = gy * gap + gap / 2;
+          tmp.push(hx, hy, 0, 0, hx, hy, hwfRadius(cov, gap));
+        }
+      }
+      dots = new Float32Array(tmp);
+      count = tmp.length / 7;
+
+      // 인쇄물 질감(Print Grain) 타일 1회 생성
+      if (!grainTile) {
+        grainTile = document.createElement('canvas');
+        grainTile.width = 256;
+        grainTile.height = 256;
+        const g = grainTile.getContext('2d');
+        if (g) {
+          const id = g.createImageData(256, 256);
+          for (let i = 0; i < id.data.length; i += 4) {
+            const v = Math.random() * 255;
+            id.data[i] = id.data[i + 1] = id.data[i + 2] = v;
+            id.data[i + 3] = Math.random() < 0.5 ? 0 : 255;
+          }
+          g.putImageData(id, 0, 0);
+        }
+      }
+      awake = true;
+    };
+
+    const draw = (now) => {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = palette.background;
+      ctx.fillRect(0, 0, w, h);
+
+      const radius = w < 640 ? 55 : 80;
+      const r = !reduced ? radius : 0;
+      const ringAge = ring.t < 0 ? 1e9 : now - ring.t;
+      const ringR = ringAge * 0.9;
+      let moving = false;
+
+      for (let i = 0; i < count; i++) {
+        const j = i * 7;
+        let x = dots[j];
+        let y = dots[j + 1];
+        let vx = dots[j + 2];
+        let vy = dots[j + 3];
+        const hx = dots[j + 4];
+        const hy = dots[j + 5];
+
+        if (!reduced) {
+          if (ringAge < 900) {
+            const dx = hx - ring.x;
+            const dy = hy - ring.y;
+            const d = Math.sqrt(dx * dx + dy * dy) + 0.001;
+            const band = 1 - Math.min(1, Math.abs(d - ringR) / 26);
+            if (band > 0) {
+              const f = band * 3.2 * (1 - ringAge / 900);
+              vx += (dx / d) * f;
+              vy += (dy / d) * f;
+            }
+          }
+          const s = hwfStep(x, y, vx, vy, hx, hy, px, py, r);
+          x = s[0];
+          y = s[1];
+          vx = s[2];
+          vy = s[3];
+          if (Math.abs(vx) + Math.abs(vy) > 0.02 || Math.abs(x - hx) + Math.abs(y - hy) > 0.05) {
+            moving = true;
+          } else {
+            x = hx;
+            y = hy;
+            vx = 0;
+            vy = 0;
+          }
+          dots[j] = x;
+          dots[j + 1] = y;
+          dots[j + 2] = vx;
+          dots[j + 3] = vy;
+        }
+
+        const k = hwfWarmth(x, y, hx, hy, 28);
+        ctx.fillStyle =
+          k > 0.02
+            ? 'rgb(' +
+              Math.round(inkRgb[0] + (warmRgb[0] - inkRgb[0]) * k) + ',' +
+              Math.round(inkRgb[1] + (warmRgb[1] - inkRgb[1]) * k) + ',' +
+              Math.round(inkRgb[2] + (warmRgb[2] - inkRgb[2]) * k) + ')'
+            : palette.ink;
+        ctx.beginPath();
+        ctx.arc(x, y, dots[j + 6], 0, 6.2832);
+        ctx.fill();
+      }
+
+      if (grainTile && grain > 0) {
+        ctx.globalAlpha = Math.min(1, grain) * 0.09;
+        ctx.globalCompositeOperation = 'overlay';
+        const pattern = ctx.createPattern(grainTile, 'repeat');
+        if (pattern) {
+          ctx.fillStyle = pattern;
+          ctx.fillRect(0, 0, w, h);
+        }
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+      }
+
+      awake = moving || ringAge < 900 || px > -1e4;
+    };
+
+    const loop = (now) => {
+      raf = 0;
+      if (!visible) return;
+      draw(now);
+      if (awake) raf = requestAnimationFrame(loop);
+    };
+
+    const wake = () => {
+      awake = true;
+      if (!raf && visible) raf = requestAnimationFrame(loop);
+    };
+
+    const toLocal = (e) => {
+      const b = canvas.getBoundingClientRect();
+      return [e.clientX - b.left, e.clientY - b.top];
+    };
+
+    root.addEventListener('pointermove', (e) => {
+      const p = toLocal(e);
+      px = p[0];
+      py = p[1];
+      wake();
+    });
+
+    root.addEventListener('pointerleave', () => {
+      px = -1e5;
+      py = -1e5;
+      wake();
+    });
+
+    root.addEventListener('pointerdown', (e) => {
+      if (reduced) return;
+      if (e.target && typeof e.target.closest === 'function' && e.target.closest('a,button')) return;
+      const p = toLocal(e);
+      ring = { x: p[0], y: p[1], t: performance.now() };
+      wake();
+    });
+
+    layout();
+    draw(performance.now());
+    wake();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => {
+        layout();
+        wake();
+      });
+      ro.observe(root);
+    }
+
+    if (typeof IntersectionObserver !== 'undefined') {
+      const io = new IntersectionObserver((entries) => {
+        visible = entries[0] ? entries[0].isIntersecting : true;
+        if (visible) wake();
+      });
+      io.observe(root);
+    }
+
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => {
+        layout();
+        wake();
+      });
+    }
+
+    hwfController = {
+      setTheme(themeName) {
+        palette = HWF_THEME_PALETTES[themeName] || HWF_THEME_PALETTES.tv;
+        applyRootPaletteVars();
+        wake();
+      }
+    };
   }
 
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
